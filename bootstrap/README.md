@@ -32,6 +32,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | Forks, public repos | Approval required before any external contributor's fork PR runs workflows | Red-team scenario 7 |
 | Forks, private repos | Fork PR workflows off | Same, for private repos |
 | Scanning, public repos | Secret scanning and push protection | Free on public repos. Private repos get gitleaks in the merge gate |
+| | Dependabot alerts | Turns on the dependency graph, which the gate's dependency review needs. Without it the review fails with "not supported on this repository" |
 | Environments | `dev` and `production`, each deployable from the default branch only (a named-branch policy) | Only `main` can deploy (ADR-002). No secrets are created here |
 | Labels | `agent:ready`, `agent:stop`, `agent:blocked` | How Dan releases, stops and unblocks agent runs. The orchestrator acts on them only when the repo owner applies them |
 | Files | `.github/CODEOWNERS`: tier 3 paths to the repo owner | Routes tier 3 review requests. The tier check is the control |
@@ -77,7 +78,7 @@ Environments, labels and CODEOWNERS (#5), on both testbeds:
 - Personal Pro allows environments with deployment branch policies on private repos.
 - Changing the template and re-running updated the open PR in place; no second PR was opened.
 - Not tested: a repo that already has its own CODEOWNERS. The leave-alone path is read in code review only.
-- Not applied to this repo. It isn't an agent target yet, and doesn't deploy.
+- Applied to this repo on 2026-10-30, while enabling Dependabot alerts for the gate (#14). Its CODEOWNERS PR is #27.
 
 ## Other options for a fork
 

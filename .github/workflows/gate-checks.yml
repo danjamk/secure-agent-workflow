@@ -270,5 +270,8 @@ jobs:
         run: |
           bash ../gate-tools/gate/install-tool.sh actionlint "$RUNNER_TEMP/bin"
           bash ../gate-tools/gate/install-tool.sh zizmor "$RUNNER_TEMP/bin"
-          "$RUNNER_TEMP/bin/actionlint"
+          # actionlint 1.7.12 predates job.workflow_repository and
+          # job.workflow_sha, which GitHub documents and the gate relies on.
+          "$RUNNER_TEMP/bin/actionlint" \
+            -ignore 'property "workflow_(repository|sha)" is not defined'
           "$RUNNER_TEMP/bin/zizmor" --offline --min-severity medium .github/
