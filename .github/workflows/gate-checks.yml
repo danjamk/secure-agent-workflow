@@ -1,0 +1,274 @@
+# Merge gate: deterministic checks and scanners (spec 0001, "Merge gate",
+# check order 1-3). Reusable: a consumer calls it pinned to a commit SHA of
+# this repo and marks each job a required check. See gate/README.md.
+#
+# Job names are the same for public and private repos; each job picks its
+# tools by visibility. A job skipped for one visibility reports success, so
+# the required checks don't change with visibility.
+#
+# Every job checks the consumer's PR into repo/ and this repo, at the SHA the
+# caller pinned, into gate-tools/. Scanners only ever see repo/.
+
+name: gate-checks
+
+on:
+  workflow_call:
+    inputs:
+      check-command:
+        description: Build, tests, lint and type check, run in the consumer's repo root.
+        type: string
+        default: make check
+      node-version:
+        description: Node version when the repo has a package.json.
+        type: string
+        default: "22"
+      fail-on-severity:
+        description: Dependency review threshold on public repos (low, moderate, high, critical).
+        type: string
+        default: moderate
+
+permissions: {}
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+      - name: Check out the gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: gate-tools
+          persist-credentials: false
+      - name: Set up Node
+        if: hashFiles('repo/package.json') != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: Enable pnpm
+        if: hashFiles('repo/pnpm-lock.yaml') != ''
+        run: corepack enable
+      - name: Install uv
+        if: hashFiles('repo/uv.lock') != ''
+        run: |
+          bash gate-tools/gate/install-tool.sh uv "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Run the check command
+        working-directory: repo
+        env:
+          CHECK_COMMAND: ${{ inputs.check-command }}
+        run: bash -c "$CHECK_COMMAND"
+
+  dependency-scan:
+    name: dependency-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Public: GitHub's dependency review, free on public repos. It compares
+      # the PR's dependency changes against the advisory database.
+      - name: Dependency review
+        if: ${{ !github.event.repository.private }}
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: ${{ inputs.fail-on-severity }}
+
+      # Private: osv-scanner over every manifest and lockfile.
+      - name: Check out the PR
+        if: ${{ github.event.repository.private }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+      - name: Check out the gate
+        if: ${{ github.event.repository.private }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: gate-tools
+          persist-credentials: false
+      - name: osv-scanner
+        if: ${{ github.event.repository.private }}
+        working-directory: repo
+        run: |
+          bash ../gate-tools/gate/install-tool.sh osv-scanner "$RUNNER_TEMP/bin"
+          status=0
+          "$RUNNER_TEMP/bin/osv-scanner" scan source --recursive . || status=$?
+          # 128 means no manifests or lockfiles were found: nothing to scan.
+          if [ "$status" -eq 128 ]; then
+            echo "No dependency manifests found."
+            exit 0
+          fi
+          exit "$status"
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the PR with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: gate-tools
+          persist-credentials: false
+      # Runs on public repos too: GitHub's push protection only knows
+      # provider-specific token formats, gitleaks also catches generic ones.
+      - name: gitleaks on the PR's commits
+        working-directory: repo
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          bash ../gate-tools/gate/install-tool.sh gitleaks "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/gitleaks" git --log-opts="$BASE_SHA..$HEAD_SHA" \
+            --redact --no-banner --exit-code 1 .
+
+  code-scan:
+    name: code-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+      - name: Check out the gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: gate-tools
+          persist-credentials: false
+
+      # Public: CodeQL, for the languages it scans without a build.
+      - name: Pick CodeQL languages
+        id: languages
+        if: ${{ !github.event.repository.private }}
+        run: |
+          has() { find repo -path repo/.git -prune -o -path '*/node_modules' -prune -o -type f \( "$@" \) -print -quit | grep -q .; }
+          langs=()
+          if has -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx'; then langs+=(javascript-typescript); fi
+          if has -name '*.py'; then langs+=(python); fi
+          if has -name '*.rb'; then langs+=(ruby); fi
+          if [ -d repo/.github/workflows ]; then langs+=(actions); fi
+          list=$(IFS=,; echo "${langs[*]}")
+          echo "languages=$list" >> "$GITHUB_OUTPUT"
+          echo "CodeQL languages: ${list:-none}"
+      - name: CodeQL init
+        if: ${{ !github.event.repository.private && steps.languages.outputs.languages != '' }}
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ steps.languages.outputs.languages }}
+          source-root: repo
+      - name: CodeQL analyze
+        if: ${{ !github.event.repository.private && steps.languages.outputs.languages != '' }}
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          output: ${{ runner.temp }}/codeql
+      # CodeQL reports findings but never fails the job; this does.
+      - name: Fail on high-severity CodeQL findings
+        if: ${{ !github.event.repository.private && steps.languages.outputs.languages != '' }}
+        run: python3 gate-tools/gate/sarif_gate.py "$RUNNER_TEMP/codeql"
+
+      # Private: Semgrep CE, from its image pinned by digest.
+      - name: Semgrep
+        if: ${{ github.event.repository.private }}
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE/repo:/src" -w /src \
+            semgrep/semgrep@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0 \
+            semgrep scan --config p/default --error --severity ERROR \
+              --metrics off --disable-version-check
+
+  misconfig-scan:
+    name: misconfig-scan
+    if: ${{ github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+      - name: Check out the gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: gate-tools
+          persist-credentials: false
+      - name: trivy
+        run: |
+          bash gate-tools/gate/install-tool.sh trivy "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL \
+            --exit-code 1 --no-progress repo
+
+  workflow-lint:
+    name: workflow-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the PR with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: gate-tools
+          persist-credentials: false
+      - name: Did the PR change .github/workflows/?
+        id: changed
+        working-directory: repo
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -d .github/workflows ] && git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- .github/ | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No workflow changes to lint."
+          fi
+      - name: actionlint and zizmor
+        if: steps.changed.outputs.changed == 'true'
+        working-directory: repo
+        run: |
+          bash ../gate-tools/gate/install-tool.sh actionlint "$RUNNER_TEMP/bin"
+          bash ../gate-tools/gate/install-tool.sh zizmor "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/actionlint"
+          "$RUNNER_TEMP/bin/zizmor" --offline --min-severity medium .github/
