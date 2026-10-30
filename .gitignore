@@ -1,0 +1,8 @@
+COMMIT_MESSAGE.md
+PR_COMMENT.md
+.env
+.env.*
+!.env.example
+node_modules/
+.wrangler/
+.DS_Store
