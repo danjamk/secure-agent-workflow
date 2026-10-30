@@ -62,7 +62,26 @@ bash bootstrap/github-app/verify.sh danjamk/agent-testbed
 bash bootstrap/github-app/verify.sh danjamk/agent-testbed-private
 ```
 
-Results: _pending first run._
+Results, 2026-10-30, both testbeds (public and private, personal Pro): all expectations held.
+
+| Check | Public | Private |
+| --- | --- | --- |
+| Push an `agent/*` branch | Allowed | Allowed |
+| Open a PR | Allowed | Allowed |
+| Comment on an issue or PR | Allowed | Allowed |
+| Enable auto-merge (GraphQL) | Allowed | Allowed |
+| Push a `.github/workflows/` file | Blocked | Blocked |
+| Create or edit a ruleset | Blocked | Blocked |
+| Create a check run | Blocked | Blocked |
+| Create a commit status | Blocked | Blocked |
+| Read rulesets | Allowed | Allowed |
+| Second App's approval counts toward the ruleset | No (`REVIEW_REQUIRED`) | No (`REVIEW_REQUIRED`) |
+
+Notes:
+
+- `contents`, `pull_requests` and `issues` write are enough to enable auto-merge.
+- Reading rulesets needs only `metadata: read`. That is harmless; editing them is blocked.
+- The reviewer App's approval was accepted as a review but did not satisfy a one-approval ruleset. The reviewer App has `pull_requests: write` and no `contents` permission. GitHub counts approvals from accounts with write access, so an App with `contents: write` might still count; that was not tested. The tier check doesn't depend on the answer: it accepts only Dan's login.
 
 ## Other options for a fork
 

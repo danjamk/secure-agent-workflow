@@ -60,7 +60,7 @@ The spec's platform table says "Bot approvals counting toward reviews: No" for b
 | PR authors can't approve their own PRs. This holds for the build App on its own PRs. | High | [18] |
 | Impact: the design is still safe as long as the tier check checks the reviewer's login. If the merge gate relied on the ruleset's "required approvals" count, any second App or a machine user with write access could satisfy it. That includes the Claude App installation (as `claude[bot]`) and a planning machine user. | Medium (depends on the rows above) | — |
 
-Not verified: a live test on a personal Pro repo. The agent GitHub App issue runs it: open a PR as the build App, approve it with a second App's installation token, and check whether the ruleset's approval requirement shows as met.
+Live test, 2026-10-30 (`bootstrap/github-app/verify.sh`, public and private testbeds on personal Pro): a second App with `pull_requests: write` and no `contents` permission approved a build-App PR. The approval was recorded, but the PR's `reviewDecision` stayed `REVIEW_REQUIRED` under a one-approval ruleset. So an App's approval did not count in this setup. An App with `contents: write` was not tested. The conclusion for the tier check stands: check the reviewer's login, not the approval count.
 
 ### 5. Other controls and where they are enforced
 
