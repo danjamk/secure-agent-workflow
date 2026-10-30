@@ -91,7 +91,7 @@ The three agent roles are hardened one at a time. Nothing in steps 1 and 2 waits
 2. **PR audit.** LLM reviewers and the approver summary.
 3. **Planning agent.** Its own GitHub identity, so its approvals don't count as Dan's.
 
-Until step 3, the planning agent acts as Dan on GitHub. It can approve an agent's PR or merge one, and the tier check cannot tell that approval from Dan's. This is an accepted risk for early phases: the planning agent always has Dan in the loop, and it does not run unattended.
+Until step 3, the planning agent acts as Dan on GitHub. It can approve an agent's PR or merge one, and the tier check cannot tell that approval from Dan's: GitHub records no App attribution on reviews. This is an accepted risk for early phases: the planning agent always has Dan in the loop, and it does not run unattended. The likely step 3 fix is a machine user for the planning agent; see [planning agent identity](../research/planning-agent-identity.md).
 
 ## Platform constraints
 
@@ -105,7 +105,7 @@ Personal Pro covers both public and private repos. The gaps don't touch the crit
 | Environment required reviewers | Yes | No | Merge gate + `main`-only deploys + AWS OIDC subject check |
 | CodeQL, secret scanning, dependency review | Free | Paid | Free scanners in the gate |
 | Harden-Runner egress block | Free | Paid | Not needed: agents don't run in Actions |
-| Bot approvals counting toward reviews | No | No | AI reviewers report through required checks |
+| Bot approvals counting toward reviews | Unverified; App approvals likely count | Same | The tier check accepts only the approver's login on the head commit, never the ruleset's approval count. The PR audit reports through required checks |
 | OIDC to Cloudflare | No | No | Cloudflare token behind an AWS role only `environment:production` can assume |
 
 Public repos only: fork PRs require approval before workflows run, and AI reviewers run only on PRs from the agent App or Dan.
@@ -170,7 +170,7 @@ Added in build order step 3: the planning agent approves or merges a PR.
 
 ## References
 
-- Research: [sandbox bake-off](../research/sandbox-bakeoff.md)
+- Research: [sandbox bake-off](../research/sandbox-bakeoff.md), [planning agent identity](../research/planning-agent-identity.md)
 - [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
 - [Deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
 - [Approving a PR with required reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews)
