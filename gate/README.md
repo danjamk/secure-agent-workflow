@@ -5,9 +5,63 @@ Reusable workflows a consumer repo calls on every PR, pinned to a commit SHA of 
 | Part | Status |
 | --- | --- |
 | Tier check (`tier-check.yml`, `tier_check.py`) | Done (#15) |
-| Checks and scanners | #14 |
+| Checks and scanners (`gate-checks.yml`) | Done (#14) |
 | PR audit | #21 |
 | Caller installed by bootstrap | #16 |
+
+## Checks and scanners
+
+`gate-checks.yml` is reusable. Each job is a required check. The job names don't change with visibility, and a job skipped for one visibility reports success.
+
+| Job | Public repos | Private repos |
+| --- | --- | --- |
+| `check` | The consumer's check command (input `check-command`, default `make check`). Node is set up if there's a `package.json`, pnpm if there's a `pnpm-lock.yaml`, uv if there's a `uv.lock` | Same |
+| `dependency-scan` | GitHub dependency review, failing at `moderate` (input `fail-on-severity`) | osv-scanner over every manifest and lockfile |
+| `secret-scan` | gitleaks over the PR's commits | Same |
+| `code-scan` | CodeQL for JavaScript/TypeScript, Python, Ruby and Actions workflows. `sarif_gate.py` fails the job on security-severity 7.0 or higher, or level `error` | Semgrep CE (`p/default`), failing on `ERROR` severity |
+| `misconfig-scan` | Skipped | trivy, vulnerabilities and misconfigurations, `HIGH` and `CRITICAL` |
+| `workflow-lint` | actionlint and zizmor, when the PR changes `.github/` | Same |
+
+Notes:
+
+- **Scanners are release binaries pinned by SHA-256** in `tools.txt` and installed by `install-tool.sh`, which refuses a download whose checksum doesn't match. Semgrep ships only through PyPI and Docker, so it runs from its Docker image pinned by digest. No third-party action runs, so a moved release tag can't change what executes. The consumer's actions allowlist needs only the gate itself.
+- **Scanners judge the whole repo**, not only lines the PR adds. Agent-built repos start clean, which keeps each check a plain pass or fail.
+- **The check command runs the PR's code** with a read-only token and no secrets. Nothing else in the gate executes PR code.
+- **gitleaks runs on public repos too.** GitHub's push protection only knows provider-specific token formats.
+- **Semgrep fetches its `p/default` rules at run time.** They aren't pinned the way the binaries are.
+- **CodeQL languages that need a build** (Go, Java, C#, C/C++) aren't scanned. A repo using them adds its own CodeQL workflow.
+- **Dependency review needs the dependency graph.** Bootstrap turns it on by enabling Dependabot alerts on public repos.
+
+Calling it (bootstrap writes the caller in #16):
+
+```yaml
+jobs:
+  checks:
+    uses: danjamk/secure-agent-workflow/.github/workflows/gate-checks.yml@<commit-sha>
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    # with:
+    #   check-command: pnpm check
+```
+
+This repo runs the gate on its own PRs (`.github/workflows/gate.yml`, calling the local copy) with `make check`.
+
+### Live results
+
+2026-10-30. Each testbed got a PR, under the owner's account, adding a caller pinned to the gate commit, `lodash@4.17.15` (known CVEs), and on the private testbed a fake GitHub token.
+
+| Job | Public testbed | Private testbed |
+| --- | --- | --- |
+| check | Passed | Passed |
+| dependency-scan | Failed: 3 high, 3 moderate lodash advisories (after enabling Dependabot alerts) | Failed: osv-scanner, 6 lodash advisories |
+| secret-scan | Passed (no token planted) | Failed: gitleaks, 1 leak |
+| code-scan | Passed (CodeQL, Actions language) | Failed: Semgrep found the same token |
+| misconfig-scan | Skipped | Failed: trivy, 4 HIGH lodash CVEs |
+| workflow-lint | Passed | Passed |
+
+Also verified: `install-tool.sh` refuses a tampered checksum and installs nothing.
 
 ## Tier check
 

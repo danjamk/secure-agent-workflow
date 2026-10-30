@@ -1,0 +1,17 @@
+# This repo runs its own gate on its PRs. It calls the local copy, so a PR that
+# changes the gate is checked by its own version of it.
+
+name: gate
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  checks:
+    uses: ./.github/workflows/gate-checks.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write

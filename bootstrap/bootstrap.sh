@@ -238,6 +238,23 @@ scanning() {
         sync "scanning: secret scanning and push protection" \
             "repos/$REPO" PATCH "repos/$REPO" \
             '{"security_and_analysis":{"secret_scanning":{"status":"enabled"},"secret_scanning_push_protection":{"status":"enabled"}}}'
+        dependency_alerts
+    fi
+}
+
+dependency_alerts() {
+    # The gate's dependency review needs the dependency graph. On a personal
+    # account, enabling Dependabot alerts is the API call that turns it on;
+    # without it dependency review fails with "not supported on this repository".
+    local what="scanning: Dependabot alerts (turns on the dependency graph)"
+    if $GH api "repos/$REPO/vulnerability-alerts" --silent >/dev/null 2>&1; then
+        [ "$MODE" = apply ] && printf '  =  %s\n' "$what"
+        return 0
+    fi
+    CHANGES=$((CHANGES + 1))
+    printf '  ~  %s\n       vulnerability-alerts: disabled -> enabled\n' "$what"
+    if [ "$MODE" = apply ] && [ "$DRY_RUN" = false ]; then
+        $GH api -X PUT "repos/$REPO/vulnerability-alerts" --silent
     fi
 }
 

@@ -3,4 +3,7 @@
 # SHA pinning is required separately, so a pattern here still runs only when
 # the workflow pins it to a full commit SHA.
 #
-# The merge gate adds its scanner actions here when it lands.
+# The gate's own scanners are pinned binaries (gate/tools.txt), not actions,
+# so they need no entry here. The gate itself does: a repo can only call
+# reusable workflows the policy allows. A fork changes the owner.
+danjamk/secure-agent-workflow/.github/workflows/*@*
