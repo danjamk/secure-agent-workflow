@@ -10,7 +10,7 @@
 # compared again, so a setting GitHub refuses fails the run instead of passing
 # silently. A second run reports no changes.
 #
-# What it sets (spec 0001, issue #4):
+# What it sets (spec 0001, issues #4 and #5):
 #   ruleset   protect-default on the default branch: no force-push, no deletion,
 #             linear history, PR required, required checks pinned to GitHub Actions
 #   merge     squash only, auto-merge allowed, branches deleted on merge
@@ -19,6 +19,11 @@
 #   forks     public: approval before any external contributor's fork PR runs
 #             workflows; private: fork PR workflows off
 #   scanning  public only: secret scanning and push protection
+#   envs      dev and production, deployable from the default branch only
+#   labels    agent:ready, agent:stop, agent:blocked
+#   files     files/ templates (CODEOWNERS), written through one PR from the
+#             bootstrap/managed-files branch, because the default branch needs
+#             a PR. A file without the bootstrap marker is never overwritten
 #
 # Runs as the caller's gh identity, which needs admin on the repo. A human runs
 # this, never the agent: the agent App has no administration permission.
@@ -52,8 +57,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 RULESET_NAME="protect-default"
+FILES_BRANCH="bootstrap/managed-files"
+MARKER="Managed by secure-agent-workflow bootstrap"
+OWNER="${REPO%/*}"
 VISIBILITY=$($GH api "repos/$REPO" --jq .visibility)
+DEFAULT_BRANCH=$($GH api "repos/$REPO" --jq .default_branch)
 CHANGES=0
+QUEUE=()
 
 # --- Compare and apply ---
 
@@ -231,12 +241,170 @@ scanning() {
     fi
 }
 
+environment() {
+    local env=$1 what policies id
+    sync "environment $env" \
+        "repos/$REPO/environments/$env" PUT "repos/$REPO/environments/$env" \
+        '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+
+    # Deploys only from the default branch (spec 0001, ADR-002). A named-branch
+    # policy, because "protected branches" isn't documented to cover rulesets.
+    # Policies have no update call, so stale ones are deleted and ours created.
+    what="environment $env: deploys from $DEFAULT_BRANCH only"
+    # gh prints a 404's body on stdout, so only trust the output on success.
+    policies=""
+    if $GH api "repos/$REPO/environments/$env/deployment-branch-policies" \
+        --jq '[.branch_policies[] | "\(.type):\(.name)"] | sort | join(",")' \
+        > "$WORK/policies.txt" 2>/dev/null; then
+        policies=$(cat "$WORK/policies.txt")
+    fi
+    if [ "$policies" = "branch:$DEFAULT_BRANCH" ]; then
+        [ "$MODE" = apply ] && printf '  =  %s\n' "$what"
+        return 0
+    fi
+    CHANGES=$((CHANGES + 1))
+    printf '  ~  %s\n' "$what"
+    printf '       branch policies: %s -> branch:%s\n' "${policies:-none}" "$DEFAULT_BRANCH"
+    if [ "$MODE" = apply ] && [ "$DRY_RUN" = false ]; then
+        for id in $($GH api "repos/$REPO/environments/$env/deployment-branch-policies" --jq \
+            ".branch_policies[] | select(.type != \"branch\" or .name != \"$DEFAULT_BRANCH\") | .id"); do
+            $GH api -X DELETE "repos/$REPO/environments/$env/deployment-branch-policies/$id" --silent
+        done
+        case ",$policies," in
+            *",branch:$DEFAULT_BRANCH,"*) ;;
+            *) $GH api -X POST "repos/$REPO/environments/$env/deployment-branch-policies" \
+                   -f name="$DEFAULT_BRANCH" -f type=branch --silent ;;
+        esac
+    fi
+}
+
+environments() {
+    environment dev
+    environment production
+}
+
+# label NAME COLOR DESCRIPTION
+label() {
+    local name=$1 color=$2 description=$3 path
+    path="repos/$REPO/labels/$(printf '%s' "$name" | sed 's/:/%3A/g')"
+    if $GH api "$path" > "$WORK/current.json" 2>/dev/null; then
+        printf '{"color":"%s","description":"%s"}' "$color" "$description" > "$WORK/desired.json"
+        compare "label $name" PATCH "$path"
+    else
+        echo '{}' > "$WORK/current.json"
+        printf '{"name":"%s","color":"%s","description":"%s"}' "$name" "$color" "$description" \
+            > "$WORK/desired.json"
+        compare "label $name" POST "repos/$REPO/labels"
+    fi
+}
+
+labels() {
+    # The orchestrator acts on these only when the repo owner applies them;
+    # the outbound handler stops the agent editing them (spec 0001).
+    label agent:ready   0e8a16 "Released to a build agent"
+    label agent:stop    b60205 "Ends the agent run on this issue"
+    label agent:blocked fbca04 "Agent is waiting for a reply from the approver"
+}
+
+# fetch_file PATH REF — print the file's content at REF; fail if it doesn't exist.
+fetch_file() {
+    $GH api "repos/$REPO/contents/$1?ref=$2" > "$WORK/file.json" 2>/dev/null || return 1
+    python3 -c 'import base64,json,sys; sys.stdout.write(base64.b64decode(json.load(open(sys.argv[1]))["content"]).decode())' \
+        "$WORK/file.json"
+}
+
+# managed_file PATH TEMPLATE — render files/TEMPLATE and compare it with PATH on
+# the default branch. A difference is queued for the bootstrap PR.
+managed_file() {
+    local path=$1 template=$2 rendered="$WORK/files/$1"
+    mkdir -p "$(dirname "$rendered")"
+    sed "s/{{OWNER}}/$OWNER/g" "$HERE/files/$template" > "$rendered"
+
+    if fetch_file "$path" "$DEFAULT_BRANCH" > "$WORK/default-file"; then
+        if cmp -s "$rendered" "$WORK/default-file"; then
+            printf '  =  file %s\n' "$path"
+            return 0
+        fi
+        if ! grep -q "$MARKER" "$WORK/default-file"; then
+            # Someone else's file. Never overwrite it.
+            printf '  !  file %s exists and is not managed by bootstrap; left alone. Merge in by hand:\n' "$path"
+            grep -v '^#' "$rendered" | sed '/^$/d; s/^/       /'
+            return 0
+        fi
+    else
+        : > "$WORK/default-file"
+    fi
+
+    if [ -n "$OPEN_PR" ] && fetch_file "$path" "$FILES_BRANCH" > "$WORK/branch-file" \
+        && cmp -s "$rendered" "$WORK/branch-file"; then
+        printf '  =  file %s: pending in PR #%s\n' "$path" "$OPEN_PR"
+        return 0
+    fi
+
+    CHANGES=$((CHANGES + 1))
+    printf '  ~  file %s\n' "$path"
+    diff -u "$WORK/default-file" "$rendered" | tail -n +3 | sed 's/^/       /' || true
+    QUEUE+=("$path")
+}
+
+# publish_files — commit queued files to FILES_BRANCH and open or reuse the PR.
+publish_files() {
+    local path sha number
+    if ! $GH api "repos/$REPO/git/ref/heads/$FILES_BRANCH" >/dev/null 2>&1; then
+        sha=$($GH api "repos/$REPO/git/ref/heads/$DEFAULT_BRANCH" --jq .object.sha)
+        $GH api -X POST "repos/$REPO/git/refs" \
+            -f ref="refs/heads/$FILES_BRANCH" -f sha="$sha" --silent
+    fi
+    for path in "${QUEUE[@]}"; do
+        sha=""
+        if $GH api "repos/$REPO/contents/$path?ref=$FILES_BRANCH" --jq .sha \
+            > "$WORK/sha.txt" 2>/dev/null; then
+            sha=$(cat "$WORK/sha.txt")
+        fi
+        FILE="$WORK/files/$path" FILE_PATH="$path" BRANCH="$FILES_BRANCH" SHA="$sha" \
+        python3 > "$WORK/put.json" <<'PY'
+import base64, json, os
+body = {
+    "message": f"chore: update {os.environ['FILE_PATH']} from bootstrap",
+    "content": base64.b64encode(open(os.environ["FILE"], "rb").read()).decode(),
+    "branch": os.environ["BRANCH"],
+}
+if os.environ["SHA"]:
+    body["sha"] = os.environ["SHA"]
+print(json.dumps(body))
+PY
+        $GH api -X PUT "repos/$REPO/contents/$path" --input "$WORK/put.json" --silent
+    done
+
+    if [ -n "$OPEN_PR" ]; then
+        echo "  Updated PR #$OPEN_PR."
+        return 0
+    fi
+    number=$($GH api -X POST "repos/$REPO/pulls" \
+        -f title="chore: bootstrap managed files" \
+        -f head="$FILES_BRANCH" -f base="$DEFAULT_BRANCH" \
+        -f body="Files managed by secure-agent-workflow bootstrap. Re-running bootstrap updates this PR. Merge it to finish bootstrapping." \
+        --jq .number)
+    echo "  Opened PR #$number: https://github.com/$REPO/pull/$number"
+}
+
+files() {
+    OPEN_PR=$($GH api "repos/$REPO/pulls?head=$OWNER:$FILES_BRANCH&state=open" --jq '.[0].number // empty')
+    managed_file .github/CODEOWNERS CODEOWNERS
+}
+
 run_all() {
     ruleset
     merge_settings
     actions_policy
     fork_policy
     scanning
+    environments
+    labels
+    # Files land through a PR, so there's nothing to read back until it merges.
+    if [ "$MODE" = apply ]; then
+        files
+    fi
 }
 
 # --- Run ---
@@ -248,6 +416,9 @@ echo ""
 
 MODE=apply
 run_all
+if [ "$DRY_RUN" = false ] && [ "${#QUEUE[@]}" -gt 0 ]; then
+    publish_files
+fi
 
 echo ""
 if [ "$CHANGES" -eq 0 ]; then

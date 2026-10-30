@@ -17,6 +17,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | `bootstrap.sh` | Reads, compares, applies, verifies |
 | `diff.py` | Compares desired settings with GitHub's response; desired is a subset |
 | `allowed-actions.txt` | Third-party actions allowed beyond GitHub-owned ones |
+| `files/` | Templates for files bootstrap writes into the repo. `{{OWNER}}` becomes the repo owner |
 | `github-app/` | The agent's GitHub App: manifest, creation, token minting, verification |
 
 ## What it sets
@@ -31,6 +32,9 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | Forks, public repos | Approval required before any external contributor's fork PR runs workflows | Red-team scenario 7 |
 | Forks, private repos | Fork PR workflows off | Same, for private repos |
 | Scanning, public repos | Secret scanning and push protection | Free on public repos. Private repos get gitleaks in the merge gate |
+| Environments | `dev` and `production`, each deployable from the default branch only (a named-branch policy) | Only `main` can deploy (ADR-002). No secrets are created here |
+| Labels | `agent:ready`, `agent:stop`, `agent:blocked` | How Dan releases, stops and unblocks agent runs. The orchestrator acts on them only when the repo owner applies them |
+| Files | `.github/CODEOWNERS`: tier 3 paths to the repo owner | Routes tier 3 review requests. The tier check is the control |
 
 `--checks` replaces the required checks. Without it, bootstrap keeps whatever checks the ruleset already requires, so a re-run never drops the gate. `--checks ""` removes them.
 
@@ -38,11 +42,19 @@ Bootstrap manages only its own ruleset. It lists other rulesets on the repo and 
 
 Running claude-shared's `protect-branch.sh` on a bootstrapped repo rewrites `protect-default` without the check pinning. Re-run bootstrap afterward.
 
-Environments, labels and CODEOWNERS come next (#5), then the gate caller (#16).
+The gate caller and tier map come next (#16), through the same managed-files mechanism.
+
+## Managed files
+
+The default branch requires a PR, so bootstrap can't write files straight to it. It renders each template in `files/`, compares it with the file on the default branch, and commits any difference to the `bootstrap/managed-files` branch, with one PR for all of them.
+
+- Re-running with the PR still open updates that PR. It never opens a second one. A file already in the open PR shows as `pending in PR #N` and doesn't count as a change.
+- Every managed file starts with the line `Managed by secure-agent-workflow bootstrap`. If the repo already has the file without that line, bootstrap leaves it alone and prints the lines to merge in by hand.
+- Files have no read-back step. They take effect when you merge the PR.
 
 ## Results
 
-2026-10-30, personal Pro account:
+2026-10-30, personal Pro account, ruleset and settings (#4):
 
 | Repo | First run | Second run |
 | --- | --- | --- |
@@ -54,6 +66,18 @@ Environments, labels and CODEOWNERS come next (#5), then the gate caller (#16).
 - A direct push to `main` from the owner account was rejected ("Changes must be made through a pull request"). The ruleset binds the repo admin when there are no bypass actors.
 - `--checks verify-gate` added the check with `integration_id` 15368 (GitHub Actions). A run without `--checks` kept it, and `--checks ""` removed it.
 - `GET /repos/{owner}/{repo}` can return old values for a few seconds after a write. The read-back retries for up to 8 seconds before calling a setting refused.
+
+Environments, labels and CODEOWNERS (#5), on both testbeds:
+
+| Repo | First run | Second run |
+| --- | --- | --- |
+| `danjamk/agent-testbed` (public) | 7 settings, all read back; CODEOWNERS PR #2 opened | No changes; CODEOWNERS pending in PR #2 |
+| `danjamk/agent-testbed-private` (private) | 7 settings, all read back; CODEOWNERS PR #2 opened | No changes; CODEOWNERS pending in PR #2 |
+
+- Personal Pro allows environments with deployment branch policies on private repos.
+- Changing the template and re-running updated the open PR in place; no second PR was opened.
+- Not tested: a repo that already has its own CODEOWNERS. The leave-alone path is read in code review only.
+- Not applied to this repo. It isn't an agent target yet, and doesn't deploy.
 
 ## Other options for a fork
 
