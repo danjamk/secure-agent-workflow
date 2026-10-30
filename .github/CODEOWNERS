@@ -1,0 +1,10 @@
+# Managed by secure-agent-workflow bootstrap. Change the template in
+# secure-agent-workflow/bootstrap/files/CODEOWNERS and re-run bootstrap,
+# not this copy.
+#
+# Tier 3 paths (spec 0001). The tier check is the control that stops the agent
+# merging changes here; this file routes the review request to the owner.
+
+/.github/                @danjamk
+/CODEOWNERS              @danjamk
+/standards/tier-map.yml  @danjamk
