@@ -1,0 +1,6 @@
+# Third-party actions a bootstrapped repo may run, beyond GitHub-owned ones.
+# One pattern per line, in GitHub's selected-actions format (owner/repo@*).
+# SHA pinning is required separately, so a pattern here still runs only when
+# the workflow pins it to a full commit SHA.
+#
+# The merge gate adds its scanner actions here when it lands.
