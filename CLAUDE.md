@@ -29,6 +29,7 @@ Two things a newcomer gets wrong:
 | `docs/specs/` | Numbered specs. `0001` is the system spec. |
 | `docs/adr/` | `ADR-NNN-*.md` decision records |
 | `docs/research/` | Research the ADRs cite |
+| `bootstrap/` | `bootstrap.sh`: applies repo controls to one repo, idempotent, verified by read-back |
 | `bootstrap/github-app/` | Agent GitHub App manifest, creation and token scripts, verification |
 
 The other component directories listed in the README do not exist yet.
