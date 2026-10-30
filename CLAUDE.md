@@ -36,6 +36,11 @@ The component directories listed in the README do not exist yet.
 
 - **This repo is public.** Refer to consumers by role ("the reference build"),
   never by company or client name.
+- **Each component folder is replaceable** (spec 0001, goal 7). Its `README.md`
+  states what it expects from the other components and what a fork could use
+  instead. Don't reach across folders for internals; go through that contract.
+- **Build order:** build agent, then PR audit, then planning agent identity. Don't
+  make build-agent work wait on the later two.
 
 ## Versioning
 

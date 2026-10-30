@@ -20,10 +20,29 @@ The agent can't change the controls: they live in the sandbox, GitHub permission
 | --- | --- |
 | `bootstrap/` | One command that applies rulesets, environments and gate wiring to a repo |
 | `orchestrator/` | Cloudflare Worker that runs agents in sandboxes, with credentials kept outside |
-| `gate/` | Reusable merge-gate workflows: checks, scanners, tier check, AI reviewers |
+| `gate/` | Reusable merge-gate workflows: checks, scanners, tier check, PR audit |
 | `deploy/` | Deploy template with a GitHub OIDC credential broker |
 | `standards/` | ADR template, agent instructions, issue template, tier map |
 | `redteam/` | Attacks the controls must stop |
+
+## Adapting it
+
+v1 runs on Cloudflare and AWS. Each part lives in its own folder and states what it expects from the others, so you can rewrite one part without touching the rest. There is no configuration layer for this; you change the code.
+
+| Part | v1 choice | Other options | Folder |
+| --- | --- | --- | --- |
+| Agent identity | GitHub App ([ADR-001](docs/adr/ADR-001-agent-github-app-identity.md)) | Machine user account; a GitHub org on Team, which adds push rulesets | `bootstrap/` |
+| Sandbox | Cloudflare Sandbox SDK ([ADR-004](docs/adr/ADR-004-cloudflare-sandbox.md)) | E2B; Docker Sandboxes on your own host; containers under gVisor or Kata; GitHub Actions runners on public repos | `orchestrator/` |
+| Egress and credential proxy | Worker outbound handlers | Envoy or Squid with an allowlist in front of any container host | `orchestrator/` |
+| Agent CLI | Not yet chosen | Any agent CLI that runs headless, such as Claude Code or Codex | `orchestrator/` |
+| Scanners | Free tools; GitHub's own on public repos | GitHub Advanced Security, or a commercial scanner | `gate/` |
+| PR audit models | Builder and reviewer from different model families | Any model API, including a self-hosted model | `gate/` |
+| Credential broker | GitHub OIDC to AWS IAM and Parameter Store ([ADR-002](docs/adr/ADR-002-oidc-credential-broker.md)) | Vault or OpenBao; GCP Workload Identity with Secret Manager; Azure federated credentials with Key Vault; GitHub environment secrets, which is simplest but long-lived | `deploy/` |
+| Deploy target | Cloudflare Workers | Any target the deploy job can reach with brokered credentials | `deploy/` |
+
+GitHub doesn't swap out. Bootstrap, the gate and the agent identity all depend on GitHub rulesets, Apps, Actions and OIDC.
+
+Whatever you replace, keep the property the design depends on: the agent cannot change the control.
 
 ## Read first
 

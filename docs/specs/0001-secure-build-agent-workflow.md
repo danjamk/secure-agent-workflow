@@ -1,6 +1,6 @@
 # Spec 0001: Secure build-agent workflow
 
-Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30
+Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30 (build order, PR audit, tier 3 enforcement, replaceable parts)
 
 ## Summary
 
@@ -16,6 +16,7 @@ The first consumer is a private reference build, a data and reporting platform l
 4. **Low setup and maintenance cost.** A new repo is protected in one command. Gate logic is updated in one place.
 5. **Cheap for personal use.** Under $30 a month beyond existing subscriptions.
 6. **Reusable by teams later.** The same model maps onto a GitHub organization and an enterprise sandbox without redesign.
+7. **Replaceable parts.** v1 picks Cloudflare and AWS, but each component sits in its own directory behind a stated contract, so a fork can rewrite one part without touching the others. This is code organization, not a configuration layer. The README lists the alternatives for each part.
 
 ## Non-goals (v1)
 
@@ -46,21 +47,23 @@ One deliberate extension: `claude-shared` reserves every merge for Dan. Repos bo
 | Agent identity | GitHub App the agent acts as | App owned by `danjamk`: `contents`, `pull_requests`, `issues` write; `checks`, `metadata` read; **no `workflows`**, no `administration` (ADR-001) |
 | `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Sandbox SDK microVM, runs the agent CLI, tears it down (ADR-004) |
 | Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist | Worker outbound handlers: `enableInternet = false` plus `allowedHosts`; inject a short-lived App installation token and model API keys; reject pushes outside `agent/*` |
-| `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check, AI reviewers (ADR-003) |
+| `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check (ADR-003), PR audit |
 | `deploy/` | Deploy template for Cloudflare | `dev` and `production` environments, OIDC broker, attested artifacts (ADR-002) |
 | `standards/` | Templates agents and reviewers rely on | ADR template, agent instructions, issue template, tier map |
 | `redteam/` | Scripted attacks the controls must stop | Run against a bootstrapped repo; results published |
-| Planning agent | Human-in-the-loop spec, plan and ADR work | Claude in Dan's normal UI. Acts as Dan on GitHub, so it never merges |
+| Planning agent | Human-in-the-loop spec, plan and ADR work | Claude in Dan's normal UI or Claude Code cloud, acting as Dan on GitHub. Accepted for early phases; it gets its own identity in step 3 of the build order |
 
 ## Merge gate
 
-Deterministic checks are authoritative. AI reviewers can block a PR but never approve one.
+Deterministic checks are authoritative. The PR audit can reject a PR but never approve one.
 
 | Tier | Paths (default, overridable per repo) | To merge |
 | --- | --- | --- |
-| 1 | App source, tests, docs | All checks green, no blocking AI finding |
+| 1 | App source, tests, docs | All checks green, no blocking PR audit finding |
 | 2 | Dependency manifests and lockfiles, auth and permission code, migrations, `wrangler.*` | Tier 1, plus Dan's approval |
-| 3 | `.github/**`, `CODEOWNERS`, `standards/tier-map.yml` | Agent cannot push these. Human-authored, Dan approves, zizmor and actionlint pass |
+| 3 | `.github/**`, `CODEOWNERS`, `standards/tier-map.yml` | Human-authored, Dan approves, zizmor and actionlint pass. The tier check fails any agent-authored PR that touches these |
+
+Only `.github/workflows/` is blocked by GitHub itself, because the agent App has no `workflows` permission. The App's `contents: write` covers every other tier 3 path, so the tier check is the control for those. It reads the tier map from the base branch, never from the PR. Paths that match no rule count as tier 2.
 
 Check order:
 
@@ -68,8 +71,27 @@ Check order:
 2. Scanners: CodeQL, secret scanning and dependency review on public repos; Semgrep CE, gitleaks, osv-scanner and trivy on private repos, where GitHub's versions are paid.
 3. zizmor and actionlint when `.github/**` changes.
 4. Tier check: computes the tier from changed paths and fails until the required approval exists.
-5. Spec-conformance reviewer: checks the diff against the issue, plan and ADRs.
-6. Security reviewer on a different model family than the builder.
+5. PR audit, spec conformance: checks the diff against the issue, plan and ADRs.
+6. PR audit, security: a reviewer on a different model family than the builder.
+
+### PR audit
+
+The PR audit is the gate's LLM layer, on top of the deterministic checks and scanners. It has two jobs:
+
+1. Reject bad PRs before a human sees them.
+2. Cut the work of whoever approves tier 2 and 3 PRs. One summary per PR, updated on each push, gives the tier and reason, check results, audit findings and the files that need a human look.
+
+It reports through required checks, never through an approving review. The reviewer model is vendor-neutral; for example, Codex can audit a Claude Code build.
+
+## Build order
+
+The three agent roles are hardened one at a time. Nothing in steps 1 and 2 waits on step 3.
+
+1. **Build agent.** App identity, bootstrap, orchestrator and sandbox, deterministic gate and tier check, deploy, red-team.
+2. **PR audit.** LLM reviewers and the approver summary.
+3. **Planning agent.** Its own GitHub identity, so its approvals don't count as Dan's.
+
+Until step 3, the planning agent acts as Dan on GitHub. It can approve an agent's PR or merge one, and the tier check cannot tell that approval from Dan's. This is an accepted risk for early phases: the planning agent always has Dan in the loop, and it does not run unattended.
 
 ## Platform constraints
 
@@ -130,6 +152,8 @@ Production uses one trust anchor, GitHub OIDC, and a broker issues each platform
 6. PR content instructs the AI reviewer to approve.
 7. A fork PR attempts to run a modified workflow (public repos).
 
+Added in build order step 3: the planning agent approves or merges a PR.
+
 ## Decisions
 
 - [ADR-001](../adr/ADR-001-agent-github-app-identity.md): The agent acts as a GitHub App.
@@ -142,6 +166,7 @@ Production uses one trust anchor, GitHub OIDC, and a broker issues each platform
 - [ ] Which agent CLIs to support first (suggest Claude Code and Codex).
 - [ ] Builder and reviewer model families.
 - [ ] AWS account to host the OIDC broker.
+- [ ] Planning agent identity (build order step 3).
 
 ## References
 
