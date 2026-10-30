@@ -1,0 +1,22 @@
+{
+  "name": "danjamk-build-agent",
+  "url": "https://github.com/danjamk/secure-agent-workflow",
+  "description": "Build agent identity for secure-agent-workflow. No workflows or administration permission (ADR-001).",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://example.com/secure-agent-workflow/webhook",
+    "active": false
+  },
+  "default_permissions": {
+    "contents": "write",
+    "pull_requests": "write",
+    "issues": "write",
+    "checks": "read",
+    "metadata": "read"
+  },
+  "default_events": [
+    "issues",
+    "issue_comment",
+    "pull_request"
+  ]
+}
