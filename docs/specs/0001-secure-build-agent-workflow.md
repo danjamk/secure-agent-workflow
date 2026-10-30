@@ -1,6 +1,6 @@
 # Spec 0001: Secure build-agent workflow
 
-Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30 (build order, PR audit, tier 3 enforcement, replaceable parts)
+Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30 (build order, PR audit, tier 3 enforcement, replaceable parts, observability, coordination)
 
 ## Summary
 
@@ -17,6 +17,7 @@ The first consumer is a private reference build, a data and reporting platform l
 5. **Cheap for personal use.** Under $30 a month beyond existing subscriptions.
 6. **Reusable by teams later.** The same model maps onto a GitHub organization and an enterprise sandbox without redesign.
 7. **Replaceable parts.** v1 picks Cloudflare and AWS, but each component sits in its own directory behind a stated contract, so a fork can rewrite one part without touching the others. This is code organization, not a configuration layer. The README lists the alternatives for each part.
+8. **Visible and interruptible.** Dan can see what any agent is doing, answer its questions, and stop it, from GitHub or Slack, without opening the sandbox.
 
 ## Non-goals (v1)
 
@@ -45,7 +46,7 @@ One deliberate extension: `claude-shared` reserves every merge for Dan. Repos bo
 | --- | --- | --- |
 | `bootstrap/` | Applies repo settings as code: rulesets, environments, Actions policy, labels, CODEOWNERS, gate callers | `gh api` script, idempotent, dry-run mode. Extends `claude-shared/scripts/protect-branch.sh` |
 | Agent identity | GitHub App the agent acts as | App owned by `danjamk`: `contents`, `pull_requests`, `issues` write; `checks`, `metadata` read; **no `workflows`**, no `administration` (ADR-001) |
-| `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Sandbox SDK microVM, runs the agent CLI, tears it down (ADR-004) |
+| `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Sandbox SDK microVM, runs the agent CLI, tears it down (ADR-004). A coordinator (one Durable Object) holds the queue, the concurrency cap and dependency gating; a log Durable Object per run stores the agent's redacted log |
 | Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist | Worker outbound handlers: `enableInternet = false` plus `allowedHosts`; inject a short-lived App installation token and model API keys; reject pushes outside `agent/*` |
 | `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check (ADR-003), PR audit |
 | `deploy/` | Deploy template for Cloudflare | `dev` and `production` environments, OIDC broker, attested artifacts (ADR-002) |
@@ -82,6 +83,56 @@ The PR audit is the gate's LLM layer, on top of the deterministic checks and sca
 2. Cut the work of whoever approves tier 2 and 3 PRs. One summary per PR, updated on each push, gives the tier and reason, check results, audit findings and the files that need a human look.
 
 It reports through required checks, never through an approving review. The reviewer model is vendor-neutral; for example, Codex can audit a Claude Code build.
+
+## Observability and intervention
+
+The draft PR is the system of record. Slack is the notification and reply channel. The orchestrator owns sandbox lifecycle, so every control works even if the agent misbehaves.
+
+### Status
+
+- The agent opens a draft PR on its first push and keeps a task checklist and a short "current step" line at the top of the PR description.
+- The orchestrator streams the agent's log to a Durable Object per run and links it from the PR. Logs are redacted for secrets before storage.
+- Cost and token usage per run are recorded by the orchestrator (from the agent CLI's OpenTelemetry output where available) and posted on completion.
+
+### Slack
+
+- One personal channel. The orchestrator posts: run started, blocked (with the question), ready for review (tier 2/3), failed, and a daily digest.
+- Each run gets one thread. Dan's replies in the thread are relayed to the PR as comments and treated the same as PR comments.
+
+### Blocked and waiting
+
+- When the agent needs input, it pushes work-in-progress commits to its `agent/<issue>-<slug>` branch, writes a handoff note in the PR (state, open question, next steps), adds `agent:blocked`, and exits.
+- The orchestrator tears the sandbox down. No sandbox runs while waiting for Dan.
+- A reply from Dan (PR comment or Slack thread) removes `agent:blocked`. The orchestrator starts a fresh sandbox that resumes from the branch and the handoff note.
+- Runs also stop at a wall-clock and token budget per issue. Hitting a budget is handled as blocked, with the reason stated.
+
+### Stop
+
+- Adding `agent:stop` or removing `agent:ready` ends the run: the orchestrator revokes the installation token, tears down the sandbox, and comments on the PR.
+- Stop is enforced in the orchestrator and outbound handler, not by asking the agent, so it works even if the agent ignores instructions.
+
+## Coordination and parallelism
+
+The orchestrator has a coordinator (one Durable Object) in front of the per-run sandboxes. It queues released issues, enforces a concurrency cap, and starts a run only when the issue's dependencies are met. v1 ships with the cap set to 1.
+
+### The plan decides what can run in parallel
+
+- The planning agent marks each issue with:
+  - **Dependencies**, as GitHub "blocked by" links.
+  - **Touch area**, a label such as `area:pipeline` or `area:site`, naming the part of the codebase the issue is expected to change.
+- The implementation plan groups issues into waves and says, per wave, whether issues can run in parallel or must run one at a time, and why.
+- The plan recommends a concurrency cap per wave. Dan sets the cap; the coordinator never raises it on its own.
+
+### Coordinator rules
+
+- An issue with open "blocked by" links waits, even if labeled `agent:ready`.
+- Two issues with the same touch area don't run at the same time.
+- When a PR falls behind `main` and conflicts, the coordinator sends it back to an agent to rebase, as a new run on the same branch.
+- Total spend across all runs counts toward a daily budget; hitting it pauses the queue and notifies Dan.
+
+### Visibility
+
+- The daily digest lists queued, running, blocked and waiting issues, and why each waiting issue is waiting.
 
 ## Build order
 
@@ -126,6 +177,7 @@ Production uses one trust anchor, GitHub OIDC, and a broker issues each platform
 | Cloudflare dev token | Orchestrator Worker secret | The dev account only |
 | Cloudflare prod token | AWS Parameter Store, read by the prod role | The prod account |
 | AWS prod role | OIDC trust policy | Assumed only by `environment:production` |
+| Slack bot token | Orchestrator Worker secret | Posts to Dan's personal Slack channel; reads replies in run threads |
 
 ## Developer experience requirements
 
@@ -134,6 +186,9 @@ Production uses one trust anchor, GitHub OIDC, and a broker issues each platform
 3. Dan's touches per tier 1 PR: zero. Tier 2 and 3: one approval, with the reason stated at the top of the PR.
 4. Notifications: one per PR that needs Dan, one daily digest otherwise.
 5. Updating gate logic: change this repo, bump the pinned SHA in consumers with one command.
+6. Status of any run: one click from the issue or Slack thread.
+7. Answer a question: one reply, in either place.
+8. Stop a run: one label.
 
 ## Success measures
 
@@ -151,6 +206,9 @@ Production uses one trust anchor, GitHub OIDC, and a broker issues each platform
 5. Agent adds a dependency with a known vulnerability.
 6. PR content instructs the AI reviewer to approve.
 7. A fork PR attempts to run a modified workflow (public repos).
+8. Agent keeps working or making network calls after `agent:stop`.
+9. Agent writes a secret into its log, PR or handoff note.
+10. Agent edits files outside its issue's touch area to break the parallelism assumptions. Flagged by the spec-conformance reviewer, not blocked; passes if the reviewer catches it.
 
 Added in build order step 3: the planning agent approves or merges a PR.
 
@@ -167,6 +225,7 @@ Added in build order step 3: the planning agent approves or merges a PR.
 - [ ] Builder and reviewer model families.
 - [ ] AWS account to host the OIDC broker.
 - [ ] Planning agent identity (build order step 3).
+- [ ] ADR-005: coordinator design (queue, concurrency cap, dependency and touch-area rules).
 
 ## References
 
