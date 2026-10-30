@@ -1,0 +1,46 @@
+# secure-agent-workflow
+
+Tooling and standards for letting coding agents build with little supervision,
+while nothing reaches production unchecked.
+
+## Stack
+
+Design phase: specs and ADRs only, no code yet. Planned stack:
+
+| Component | Stack | Decision |
+|---|---|---|
+| `orchestrator/` | Cloudflare Worker + Sandbox SDK, TypeScript, pnpm, vitest, wrangler | ADR-004 |
+| `gate/` | GitHub reusable workflows, consumed pinned by SHA | ADR-003 |
+| `deploy/` | GitHub OIDC credential broker, Cloudflare target | ADR-002 |
+| `bootstrap/` | `gh api` shell scripts, idempotent, dry-run mode | Spec 0001 |
+
+Two things a newcomer gets wrong:
+
+- **A control the agent can edit is not a control.** Controls live in the sandbox,
+  GitHub permissions and cloud credentials. Never implement one as agent
+  instructions or as a settings file inside the sandbox.
+- **The agent's GitHub App has no `workflows` and no `administration` permission**
+  (ADR-001). Anything that needs either belongs in `bootstrap/`, run by a human.
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `docs/specs/` | Numbered specs. `0001` is the system spec. |
+| `docs/adr/` | `ADR-NNN-*.md` decision records |
+| `docs/research/` | Research the ADRs cite |
+
+The component directories listed in the README do not exist yet.
+
+## Conventions
+
+- **This repo is public.** Refer to consumers by role ("the reference build"),
+  never by company or client name.
+
+## Versioning
+
+**secure-agent-workflow is in build mode** — `0.1.x`, patch bumped on every merged
+PR, no CHANGELOG and no tags. The build id in `/health` is `<version>+<shortsha>`.
+No `package.json` exists yet; the version starts at `0.1.0` when the orchestrator
+lands. Cap the phase and move to release mode when `bootstrap/` and `gate/` protect
+a repo other than this one and red-team results are published.

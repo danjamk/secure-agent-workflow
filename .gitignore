@@ -4,5 +4,10 @@ PR_COMMENT.md
 .env.*
 !.env.example
 node_modules/
+dist/
 .wrangler/
 .DS_Store
+.idea/
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/skills/*
