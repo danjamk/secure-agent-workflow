@@ -1,0 +1,15 @@
+{
+  "name": "danjamk-testbed-reviewer",
+  "url": "https://github.com/danjamk/secure-agent-workflow",
+  "description": "Throwaway App for verify.sh: approves a build-agent PR to test whether App approvals count toward rulesets. Delete after the red-team run.",
+  "public": false,
+  "hook_attributes": {
+    "url": "https://example.com/secure-agent-workflow/webhook",
+    "active": false
+  },
+  "default_permissions": {
+    "pull_requests": "write",
+    "metadata": "read"
+  },
+  "default_events": []
+}

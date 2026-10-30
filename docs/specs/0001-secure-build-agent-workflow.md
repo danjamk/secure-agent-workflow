@@ -156,7 +156,7 @@ Personal Pro covers both public and private repos. The gaps don't touch the crit
 | Environment required reviewers | Yes | No | Merge gate + `main`-only deploys + AWS OIDC subject check |
 | CodeQL, secret scanning, dependency review | Free | Paid | Free scanners in the gate |
 | Harden-Runner egress block | Free | Paid | Not needed: agents don't run in Actions |
-| Bot approvals counting toward reviews | Unverified; App approvals likely count | Same | The tier check accepts only the approver's login on the head commit, never the ruleset's approval count. The PR audit reports through required checks |
+| Bot approvals counting toward reviews | Not for an App with only `pull_requests: write` (tested 2026-10-30); untested with `contents: write` | Same | The tier check accepts only the approver's login on the head commit, never the ruleset's approval count. The PR audit reports through required checks |
 | OIDC to Cloudflare | No | No | Cloudflare token behind an AWS role only `environment:production` can assume |
 
 Public repos only: fork PRs require approval before workflows run, and AI reviewers run only on PRs from the agent App or Dan.
