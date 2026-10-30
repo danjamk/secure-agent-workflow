@@ -1,0 +1,53 @@
+# Tier map (spec 0001, ADR-003). Tier 3 itself: changing it needs the owner.
+#
+# The tier check reads this file from the PR's base commit, never from the PR,
+# so a PR can't change the map that judges it.
+#
+# Rules:
+#   - A PR's tier is the highest tier of any path it changes. A rename counts
+#     both the old and the new path.
+#   - A path that matches no pattern is tier 2.
+#   - Patterns are anchored at the repo root. "*" matches within one directory,
+#     "**/" matches any number of directories, a trailing "/**" matches
+#     everything below.
+#
+# What each tier needs to merge:
+#   1  all checks green
+#   2  tier 1, plus an approval from the approver on the PR's latest commit
+#   3  tier 2, and the PR must not be authored by a bot
+#
+# Format: only the structure below is accepted. Anything else fails the check.
+
+tiers:
+  3:
+    - .github/**
+    # GitHub reads CODEOWNERS from .github/, the root, or docs/.
+    - CODEOWNERS
+    - docs/CODEOWNERS
+    - standards/tier-map.yml
+  2:
+    # Dependency manifests and lockfiles
+    - "**/package.json"
+    - "**/pnpm-lock.yaml"
+    - "**/package-lock.json"
+    - "**/yarn.lock"
+    - "**/pyproject.toml"
+    - "**/uv.lock"
+    - "**/requirements*.txt"
+    - "**/go.mod"
+    - "**/go.sum"
+    - "**/Cargo.toml"
+    - "**/Cargo.lock"
+    # Auth and permission code
+    - "**/auth/**"
+    - "**/permissions/**"
+    # Migrations
+    - "**/migrations/**"
+    # Cloudflare config
+    - "**/wrangler.*"
+  1:
+    - src/**
+    - test/**
+    - tests/**
+    - docs/**
+    - "**/*.md"

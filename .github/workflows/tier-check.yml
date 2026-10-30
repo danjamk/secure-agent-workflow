@@ -1,0 +1,50 @@
+# Tier check (ADR-003). Reusable: a consumer repo calls it pinned to a commit
+# SHA of this repo and marks the job a required check. See gate/README.md.
+#
+# The caller triggers it on pull_request and pull_request_review, so an
+# approval re-runs the check.
+
+name: tier-check
+
+on:
+  workflow_call:
+    inputs:
+      approver:
+        description: Login whose approval counts for tier 2 and 3. Default is the repo owner.
+        type: string
+        default: ""
+      tier-map:
+        description: Tier map path in the calling repo, read at the PR's base commit.
+        type: string
+        default: standards/tier-map.yml
+
+permissions: {}
+
+jobs:
+  tier-check:
+    name: tier-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      # Check out this repo at the exact commit the caller pinned, not the
+      # caller's code: the check never runs anything from the PR.
+      - name: Check out the tier check
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .tier-check
+          persist-credentials: false
+
+      - name: Compute tier and check approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          APPROVER: ${{ inputs.approver }}
+          TIER_MAP: ${{ inputs.tier-map }}
+          DEFAULT_TIER_MAP: .tier-check/standards/tier-map.yml
+        run: python3 .tier-check/gate/tier_check.py
