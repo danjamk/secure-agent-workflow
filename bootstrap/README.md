@@ -95,6 +95,21 @@ Environments, labels and CODEOWNERS (#5), on both testbeds:
 - Not tested: a repo that already has its own CODEOWNERS. The leave-alone path is read in code review only.
 - Applied to this repo on 2026-10-30, while enabling Dependabot alerts for the gate (#14). Its CODEOWNERS PR is #27.
 
+Gate callers, required checks and `--update-gate` (#16), on `danjamk/agent-testbed`, 2026-10-31:
+
+| Run | Result |
+| --- | --- |
+| First run | Ruleset gained the 7 gate checks, read back. PR opened with both callers and the tier map. All 7 checks ran on that PR, and it merged after a `check` target was added to the testbed's Makefile |
+| Second run | No changes; pin kept from the default branch |
+| `--update-gate` with a commit not on `main`, and with one that doesn't exist | Both refused, nothing written |
+| `--update-gate` with a `main` commit | Bootstrap PR opened with the new pin |
+| Re-run with that PR open | No changes; pin kept from the PR branch |
+
+The agent's tier 1 and tier 2 PRs on the same repo are in `gate/README.md`.
+
+- Writing `.github/workflows/` through the contents API needs a token allowed to change workflow files (the `workflow` scope on a classic token). The owner's token was.
+- Not tested on the private testbed. Nothing in #16 depends on visibility.
+
 ## Other options for a fork
 
 | Situation | What changes |

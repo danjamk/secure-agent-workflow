@@ -98,12 +98,17 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: write   # rerun-on-review re-runs the pull_request run
     # with:
     #   approver: someone-else      # default: the repo owner
     #   tier-map: path/to/map.yml   # default: standards/tier-map.yml
 ```
 
 The required check is the job `tier / tier-check`. The workflow checks out this repo at `job.workflow_sha` (the SHA the caller pinned) and runs nothing from the PR. It needs only the Python standard library.
+
+**A review re-runs the PR's `pull_request` run instead of running the check again.** GitHub gives each event its own check suite, and a failed run in the `pull_request` suite kept the PR blocked after a passing run in the review suite. On a review, `tier-check` is skipped (a skipped required check passes) and `rerun-on-review` re-runs the `pull_request` run, whose new attempt replaces the failed one. Only that job gets `actions: write`. The caller has no concurrency group, because a review would cancel an in-progress `pull_request` run.
+
+Known limit: on a PR from a fork, the review run's token is read-only, so the re-run fails. Re-run the tier check by hand from the PR's checks tab after approving.
 
 ### Tests
 
@@ -125,7 +130,13 @@ The tests cover tier map parsing, glob matching, classification and every approv
 | Tier 2, after the agent pushed again | `tools/package.json` | Owner, on the previous commit | Failed: approval on an old commit |
 | Tier 3 | `CODEOWNERS`, `docs/CODEOWNERS` | None, then owner | Failed both times: bot author |
 
-Not yet tested end to end: the reusable workflow running in Actions on a consumer repo, the re-run on `pull_request_review`, and the result as a required check. That needs the caller workflow bootstrap installs in #16.
+2026-10-31, end to end on `danjamk/agent-testbed`, with the callers bootstrap installs and all 7 gate checks required (#16). The agent App opened each PR and turned on auto-merge:
+
+| PR | Tier | Result |
+| --- | --- | --- |
+| `docs/gate-tier1.md` | 1 | All checks passed; merged itself, no approval |
+| `tools/package.json`, first attempt | 2 | Blocked until approval. After the owner approved, a new review-suite run passed, but the failed `pull_request` run still counted and the PR stayed blocked. This led to `rerun-on-review` |
+| `tools/package.json`, with `rerun-on-review` | 2 | Blocked until approval. The approval re-ran the `pull_request` run, it passed, and the PR merged itself about 20 seconds after the approval |
 
 ## Other options for a fork
 
