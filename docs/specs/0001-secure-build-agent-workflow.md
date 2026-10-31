@@ -185,7 +185,7 @@ The orchestrator has a coordinator (one Durable Object) in front of the per-run 
 
 - An issue with open "blocked by" links waits, even if labeled `agent:ready`.
 - Two issues with the same touch area don't run at the same time.
-- When a PR falls behind `main` and conflicts, the coordinator sends it back to an agent to rebase, as a new run on the same branch.
+- When a PR falls behind `main` and conflicts, the coordinator starts a catch-up run on the same branch that merges `main` into it. Merge, not rebase: a rebase needs a force-push, which the push filter rejects (ADR-005).
 - Total spend across all runs counts toward a daily budget; hitting it pauses the queue and notifies Dan.
 
 ### Visibility
@@ -283,6 +283,7 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [ADR-002](../adr/ADR-002-oidc-credential-broker.md): Deploy credentials come through a GitHub OIDC broker on AWS, with separate dev and prod stores.
 - [ADR-003](../adr/ADR-003-tier-check-reusable-workflow.md): The tier check is a reusable workflow.
 - [ADR-004](../adr/ADR-004-cloudflare-sandbox.md): Build agents run in the Cloudflare Sandbox SDK.
+- [ADR-005](../adr/ADR-005-coordinator.md): One Durable Object coordinates runs, with GitHub as the source of truth (proposed).
 
 ## Open decisions
 
@@ -290,7 +291,7 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [ ] Builder and reviewer model families.
 - [ ] AWS account to host the OIDC broker (one account for v1; see Credentials).
 - [ ] Planning agent identity (build order step 4).
-- [ ] ADR-005: coordinator design (queue, concurrency cap, dependency and touch-area rules).
+- [x] ADR-005: coordinator design (queue, concurrency cap, dependency and touch-area rules).
 - [ ] Release versioning scheme and release-note format (build order step 3).
 
 ## References
