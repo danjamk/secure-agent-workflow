@@ -1,23 +1,35 @@
-# ADR-002: Production credentials come through a GitHub OIDC broker on AWS
+# ADR-002: Deploy credentials come through a GitHub OIDC broker on AWS
 
-Status: Accepted · Date: 2026-10-30
+Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores)
 
 ## Context
 
-Deploys target Cloudflare, AWS and third-party services. Cloudflare's documented GitHub Actions path is a stored API token; it has no OIDC federation. Long-lived production secrets in GitHub are what a compromised workflow or action steals first.
+Deploys target Cloudflare, AWS and third-party services. Cloudflare's documented GitHub Actions path is a stored API token; it has no OIDC federation. Long-lived secrets in GitHub are what a compromised workflow or action steals first.
+
+Deploys go to two places: previews and staging in a dev account, and production in a separate prod account (spec 0001, Branches and environments). Developers need to manage dev keys without any path to production keys.
 
 ## Decision
 
-GitHub OIDC is the single trust anchor. An AWS IAM role trusts only the subject `repo:danjamk/<repo>:environment:production` and reads production secrets from SSM Parameter Store standard parameters, including the Cloudflare token. The broker sits behind one small interface in `deploy/`.
+GitHub OIDC is the single trust anchor. The broker has two AWS IAM roles, each with its own SSM Parameter Store path of standard parameters:
+
+| Role | Trusts only | Reads |
+| --- | --- | --- |
+| Dev | `repo:danjamk/<repo>:environment:preview` and `:environment:staging` | `/<repo>/dev/*`, including the Cloudflare dev token |
+| Prod | `repo:danjamk/<repo>:environment:production` | `/<repo>/prod/*`, including the Cloudflare prod token |
+
+The roles may live in two AWS accounts or one. Two accounts are stronger: a developer with dev-account access has no access to prod at all. One account is allowed for low-stakes projects, and v1 uses one; the prod role's trust policy still refuses every subject except `environment:production`. The broker sits behind one small interface in `deploy/`.
+
+The dev role is built first. The prod role is built with the production release path (spec 0001, build order step 3).
 
 ## Alternatives considered
 
-- **Cloudflare token in a GitHub environment secret.** Simplest, but the token is long-lived and stored in GitHub. Acceptable as a starting point; the broker replaces it.
+- **Cloudflare tokens in GitHub environment secrets.** Simplest, but the tokens are long-lived and stored in GitHub. Reasonable for the dev store on a small project; not for prod.
 - **HashiCorp Vault.** Preferred brand. No free hosted tier: HCP Vault Secrets ended July 1, 2026, and HCP Vault Dedicated starts around $450 a month. Self-hosted Community Edition means running and unsealing a server.
 - **OpenBao.** The MPL-licensed Vault fork. Same self-hosting cost as Vault.
+- **One role for all environments.** Fewer moving parts, but any deploy job could read production secrets.
 
 ## Consequences
 
-- No static production secrets in GitHub.
-- The cloud provider, not just GitHub, refuses credentials to any branch or job outside `environment:production`.
-- A client with Vault or OpenBao swaps the broker without touching workflows.
+- No static deploy secrets in GitHub.
+- The cloud provider, not just GitHub, refuses prod credentials to any job outside `environment:production`, and dev credentials to any job outside `preview` and `staging`.
+- A fork or client with Vault, OpenBao or another cloud's store swaps the broker without touching workflows, and can put each store wherever its own key management requires.

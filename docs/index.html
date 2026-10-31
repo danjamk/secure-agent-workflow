@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secure Agent Workflow</title>
+<meta name="description" content="How secure-agent-workflow lets coding agents build from approved issues while nothing reaches production unchecked.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Instrument+Serif:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FBF6EC;
+  --surface: #FFFCF5;
+  --surface-2: #F0ECE0;
+  --ink: #1E1610;
+  --text-2: #4A3A28;
+  --text-3: #7D6B52;
+  --hair: #D8CDB0;
+  --hair-soft: #E5DECB;
+  --blue: #34507A;
+  --blue-fill: rgba(52, 80, 122, 0.11);
+  --terra: #A0492E;
+  --danger: #A32D2D;
+  --danger-fill: rgba(163, 45, 45, 0.06);
+  --success: #3B6D11;
+  --success-fill: rgba(59, 109, 17, 0.10);
+  --band: #1A130C;
+  --band-ink: #F4EBD6;
+  --band-soft: #C2B49A;
+  --band-accent: #C8765D;
+  --mark-slash: #C8765D;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1A130C;
+    --surface: #241B12;
+    --surface-2: #2C2218;
+    --ink: #F4EBD6;
+    --text-2: #C2B49A;
+    --text-3: #8B7E66;
+    --hair: rgba(244, 235, 214, 0.20);
+    --hair-soft: rgba(244, 235, 214, 0.10);
+    --blue: #9BB5D6;
+    --blue-fill: rgba(155, 181, 214, 0.12);
+    --terra: #C8765D;
+    --danger: #E24B4A;
+    --danger-fill: rgba(226, 75, 74, 0.08);
+    --success: #97C459;
+    --success-fill: rgba(151, 196, 89, 0.12);
+    --band: #120D08;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1A130C;
+  --surface: #241B12;
+  --surface-2: #2C2218;
+  --ink: #F4EBD6;
+  --text-2: #C2B49A;
+  --text-3: #8B7E66;
+  --hair: rgba(244, 235, 214, 0.20);
+  --hair-soft: rgba(244, 235, 214, 0.10);
+  --blue: #9BB5D6;
+  --blue-fill: rgba(155, 181, 214, 0.12);
+  --terra: #C8765D;
+  --danger: #E24B4A;
+  --danger-fill: rgba(226, 75, 74, 0.08);
+  --success: #97C459;
+  --success-fill: rgba(151, 196, 89, 0.12);
+  --band: #120D08;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--blue); text-decoration-color: color-mix(in srgb, var(--blue) 45%, transparent); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--blue); }
+code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.86em;
+  background: var(--surface-2);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+/* Band */
+.band {
+  background: var(--band);
+  color: var(--band-ink);
+  height: 64px;
+  display: flex;
+  align-items: center;
+}
+.band .inner { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.mark { font-weight: 700; font-size: 24px; letter-spacing: -1.2px; color: var(--band-ink); text-decoration: none; }
+.mark span { font-weight: 300; font-size: 19px; color: var(--mark-slash); margin-left: 3px; }
+.band nav { display: flex; gap: 22px; font-size: 14px; }
+.band nav a { color: var(--band-soft); text-decoration: none; }
+.band nav a:hover { color: var(--band-ink); }
+
+.inner { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+
+/* Hero */
+.hero { padding: 80px 0 48px; }
+.eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--text-3); margin: 0 0 16px;
+}
+h1 {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(44px, 7vw, 84px);
+  line-height: 1.02;
+  letter-spacing: -2px;
+  margin: 0 0 24px;
+  max-width: 19ch;
+}
+h1 em { color: var(--blue); }
+.lede { font-size: 19px; color: var(--text-2); max-width: 62ch; margin: 0; }
+
+.principles {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  margin: 48px 0 0;
+}
+.principle { border-top: 2px solid var(--ink); padding-top: 14px; }
+.principle h3 { font-size: 16px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.2px; }
+.principle p { margin: 0; font-size: 15px; color: var(--text-2); }
+
+/* Sections */
+section.view { padding: 88px 0 0; }
+.view-head { display: grid; grid-template-columns: 220px 1fr; gap: 32px; margin-bottom: 32px; align-items: start; }
+.view-num {
+  font-family: 'Instrument Serif', Georgia, serif; font-size: 64px; line-height: 0.9; color: var(--text-3);
+}
+h2 {
+  font-family: 'Instrument Serif', Georgia, serif; font-weight: 400;
+  font-size: clamp(32px, 4.4vw, 48px); line-height: 1.05; letter-spacing: -1px; margin: 0 0 12px;
+}
+.view-head p { margin: 0; color: var(--text-2); max-width: 64ch; font-size: 17px; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--hair-soft);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+/* Topology */
+.diagram-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.diagram-wrap svg { display: block; width: 100%; min-width: 920px; height: auto; }
+svg text { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
+.z { fill: var(--surface-2); stroke: var(--hair); stroke-width: 1; }
+.zt { fill: var(--text-3); font-size: 11px; font-weight: 600; letter-spacing: 1.6px; }
+.b { fill: var(--surface); stroke: var(--hair); stroke-width: 1; }
+.ctl { stroke: var(--blue); stroke-width: 1.6; }
+.sbx { fill: var(--danger-fill); stroke: var(--danger); stroke-width: 1.6; stroke-dasharray: 6 4; }
+.bt { fill: var(--ink); font-size: 14px; font-weight: 600; }
+.bd { fill: var(--text-2); font-size: 12.5px; }
+.bd-x { fill: var(--danger); font-size: 12.5px; font-weight: 500; }
+.chip-r { fill: var(--blue-fill); }
+.chip-t { fill: var(--blue); font-size: 10.5px; font-weight: 600; letter-spacing: 1px; }
+.flow { fill: none; stroke: var(--text-2); stroke-width: 1.5; }
+.flow-c { fill: none; stroke: var(--text-3); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.head { fill: var(--text-2); }
+.fl {
+  fill: var(--text-2); font-size: 11.5px; font-weight: 500;
+  paint-order: stroke; stroke: var(--surface-2); stroke-width: 5px; stroke-linejoin: round;
+}
+.fl-bg { stroke: var(--surface); }
+.fl-plain { stroke: none; }
+.key { color: var(--blue); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 18px 4px 0; font-size: 13.5px; color: var(--text-2); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 22px; height: 14px; border-radius: 3px; display: inline-block; }
+.sw-ctl { border: 1.6px solid var(--blue); background: var(--surface); }
+.sw-sbx { border: 1.6px dashed var(--danger); background: var(--danger-fill); }
+
+.stops { margin-top: 32px; }
+.stops h3, .sub-h { font-size: 13px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--text-3); margin: 0 0 14px; }
+.stop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--hair-soft); border: 1px solid var(--hair-soft); border-radius: 12px; overflow: hidden; }
+.stop { background: var(--surface); padding: 18px 20px; }
+.stop .try { font-size: 14px; color: var(--text-3); margin: 0 0 6px; }
+.stop .try::before { content: "If the agent "; }
+.stop .by { font-size: 15px; margin: 0; color: var(--ink); }
+
+/* Workflow */
+.flowline { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; position: relative; }
+.step.later { border-style: dashed; border-color: var(--hair); background: transparent; }
+.later-tag { margin-top: auto; padding-top: 6px; font-size: 10.5px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-3); }
+.step {
+  background: var(--surface); border: 1px solid var(--hair-soft); border-radius: 10px;
+  padding: 16px; position: relative; display: flex; flex-direction: column; gap: 6px;
+}
+.step:not(:last-child)::after {
+  content: ""; position: absolute; right: -11px; top: 32px; width: 10px; height: 10px;
+  border-top: 1.5px solid var(--text-3); border-right: 1.5px solid var(--text-3);
+  transform: rotate(45deg); background: transparent;
+}
+.step-n { font-family: 'Instrument Serif', Georgia, serif; font-size: 30px; line-height: 1; color: var(--text-3); }
+.who {
+  align-self: flex-start;
+  font-size: 10px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 3px; background: var(--surface-2); color: var(--text-2);
+}
+.who.you { background: rgba(160, 73, 46, 0.10); color: var(--terra); }
+.who.agent { background: var(--blue-fill); color: var(--blue); }
+.step h4 { margin: 2px 0 0; font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+.step p { margin: 0; font-size: 13.5px; color: var(--text-2); }
+.step.gate { border-color: var(--blue); box-shadow: inset 0 0 0 0.6px var(--blue); }
+
+.tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 28px; }
+.tier { border-radius: 10px; padding: 18px 20px; border: 1px solid var(--hair-soft); background: var(--surface); }
+.tier-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.tier-name { font-family: 'Instrument Serif', Georgia, serif; font-size: 28px; line-height: 1; }
+.outcome { font-size: 10.5px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; padding: 4px 8px; border-radius: 3px; white-space: nowrap; }
+.o-auto { background: var(--success-fill); color: var(--success); }
+.o-you { background: rgba(160, 73, 46, 0.10); color: var(--terra); }
+.o-human { background: var(--danger-fill); color: var(--danger); }
+.tier .paths { font-size: 14px; color: var(--text-2); margin: 0 0 10px; }
+.tier .rule { font-size: 14.5px; margin: 0; border-top: 1px solid var(--hair-soft); padding-top: 10px; }
+
+.waves { margin: 20px 0 0; padding: 16px 20px; border-radius: 10px; background: var(--surface-2); font-size: 15px; color: var(--text-2); }
+.waves strong { color: var(--ink); font-weight: 600; }
+.interrupts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 28px; }
+.int { border-left: 2px solid var(--hair); padding: 2px 0 2px 16px; }
+.int h4 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.int p { margin: 0; font-size: 14px; color: var(--text-2); }
+
+/* Adopt */
+.adopt { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start; }
+.adopt ol { list-style: none; counter-reset: s; margin: 0; padding: 0; }
+.adopt li {
+  counter-increment: s; position: relative; padding: 0 0 22px 56px; margin: 0;
+}
+.adopt li::before {
+  content: counter(s); position: absolute; left: 0; top: -4px;
+  font-family: 'Instrument Serif', Georgia, serif; font-size: 34px; line-height: 1; color: var(--text-3);
+}
+.adopt li:not(:last-child)::after {
+  content: ""; position: absolute; left: 9px; top: 34px; bottom: 6px; width: 1px; background: var(--hair);
+}
+.adopt li h4 { margin: 0 0 4px; font-size: 17px; font-weight: 600; letter-spacing: -0.2px; }
+.adopt li p { margin: 0; font-size: 15px; color: var(--text-2); }
+.when { font-size: 11px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-3); margin-left: 8px; }
+.side { display: flex; flex-direction: column; gap: 16px; }
+.side .panel h4 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.side .panel p { margin: 0 0 8px; font-size: 14.5px; color: var(--text-2); }
+.side .panel p:last-child { margin-bottom: 0; }
+.swap { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.swap td { padding: 7px 0; border-top: 1px solid var(--hair-soft); vertical-align: top; color: var(--text-2); }
+.swap td:first-child { color: var(--ink); font-weight: 500; padding-right: 12px; white-space: nowrap; }
+
+/* Status */
+.status { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+.status ul { list-style: none; margin: 0; padding: 0; }
+.status li { display: flex; gap: 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--hair-soft); font-size: 15px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; transform: translateY(-1px); }
+.dot.done { background: var(--success); }
+.dot.next { background: transparent; border: 1.5px solid var(--text-3); }
+
+footer { margin-top: 96px; padding: 28px 0 40px; border-top: 1px solid var(--hair); font-size: 14px; color: var(--text-3); }
+footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+@media (max-width: 1000px) {
+  .flowline { grid-template-columns: repeat(4, 1fr); }
+  .step:nth-child(4)::after { display: none; }
+  .stop-grid { grid-template-columns: repeat(2, 1fr); }
+  .adopt { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .inner { padding: 0 16px; }
+  .band nav { display: none; }
+  .hero { padding: 48px 0 32px; }
+  .principles, .tiers, .interrupts, .status, .stop-grid { grid-template-columns: 1fr; }
+  .view-head { grid-template-columns: 1fr; gap: 8px; }
+  .view-num { font-size: 44px; }
+  .flowline { grid-template-columns: 1fr; }
+  .step::after { display: none; }
+  .panel { padding: 16px; }
+  section.view { padding-top: 64px; }
+}
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="inner">
+    <a class="mark" href="https://github.com/danjamk" aria-label="CTO/4">CTO<span>/4</span></a>
+    <nav aria-label="Sections">
+      <a href="#topology">Topology</a>
+      <a href="#workflow">Workflow</a>
+      <a href="#adopt">Adopting it</a>
+      <a href="https://github.com/danjamk/secure-agent-workflow">Repo</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="inner">
+
+  <section class="hero">
+    <p class="eyebrow">secure-agent-workflow · open source</p>
+    <h1>Let agents build. Keep the <em>controls</em> out of reach.</h1>
+    <p class="lede">Coding agents work approved issues through to merged pull requests with little supervision. Nothing reaches production without passing checks the agent can't edit, skip or see the credentials for.</p>
+
+    <div class="principles">
+      <div class="principle">
+        <h3>Controls live outside the agent</h3>
+        <p>They sit in the sandbox, GitHub permissions and cloud credentials. Instructions and settings files inside the sandbox are not controls, because the agent can rewrite them.</p>
+      </div>
+      <div class="principle">
+        <h3>Risk decides who approves</h3>
+        <p>A tier map sorts every changed path. Low-risk changes merge on green checks. Dependencies, auth and workflow changes wait for a human.</p>
+      </div>
+      <div class="principle">
+        <h3>Each part is replaceable</h3>
+        <p>v1 runs on Cloudflare and AWS. Every component sits in its own folder behind a stated contract, so a fork can rewrite one without touching the rest.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1. Topology -->
+  <section class="view" id="topology">
+    <div class="view-head">
+      <div class="view-num">01</div>
+      <div>
+        <h2>Where things run, and who holds the keys</h2>
+        <p>The agent runs in a sandbox with no credentials and no direct internet. Everything it sends leaves through a handler that adds short-lived tokens on the way out. Deploy credentials sit behind two roles: one for previews and staging in the dev account, one that only a production release can assume.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="diagram-wrap">
+        <svg viewBox="0 0 1280 690" role="img" aria-labelledby="topo-title topo-desc">
+          <title id="topo-title">Topology of secure-agent-workflow</title>
+          <desc id="topo-desc">A Cloudflare orchestrator starts a credential-free sandbox per issue. Its traffic leaves through an outbound handler that injects tokens and allows only listed hosts. The agent pushes branches and opens pull requests on GitHub, where a merge gate decides what reaches main. Merges to main deploy to staging in the dev account; production deploys only from the production branch. Each deploy job gets a short-lived token from an AWS role that trusts only its environment's OIDC token.</desc>
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="head"/>
+            </marker>
+            <symbol id="key" viewBox="0 0 18 12">
+              <circle cx="4.5" cy="6" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M8 6 H17 M14 6 V9.5 M16.5 6 V8.6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            </symbol>
+          </defs>
+
+          <!-- Model APIs -->
+          <rect class="b" x="20" y="255" width="170" height="78" rx="6"/>
+          <text class="bt" x="36" y="281">Model APIs</text>
+          <text class="bd" x="36" y="301">Reached only through</text>
+          <text class="bd" x="36" y="318">the outbound handler</text>
+
+          <!-- Cloudflare orchestrator zone -->
+          <rect class="z" x="210" y="20" width="430" height="410" rx="10"/>
+          <text class="zt" x="226" y="42">CLOUDFLARE · ORCHESTRATOR</text>
+
+          <rect class="b" x="230" y="56" width="390" height="96" rx="6"/>
+          <text class="bt" x="246" y="80">Orchestrator Worker + coordinator</text>
+          <text class="bd" x="246" y="100">Queue, concurrency cap, dependency order</text>
+          <text class="bd" x="246" y="118">One sandbox per issue; stops it on agent:stop</text>
+          <use href="#key" class="key" x="246" y="129" width="18" height="12"/>
+          <text class="bd" x="270" y="140">App private key · model keys · Slack token</text>
+
+          <rect class="b ctl" x="230" y="172" width="390" height="248" rx="6"/>
+          <text class="bt" x="246" y="196">Outbound handler</text>
+          <text class="bd" x="246" y="215">Allowlisted hosts only · adds tokens</text>
+          <text class="bd" x="246" y="232">Git pushes to agent/* branches only</text>
+
+          <rect class="sbx" x="250" y="248" width="350" height="156" rx="6"/>
+          <text class="bt" x="268" y="274">Sandbox microVM · one per issue</text>
+          <text class="bd" x="268" y="295">Agent CLI and a checkout of the repo</text>
+          <text class="bd-x" x="268" y="315">No credentials · no direct internet</text>
+          <text class="bd" x="268" y="335">Never sees the tokens it works with</text>
+          <text class="bd" x="268" y="355">Torn down when the run ends, blocks</text>
+          <text class="bd" x="268" y="372">or is stopped</text>
+
+          <path class="flow-c" d="M575 152 V248" marker-end="url(#arr)"/>
+          <text class="fl fl-plain" x="568" y="214" text-anchor="end">start · stop</text>
+
+          <path class="flow" d="M230 294 H192" marker-end="url(#arr)"/>
+
+          <!-- GitHub zone -->
+          <rect class="z" x="670" y="20" width="420" height="410" rx="10"/>
+          <text class="zt" x="686" y="42">GITHUB · YOUR REPO</text>
+
+          <rect class="b" x="690" y="56" width="380" height="56" rx="6"/>
+          <text class="bt" x="706" y="79">Issues</text>
+          <text class="bd" x="706" y="99">Labels: agent:ready · agent:stop · agent:blocked</text>
+
+          <rect class="b ctl" x="690" y="124" width="380" height="54" rx="6"/>
+          <text class="bt" x="706" y="147">Agent GitHub App</text>
+          <text class="bd" x="706" y="166">Writes code, PRs, issues · no workflows · no admin</text>
+
+          <rect class="b" x="690" y="190" width="380" height="54" rx="6"/>
+          <text class="bt" x="706" y="213">agent/&lt;issue&gt; branch → pull request</text>
+          <text class="bd" x="706" y="232">Auto-merge on · can't push to main</text>
+
+          <rect class="b ctl" x="690" y="258" width="380" height="94" rx="6"/>
+          <text class="bt" x="706" y="281">Merge gate · reusable workflows, pinned</text>
+          <rect class="chip-r" x="706" y="292" width="62" height="20" rx="3"/>
+          <text class="chip-t" x="715" y="306">CHECKS</text>
+          <rect class="chip-r" x="774" y="292" width="76" height="20" rx="3"/>
+          <text class="chip-t" x="783" y="306">SCANNERS</text>
+          <rect class="chip-r" x="856" y="292" width="88" height="20" rx="3"/>
+          <text class="chip-t" x="865" y="306">TIER CHECK</text>
+          <rect class="chip-r" x="950" y="292" width="80" height="20" rx="3"/>
+          <text class="chip-t" x="959" y="306">PR AUDIT</text>
+          <text class="bd" x="706" y="337">Tier 1 merges on green · tier 2 and 3 wait for you</text>
+
+          <rect class="b ctl" x="690" y="364" width="380" height="56" rx="6"/>
+          <text class="bt" x="706" y="387">main → staging · production → prod</text>
+          <text class="bd" x="706" y="406">Rulesets with no bypass · releases need you</text>
+
+          <path class="flow" d="M880 244 V256" marker-end="url(#arr)"/>
+          <path class="flow" d="M880 352 V362" marker-end="url(#arr)"/>
+
+          <!-- Cross-zone flows, top -->
+          <path class="flow" d="M690 84 H622" marker-end="url(#arr)"/>
+          <text class="fl fl-bg" x="655" y="76" text-anchor="middle">webhook</text>
+          <path class="flow" d="M620 217 H688" marker-end="url(#arr)"/>
+          <text class="fl fl-bg" x="655" y="209" text-anchor="middle">push</text>
+
+          <!-- You -->
+          <rect class="b" x="1110" y="56" width="150" height="364" rx="6"/>
+          <text class="bt" x="1126" y="80">You</text>
+          <text class="bd" x="1126" y="100">Dispatch a wave</text>
+          <text class="bd" x="1126" y="117">of labeled issues</text>
+          <text class="bd" x="1126" y="296">Approve tier 2–3</text>
+          <text class="bd" x="1126" y="313">on the latest commit</text>
+          <text class="bd" x="1126" y="383">Approve releases;</text>
+          <text class="bd" x="1126" y="400">run bootstrap</text>
+          <path class="flow" d="M1110 96 H1072" marker-end="url(#arr)"/>
+          <path class="flow" d="M1110 300 H1072" marker-end="url(#arr)"/>
+          <path class="flow" d="M1110 392 H1072" marker-end="url(#arr)"/>
+
+          <!-- Cloudflare app accounts -->
+          <rect class="z" x="210" y="470" width="430" height="200" rx="10"/>
+          <text class="zt" x="226" y="492">CLOUDFLARE · APP ACCOUNTS</text>
+          <rect class="b" x="230" y="510" width="185" height="96" rx="6"/>
+          <text class="bt" x="246" y="534">Dev account</text>
+          <text class="bd" x="246" y="554">Previews from branches</text>
+          <text class="bd" x="246" y="571">Staging from main</text>
+          <text class="bd" x="246" y="588">Developers manage it</text>
+          <rect class="b" x="435" y="510" width="185" height="96" rx="6"/>
+          <text class="bt" x="451" y="534">Prod account</text>
+          <text class="bd" x="451" y="554">Deployed only from</text>
+          <text class="bd" x="451" y="571">the production branch</text>
+          <text class="bd" x="451" y="588">after a release PR</text>
+
+          <!-- AWS -->
+          <rect class="z" x="670" y="470" width="420" height="200" rx="10"/>
+          <text class="zt" x="686" y="492">AWS · CREDENTIAL BROKER</text>
+          <rect class="b ctl" x="690" y="506" width="185" height="62" rx="6"/>
+          <text class="bt" x="706" y="529">Dev role</text>
+          <text class="bd" x="706" y="549">Trusts preview, staging</text>
+          <rect class="b ctl" x="885" y="506" width="185" height="62" rx="6"/>
+          <text class="bt" x="901" y="529">Prod role</text>
+          <text class="bd" x="901" y="549">Trusts production only</text>
+          <rect class="b" x="690" y="584" width="380" height="72" rx="6"/>
+          <text class="bt" x="706" y="607">Parameter Store · a path per role</text>
+          <use href="#key" class="key" x="706" y="617" width="18" height="12"/>
+          <text class="bd" x="730" y="628">Cloudflare dev token</text>
+          <use href="#key" class="key" x="901" y="617" width="18" height="12"/>
+          <text class="bd" x="925" y="628">Cloudflare prod token</text>
+          <text class="bd" x="706" y="646">One AWS account or two; the roles stay separate</text>
+
+          <!-- Deploy flows -->
+          <path class="flow" d="M782 420 V504" marker-end="url(#arr)"/>
+          <path class="flow" d="M977 420 V504" marker-end="url(#arr)"/>
+          <text class="fl fl-bg" x="772" y="452" text-anchor="end">OIDC token from the deploy job, naming its environment</text>
+          <path class="flow" d="M782 568 V582" marker-end="url(#arr)"/>
+          <path class="flow" d="M977 568 V582" marker-end="url(#arr)"/>
+          <path class="flow" d="M690 620 H643" marker-end="url(#arr)"/>
+          <text class="fl" x="425" y="636" text-anchor="middle">short-lived token for the matching account</text>
+        </svg>
+      </div>
+      <div class="legend">
+        <span><i class="sw sw-ctl"></i>A control the agent can't change</span>
+        <span><i class="sw sw-sbx"></i>Holds no credentials</span>
+        <span><svg width="22" height="14" viewBox="0 0 18 12" class="key" aria-hidden="true"><use href="#key"/></svg>Where a credential lives</span>
+      </div>
+    </div>
+
+    <div class="stops">
+      <h3>What stops what</h3>
+      <div class="stop-grid">
+        <div class="stop"><p class="try">edits a workflow file…</p><p class="by">GitHub rejects the push. The App has no workflows permission.</p></div>
+        <div class="stop"><p class="try">pushes to main or production…</p><p class="by">Rulesets require a PR and bind everyone, admin included. Only you can release.</p></div>
+        <div class="stop"><p class="try">looks for a credential…</p><p class="by">There is none in the sandbox. Tokens are added outside it.</p></div>
+        <div class="stop"><p class="try">calls an unknown host…</p><p class="by">The outbound handler allows listed hosts only.</p></div>
+        <div class="stop"><p class="try">changes a dependency or auth code…</p><p class="by">The tier check fails until you approve the latest commit.</p></div>
+        <div class="stop"><p class="try">rewrites the tier map or CODEOWNERS…</p><p class="by">Tier 3. An agent-authored PR there always fails.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. Workflow -->
+  <section class="view" id="workflow">
+    <div class="view-head">
+      <div class="view-num">02</div>
+      <div>
+        <h2>From an approved issue to production</h2>
+        <p>You plan and dispatch work. Agents build it. The merge gate decides what needs you. A tier 1 change can go from label to staging without anyone touching it. Production is a release you cut.</p>
+      </div>
+    </div>
+
+    <div class="flowline">
+      <div class="step">
+        <span class="step-n">1</span>
+        <span class="who you">You + planning agent</span>
+        <h4>Plan</h4>
+        <p>Spec, implementation plan and ADRs. The plan becomes issues, with dependencies marked.</p>
+      </div>
+      <div class="step">
+        <span class="step-n">2</span>
+        <span class="who you">You</span>
+        <h4>Dispatch</h4>
+        <p>One command labels a wave's issues <code>agent:ready</code>. The label is the only start button.</p>
+      </div>
+      <div class="step">
+        <span class="step-n">3</span>
+        <span class="who">Orchestrator</span>
+        <h4>Queue</h4>
+        <p>Runs each issue once its dependencies merge, within a concurrency cap and a budget.</p>
+      </div>
+      <div class="step">
+        <span class="step-n">4</span>
+        <span class="who agent">Build agent</span>
+        <h4>Build</h4>
+        <p>Works in a fresh sandbox on its own branch. Opens a draft PR and gets a preview deploy.</p>
+      </div>
+      <div class="step gate">
+        <span class="step-n">5</span>
+        <span class="who agent">Merge gate</span>
+        <span class="who you">You, tier 2–3</span>
+        <h4>Check</h4>
+        <p>Tests, scanners, tier check, and an LLM audit that can reject but never approve. You approve what needs you, in GitHub.</p>
+      </div>
+      <div class="step">
+        <span class="step-n">6</span>
+        <span class="who">GitHub Actions</span>
+        <h4>Stage</h4>
+        <p>Every merge to main deploys to staging, in the dev account.</p>
+      </div>
+      <div class="step later">
+        <span class="step-n">7</span>
+        <span class="who you">You</span>
+        <h4>Release</h4>
+        <p>A versioned PR from main into production, with a summary of the whole batch. Only you approve it.</p>
+        <span class="later-tag">Later phase</span>
+      </div>
+    </div>
+
+    <div class="tiers">
+      <div class="tier">
+        <div class="tier-top"><span class="tier-name">Tier 1</span><span class="outcome o-auto">Merges itself</span></div>
+        <p class="paths">App source, tests, docs</p>
+        <p class="rule">All checks green and no blocking audit finding. Zero touches from you.</p>
+      </div>
+      <div class="tier">
+        <div class="tier-top"><span class="tier-name">Tier 2</span><span class="outcome o-you">Waits for you</span></div>
+        <p class="paths">Dependencies and lockfiles, auth and permission code, migrations, deploy config, and anything the map doesn't name</p>
+        <p class="rule">Your approval on the PR's latest commit. A new push needs a new approval.</p>
+      </div>
+      <div class="tier">
+        <div class="tier-top"><span class="tier-name">Tier 3</span><span class="outcome o-human">Human-authored</span></div>
+        <p class="paths"><code>.github/</code>, <code>CODEOWNERS</code>, the tier map itself</p>
+        <p class="rule">An agent can't author these at all. You write them and approve them.</p>
+      </div>
+    </div>
+
+    <p class="waves"><strong>Waves keep approvals few.</strong> The plan groups issues into waves that you dispatch and review together. Dependency, auth and migration changes go into one or two foundation issues at the start of a wave, so the rest of it stays tier 1. A wave of twenty issues might need three approvals, not twenty.</p>
+
+    <div class="interrupts">
+      <div class="int">
+        <h4>Blocked</h4>
+        <p>The agent pushes its work, writes a handoff note on the PR, labels it <code>agent:blocked</code> and exits. Your reply on GitHub or Slack starts a fresh sandbox that picks up from the note.</p>
+      </div>
+      <div class="int">
+        <h4>Stopped</h4>
+        <p><code>agent:stop</code> revokes the agent's token and tears down its sandbox. The orchestrator enforces it, so it works even if the agent ignores instructions.</p>
+      </div>
+      <div class="int">
+        <h4>Out of budget</h4>
+        <p>The outbound handler refuses model calls once a run's token budget is spent, and all runs share a daily spend cap. Provider spend limits sit behind both, outside this system's code.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Adopting it -->
+  <section class="view" id="adopt">
+    <div class="view-head">
+      <div class="view-num">03</div>
+      <div>
+        <h2>Putting a new project on it</h2>
+        <p>Protecting a repo is one command. After that, your work is planning, releasing issues and approving the changes that need you.</p>
+      </div>
+    </div>
+
+    <div class="adopt">
+      <ol>
+        <li>
+          <h4>Install the agent's GitHub App <span class="when">once per repo</span></h4>
+          <p>The agent acts as this App. It can write code, PRs and issues, and nothing else: no workflows, no settings.</p>
+        </li>
+        <li>
+          <h4>Run bootstrap <span class="when">one command</span></h4>
+          <p><code>bootstrap.sh owner/repo</code> applies the ruleset, Actions policy, environments and labels, and opens one PR with the gate wiring and a tier map. Safe to re-run; it reads back every setting it writes.</p>
+        </li>
+        <li>
+          <h4>Merge the bootstrap PR</h4>
+          <p>It runs the gate on itself first. From then on, every PR into main passes the same checks.</p>
+        </li>
+        <li>
+          <h4>Plan in waves</h4>
+          <p>Spec, plan and ADRs, broken into issues sized for one agent run and grouped into waves, with their dependencies marked.</p>
+        </li>
+        <li>
+          <h4>Dispatch a wave, then review only what needs you</h4>
+          <p><code>/dispatch</code> labels the wave's issues <code>agent:ready</code>. Tier 1 PRs merge on their own and reach staging. Tier 2 and 3 PRs arrive with the reason they need you. When staging looks right, you cut a release.</p>
+        </li>
+      </ol>
+
+      <div class="side">
+        <div class="panel">
+          <h4>Keeping the gate current</h4>
+          <p>Every repo pins the gate to a commit of this repo, so a change here reaches a project only when that project accepts it.</p>
+          <p><code>bootstrap.sh owner/repo --update-gate &lt;sha&gt;</code> moves the pin through a PR. It refuses a commit that isn't on this repo's main.</p>
+        </div>
+        <div class="panel">
+          <h4>Swapping a part</h4>
+          <table class="swap">
+            <tr><td>Sandbox</td><td>E2B, Docker Sandboxes, gVisor or Kata containers</td></tr>
+            <tr><td>Egress proxy</td><td>Envoy or Squid with an allowlist</td></tr>
+            <tr><td>Credential broker</td><td>Vault or OpenBao, GCP or Azure federated credentials</td></tr>
+            <tr><td>Scanners</td><td>GitHub Advanced Security, a commercial scanner</td></tr>
+            <tr><td>Agent CLI</td><td>Any CLI that runs headless</td></tr>
+          </table>
+          <p style="margin-top:10px">GitHub stays. Whatever you replace, keep the property the design depends on: the agent can't change the control.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Status -->
+  <section class="view" id="status">
+    <div class="view-head">
+      <div class="view-num">—</div>
+      <div>
+        <h2>Where it stands</h2>
+        <p>The agent's identity, bootstrap and the merge gate are built and tested end to end on a testbed. Next is everything up to staging. Production releases are designed and wait until that works.</p>
+      </div>
+    </div>
+    <div class="status">
+      <div>
+        <p class="sub-h">Built and tested</p>
+        <ul>
+          <li><i class="dot done"></i>Agent GitHub App, with no workflows or admin permission</li>
+          <li><i class="dot done"></i>Bootstrap: ruleset, Actions policy, environments, labels</li>
+          <li><i class="dot done"></i>Merge gate: checks and scanners, pinned tools</li>
+          <li><i class="dot done"></i>Tier check, re-run on every review</li>
+          <li><i class="dot done"></i>Gate wiring installed and updated by bootstrap</li>
+        </ul>
+      </div>
+      <div>
+        <p class="sub-h">Next</p>
+        <ul>
+          <li><i class="dot next"></i>Orchestrator, sandbox, outbound handler and budgets</li>
+          <li><i class="dot next"></i>Wave planning standard and <code>/dispatch</code></li>
+          <li><i class="dot next"></i>Preview and staging deploys through the dev role</li>
+          <li><i class="dot next"></i>Red-team runs, with results published</li>
+          <li><i class="dot next"></i>PR audit: LLM reviewers and an approver summary</li>
+          <li><i class="dot next"></i>Production releases: versioned, batch-reviewed</li>
+          <li><i class="dot next"></i>Operator console, and a separate identity for the planning agent</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</div>
+</main>
+
+<footer>
+  <div class="inner">
+    <span>secure-agent-workflow · MIT · Dan Kuhn</span>
+    <span><a href="https://github.com/danjamk/secure-agent-workflow">Repo</a> · <a href="https://github.com/danjamk/secure-agent-workflow/blob/main/docs/specs/0001-secure-build-agent-workflow.md">Spec 0001</a></span>
+  </div>
+</footer>
+
+</body>
+</html>

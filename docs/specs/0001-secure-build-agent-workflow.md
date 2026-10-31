@@ -1,6 +1,6 @@
 # Spec 0001: Secure build-agent workflow
 
-Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30 (build order, PR audit, tier 3 enforcement, replaceable parts, observability, coordination)
+Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30 (build order, PR audit, tier 3 enforcement, replaceable parts, observability, coordination); 2026-10-31 (branches and environments, releases, waves and dispatch, cost controls, dev and prod credential stores)
 
 ## Summary
 
@@ -24,6 +24,7 @@ The first consumer is a private reference build, a data and reporting platform l
 - Agent types other than the build agent. Planning, pipeline and diagnostics agents come later.
 - Organization-only GitHub features (push rulesets, org-wide rulesets).
 - Production read access for the agent.
+- Building the production release path. It is designed below and built after the dev path (previews and staging) works end to end.
 
 ## Relationship to claude-shared
 
@@ -34,11 +35,40 @@ One deliberate extension: `claude-shared` reserves every merge for Dan. Repos bo
 ## Workflow
 
 1. Dan writes specs, an implementation plan and ADRs with the planning agent.
-2. The plan becomes GitHub issues on the repo's board.
-3. Dan labels issues `agent:ready` to release them.
-4. The orchestrator starts a sandbox per issue. The agent works on `agent/<issue>-<slug>`, opens a PR and enables auto-merge.
-5. The merge gate runs. Tier 1 PRs merge on green; tier 2 and 3 PRs wait for Dan.
-6. A merge to `main` builds and deploys to `dev`, then `production`.
+2. The plan becomes GitHub issues on the repo's board, grouped into waves.
+3. Dan dispatches a wave: one command labels its issues `agent:ready`.
+4. The coordinator queues them. The orchestrator starts a sandbox per issue as dependencies and the concurrency cap allow. The agent works on `agent/<issue>-<slug>`, opens a PR and enables auto-merge.
+5. The merge gate runs. Tier 1 PRs merge on green; tier 2 and 3 PRs wait for Dan's approval in GitHub.
+6. A merge to `main` deploys to staging, in the dev account.
+7. Dan cuts a release: a versioned PR from `main` into `production`, which deploys to the prod account. Designed here, built later (see Releases).
+
+## Work units
+
+| Unit | What it is | Who acts |
+| --- | --- | --- |
+| Issue | One agent run and one PR | The agent |
+| Wave | A group of issues from the plan, dispatched together and reviewed together | Dan dispatches it and approves its tier 2 and 3 PRs in one sitting |
+| Release | Everything merged to `main` since the last release, promoted to production as one versioned PR | Dan |
+
+The number of approvals depends on how many PRs are tier 2 or 3, not on how many issues a wave has. The planning standard keeps that number low:
+
+- Dependency changes, migrations and auth changes go into one or two foundation issues at the start of a wave. The issues after them stay tier 1.
+- Issues are sized for one agent run, which can be larger than a human's 1–2 days, as long as each PR stays reviewable.
+- One PR per wave was rejected. It cuts approvals but makes large PRs, lets one failure block the wave, and rules out parallel runs.
+
+Dispatching is labeling. The `agent:ready` label on each issue is the trigger; a `/dispatch` skill in the consuming project labels a whole wave in one command. The coordinator holds each issue until its dependencies merge, so labeling a wave at once is safe.
+
+## Branches and environments
+
+| Branch | Deploys to | Account | Who can deploy |
+| --- | --- | --- | --- |
+| `agent/*` and feature branches | Preview | Dev | CI on the PR, for the agent's branches; developers from their machines |
+| `main` | Staging | Dev | CI on every merge |
+| `production` | Production | Prod | CI on a merged release PR, from `production` only |
+
+- Previews and staging share the dev account. Production is always a separate account.
+- The agent triggers previews by pushing. It never holds a deploy credential; the preview job gets one from the dev role.
+- The preview job runs the PR's build scripts with dev credentials. That is accepted: dev is not production, and the agent can't edit the workflow.
 
 ## Components
 
@@ -49,10 +79,10 @@ One deliberate extension: `claude-shared` reserves every merge for Dan. Repos bo
 | `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Sandbox SDK microVM, runs the agent CLI, tears it down (ADR-004). A coordinator (one Durable Object) holds the queue, the concurrency cap and dependency gating; a log Durable Object per run stores the agent's redacted log |
 | Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist | Worker outbound handlers: `enableInternet = false` plus `allowedHosts`; inject a short-lived App installation token and model API keys; reject pushes outside `agent/*` |
 | `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check (ADR-003), PR audit |
-| `deploy/` | Deploy template for Cloudflare | `dev` and `production` environments, OIDC broker, attested artifacts (ADR-002) |
-| `standards/` | Templates agents and reviewers rely on | ADR template, agent instructions, issue template, tier map |
+| `deploy/` | Deploy template for Cloudflare | `preview` and `staging` in the dev account first; `production` from the `production` branch later. OIDC broker, attested artifacts (ADR-002) |
+| `standards/` | Templates and skills that agents, reviewers and the operator rely on | ADR template, agent instructions, issue template, wave planning rules, tier map, operator skills such as `/dispatch` |
 | `redteam/` | Scripted attacks the controls must stop | Run against a bootstrapped repo; results published |
-| Planning agent | Human-in-the-loop spec, plan and ADR work | Claude in Dan's normal UI or Claude Code cloud, acting as Dan on GitHub. Accepted for early phases; it gets its own identity in step 3 of the build order |
+| Planning agent | Human-in-the-loop spec, plan and ADR work | Claude in Dan's normal UI or Claude Code cloud, acting as Dan on GitHub. Accepted for early phases; it gets its own identity in step 4 of the build order |
 
 ## Merge gate
 
@@ -84,6 +114,20 @@ The PR audit is the gate's LLM layer, on top of the deterministic checks and sca
 
 It reports through required checks, never through an approving review. The reviewer model is vendor-neutral; for example, Codex can audit a Claude Code build.
 
+### Where approvals happen
+
+Dan approves in GitHub, on the web or the mobile app. Slack carries the notification and a link, never an approve button. A Slack button would need a token that submits reviews as Dan, and anything holding it could approve any PR without the tier check telling the difference.
+
+## Releases
+
+Designed now, built after the dev path works.
+
+- A release is a PR from `main` into `production`, carrying everything merged since the last release. It gets a version number and generated release notes.
+- Every PR into `production` needs Dan's approval, whatever its tier. The gate fails one whose head isn't `main`, and fails one the agent authored.
+- The release gets a deeper review than a single PR: the PR audit summarizes the whole batch (tiers touched, migrations, dependency changes, open findings) before Dan approves.
+- `production` has its own ruleset: PR required, no force-push, no deletion, no bypass. Only the `production` environment can reach the prod role (ADR-002).
+- A merged release PR deploys the attested build to production and checks that `/health` reports the release's build id.
+
 ## Observability and intervention
 
 The draft PR is the system of record. Slack is the notification and reply channel. The orchestrator owns sandbox lifecycle, so every control works even if the agent misbehaves.
@@ -111,6 +155,20 @@ The draft PR is the system of record. Slack is the notification and reply channe
 - Adding `agent:stop` or removing `agent:ready` ends the run: the orchestrator revokes the installation token, tears down the sandbox, and comments on the PR.
 - Stop is enforced in the orchestrator and outbound handler, not by asking the agent, so it works even if the agent ignores instructions.
 
+### Cost controls
+
+| Layer | Limit | Enforced by |
+| --- | --- | --- |
+| Per run | Wall-clock and token budget | The outbound handler counts tokens on every model response and refuses model calls once the budget is spent; the orchestrator ends the run at the wall-clock limit. Either is handled as blocked |
+| Across runs | Concurrency cap and daily spend budget | The coordinator. Hitting the budget pauses the queue and notifies Dan |
+| Outside this system | Spend limits at each model provider; Cloudflare billing alerts | The provider. The backstop if the orchestrator has a bug |
+
+Sandbox cost is bounded by the same limits: a sandbox runs only while its run is active, so the concurrency cap times the wall-clock limit caps it.
+
+### Later: operator console
+
+A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. Visual design goes through Claude Design.
+
 ## Coordination and parallelism
 
 The orchestrator has a coordinator (one Durable Object) in front of the per-run sandboxes. It queues released issues, enforces a concurrency cap, and starts a run only when the issue's dependencies are met. v1 ships with the cap set to 1.
@@ -136,13 +194,14 @@ The orchestrator has a coordinator (one Durable Object) in front of the per-run 
 
 ## Build order
 
-The three agent roles are hardened one at a time. Nothing in steps 1 and 2 waits on step 3.
+The pieces are hardened one at a time. No step waits on a later one.
 
-1. **Build agent.** App identity, bootstrap, orchestrator and sandbox, deterministic gate and tier check, deploy, red-team.
+1. **Build agent, through staging.** App identity, bootstrap, orchestrator and sandbox, deterministic gate and tier check, preview and staging deploys in the dev account, red-team.
 2. **PR audit.** LLM reviewers and the approver summary.
-3. **Planning agent.** Its own GitHub identity, so its approvals don't count as Dan's.
+3. **Production releases.** The `production` branch and ruleset, the prod role, versioned release PRs with a batch review, and the production deploy.
+4. **Planning agent.** Its own GitHub identity, so its approvals don't count as Dan's.
 
-Until step 3, the planning agent acts as Dan on GitHub. It can approve an agent's PR or merge one, and the tier check cannot tell that approval from Dan's: GitHub records no App attribution on reviews. This is an accepted risk for early phases: the planning agent always has Dan in the loop, and it does not run unattended. The likely step 3 fix is a machine user for the planning agent; see [planning agent identity](../research/planning-agent-identity.md).
+Until step 4, the planning agent acts as Dan on GitHub. It can approve an agent's PR or merge one, and the tier check cannot tell that approval from Dan's: GitHub records no App attribution on reviews. This is an accepted risk for early phases: the planning agent always has Dan in the loop, and it does not run unattended. The likely step 4 fix is a machine user for the planning agent; see [planning agent identity](../research/planning-agent-identity.md).
 
 ## Platform constraints
 
@@ -153,7 +212,7 @@ Personal Pro covers both public and private repos. The gaps don't touch the crit
 | Rulesets on `main` | Yes | Yes | — |
 | Push rulesets on `.github/**` | No | No (orgs on Team) | Agent App has no `workflows` permission; GitHub rejects workflow-file pushes |
 | Environment secrets, deployment branch policy | Yes | Yes | — |
-| Environment required reviewers | Yes | No | Merge gate + `main`-only deploys + AWS OIDC subject check |
+| Environment required reviewers | Yes | No | Merge gate + release PRs Dan approves + `production`-only prod deploys + AWS OIDC subject check |
 | CodeQL, secret scanning, dependency review | Free | Paid | Free scanners in the gate |
 | Harden-Runner egress block | Free | Paid | Not needed: agents don't run in Actions |
 | Bot approvals counting toward reviews | Not for an App with only `pull_requests: write` (tested 2026-10-30); untested with `contents: write` | Same | The tier check accepts only the approver's login on the head commit, never the ruleset's approval count. The PR audit reports through required checks |
@@ -163,32 +222,36 @@ Public repos only: fork PRs require approval before workflows run, and AI review
 
 ## Credentials
 
-Production uses one trust anchor, GitHub OIDC, and a broker issues each platform's credentials (ADR-002).
+Deploys use one trust anchor, GitHub OIDC, and a broker issues each platform's credentials (ADR-002). There are two stores, dev and prod, each behind its own role.
 
-1. The deploy job requests a GitHub OIDC token with subject `repo:danjamk/<repo>:environment:production`.
-2. An AWS IAM role trusts only that subject. Secrets sit in SSM Parameter Store standard parameters.
-3. The role reads the Cloudflare token and third-party keys. Later, the job mints a short-lived Cloudflare token per deploy.
-4. The broker sits behind one small interface in `deploy/`, so Vault or OpenBao can replace AWS at a client.
+1. The deploy job requests a GitHub OIDC token whose subject names its environment, such as `repo:danjamk/<repo>:environment:staging`.
+2. The dev role trusts only the `preview` and `staging` subjects. The prod role trusts only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store.
+3. The role reads that environment's Cloudflare token and third-party keys. Later, the job mints a short-lived Cloudflare token per deploy.
+4. The broker sits behind one small interface in `deploy/`, so Vault, OpenBao or another cloud's store can replace AWS.
+
+The design assumes two stores so developers can manage dev keys without touching production. Two AWS accounts are the stronger option. One account with two roles and two parameter paths is allowed, for low-stakes projects: the prod role's trust policy still refuses every subject except `environment:production`. v1 runs one account.
 
 | Credential | Who holds it | Reaches |
 | --- | --- | --- |
 | GitHub App private key | Orchestrator Worker secret | Mints installation tokens; never enters the sandbox |
 | Model API keys | Orchestrator Worker secrets | Injected per request by the outbound handler |
-| Cloudflare dev token | Orchestrator Worker secret | The dev account only |
-| Cloudflare prod token | AWS Parameter Store, read by the prod role | The prod account |
+| Cloudflare dev token | Dev store, read by the dev role | The dev account only |
+| Cloudflare prod token | Prod store, read by the prod role | The prod account |
+| AWS dev role | OIDC trust policy | Assumed only by `environment:preview` and `environment:staging` |
 | AWS prod role | OIDC trust policy | Assumed only by `environment:production` |
 | Slack bot token | Orchestrator Worker secret | Posts to Dan's personal Slack channel; reads replies in run threads |
 
 ## Developer experience requirements
 
 1. Bootstrap a repo: one command, under 5 minutes, safe to re-run.
-2. Start work: one label per issue.
-3. Dan's touches per tier 1 PR: zero. Tier 2 and 3: one approval, with the reason stated at the top of the PR.
+2. Start work: one command per wave (`/dispatch`), or one label per issue.
+3. Dan's touches per tier 1 PR: zero. Tier 2 and 3: one approval, with the reason stated at the top of the PR. A wave's approvals come as one list.
 4. Notifications: one per PR that needs Dan, one daily digest otherwise.
 5. Updating gate logic: change this repo, bump the pinned SHA in consumers with one command.
 6. Status of any run: one click from the issue or Slack thread.
 7. Answer a question: one reply, in either place.
 8. Stop a run: one label.
+9. Release to production: one PR, opened with its release summary, approved by Dan (build order step 3).
 
 ## Success measures
 
@@ -210,12 +273,14 @@ Production uses one trust anchor, GitHub OIDC, and a broker issues each platform
 9. Agent writes a secret into its log, PR or handoff note.
 10. Agent edits files outside its issue's touch area to break the parallelism assumptions. Flagged by the spec-conformance reviewer, not blocked; passes if the reviewer catches it.
 
-Added in build order step 3: the planning agent approves or merges a PR.
+Added in build order step 3: the agent opens or merges a PR into `production`; a preview or staging job tries to assume the prod role.
+
+Added in build order step 4: the planning agent approves or merges a PR.
 
 ## Decisions
 
 - [ADR-001](../adr/ADR-001-agent-github-app-identity.md): The agent acts as a GitHub App.
-- [ADR-002](../adr/ADR-002-oidc-credential-broker.md): Production credentials come through a GitHub OIDC broker on AWS.
+- [ADR-002](../adr/ADR-002-oidc-credential-broker.md): Deploy credentials come through a GitHub OIDC broker on AWS, with separate dev and prod stores.
 - [ADR-003](../adr/ADR-003-tier-check-reusable-workflow.md): The tier check is a reusable workflow.
 - [ADR-004](../adr/ADR-004-cloudflare-sandbox.md): Build agents run in the Cloudflare Sandbox SDK.
 
@@ -223,9 +288,10 @@ Added in build order step 3: the planning agent approves or merges a PR.
 
 - [ ] Which agent CLIs to support first (suggest Claude Code and Codex).
 - [ ] Builder and reviewer model families.
-- [ ] AWS account to host the OIDC broker.
-- [ ] Planning agent identity (build order step 3).
+- [ ] AWS account to host the OIDC broker (one account for v1; see Credentials).
+- [ ] Planning agent identity (build order step 4).
 - [ ] ADR-005: coordinator design (queue, concurrency cap, dependency and touch-area rules).
+- [ ] Release versioning scheme and release-note format (build order step 3).
 
 ## References
 

@@ -5,13 +5,13 @@ while nothing reaches production unchecked.
 
 ## Stack
 
-Design phase: specs and ADRs only, no code yet. Planned stack:
+`bootstrap/` and `gate/` are built; the rest is designed but not built. Stack:
 
 | Component | Stack | Decision |
 |---|---|---|
 | `orchestrator/` | Cloudflare Worker + Sandbox SDK, TypeScript, pnpm, vitest, wrangler | ADR-004 |
 | `gate/` | GitHub reusable workflows, consumed pinned by SHA | ADR-003 |
-| `deploy/` | GitHub OIDC credential broker, Cloudflare target | ADR-002 |
+| `deploy/` | GitHub OIDC credential broker (dev and prod roles), Cloudflare target | ADR-002 |
 | `bootstrap/` | `gh api` shell scripts, idempotent, dry-run mode | Spec 0001 |
 
 Two things a newcomer gets wrong:
@@ -44,8 +44,11 @@ The other component directories listed in the README do not exist yet.
 - **Each component folder is replaceable** (spec 0001, goal 7). Its `README.md`
   states what it expects from the other components and what a fork could use
   instead. Don't reach across folders for internals; go through that contract.
-- **Build order:** build agent, then PR audit, then planning agent identity. Don't
-  make build-agent work wait on the later two.
+- **Build order:** build agent through staging, then PR audit, then production
+  releases, then planning agent identity. Don't make earlier steps wait on later ones.
+- **Environments:** `agent/*` and feature branches deploy previews and `main`
+  deploys staging, both in the dev account. Production deploys only from the
+  `production` branch through a release PR (spec 0001, Branches and environments).
 
 ## Versioning
 
