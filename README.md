@@ -39,7 +39,7 @@ v1 runs on Cloudflare and AWS. Each part lives in its own folder and states what
 | Agent CLI | Not yet chosen | Any agent CLI that runs headless, such as Claude Code or Codex | `orchestrator/` |
 | Scanners | Free tools; GitHub's own on public repos | GitHub Advanced Security, or a commercial scanner | `gate/` |
 | PR audit models | Builder and reviewer from different model families | Any model API, including a self-hosted model | `gate/` |
-| Credential broker | GitHub OIDC to AWS IAM and Parameter Store, with separate dev and prod roles in one account or two ([ADR-002](docs/adr/ADR-002-oidc-credential-broker.md)) | Vault or OpenBao; GCP Workload Identity with Secret Manager; Azure federated credentials with Key Vault; GitHub environment secrets, which is simplest but long-lived | `deploy/` |
+| Credential broker | GitHub OIDC to AWS IAM and Parameter Store, with separate preview, staging and prod roles in one account or two ([ADR-002](docs/adr/ADR-002-oidc-credential-broker.md)) | Vault or OpenBao; GCP Workload Identity with Secret Manager; Azure federated credentials with Key Vault; GitHub environment secrets, which is simplest but long-lived | `deploy/` |
 | Deploy target | Cloudflare Workers | Any target the deploy job can reach with brokered credentials | `deploy/` |
 
 GitHub doesn't swap out. Bootstrap, the gate and the agent identity all depend on GitHub rulesets, Apps, Actions and OIDC.

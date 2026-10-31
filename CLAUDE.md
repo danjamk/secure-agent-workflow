@@ -11,7 +11,7 @@ while nothing reaches production unchecked.
 |---|---|---|
 | `orchestrator/` | Cloudflare Worker + Sandbox SDK, TypeScript, pnpm, vitest, wrangler | ADR-004 |
 | `gate/` | GitHub reusable workflows, consumed pinned by SHA | ADR-003 |
-| `deploy/` | GitHub OIDC credential broker (dev and prod roles), Cloudflare target | ADR-002 |
+| `deploy/` | GitHub OIDC credential broker (preview, staging and prod roles, CloudFormation), Cloudflare target, OpenTofu for project infrastructure | ADR-002, ADR-006 |
 | `bootstrap/` | `gh api` shell scripts, idempotent, dry-run mode | Spec 0001 |
 
 Two things a newcomer gets wrong:
