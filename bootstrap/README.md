@@ -5,7 +5,8 @@ Applies secure-agent-workflow's repo controls to one repo, as code. One command,
 ```bash
 bash bootstrap/bootstrap.sh <owner>/<repo> --dry-run   # show what would change
 bash bootstrap/bootstrap.sh <owner>/<repo>             # apply, then read back
-bash bootstrap/bootstrap.sh <owner>/<repo> --checks gate-checks,tier-check
+bash bootstrap/bootstrap.sh <owner>/<repo> --checks deploy-preview   # require extra checks
+bash bootstrap/bootstrap.sh <owner>/<repo> --update-gate <sha>       # move the gate pin
 ```
 
 Run it as a human with admin on the repo. The agent App can't: it has no `administration` permission (ADR-001).
@@ -25,7 +26,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | Area | Setting | Why |
 | --- | --- | --- |
 | Ruleset `protect-default` on the default branch | No force-push, no deletion, linear history, PR required with 0 approvals, no bypass actors | `main` changes only through a PR, for the admin too. Approvals are the tier check's job, not the ruleset's (ADR-003) |
-| | Required checks from `--checks`, each pinned to the GitHub Actions app | A check run or status from any other App can't satisfy a required check |
+| | Required checks: the gate's 7 (`GATE_CHECKS`) plus any from `--checks`, each pinned to the GitHub Actions app | A check run or status from any other App can't satisfy a required check |
 | Merge | Squash only, auto-merge allowed, branch deleted on merge | Tier 1 PRs merge themselves on green |
 | Actions | Selected actions only: GitHub-owned plus `allowed-actions.txt`; full-SHA pinning required | A workflow can't pull in an unreviewed or moving action |
 | | `GITHUB_TOKEN` read-only by default; Actions can't create or approve PRs | A workflow can't approve its own way past review |
@@ -36,14 +37,28 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | Environments | `dev` and `production`, each deployable from the default branch only (a named-branch policy) | Only `main` can deploy (ADR-002). No secrets are created here |
 | Labels | `agent:ready`, `agent:stop`, `agent:blocked` | How Dan releases, stops and unblocks agent runs. The orchestrator acts on them only when the repo owner applies them |
 | Files | `.github/CODEOWNERS`: tier 3 paths to the repo owner | Routes tier 3 review requests. The tier check is the control |
+| | `.github/workflows/gate.yml` and `tier-check.yml`: the gate callers, pinned to a commit of `GATE_REPO` | The merge gate (`gate/README.md`). Two files because the tier check re-runs on every review and the scanners don't need to |
+| | `standards/tier-map.yml`, copied once if the repo has none | The repo's own tier map. No marker: the repo owns it and bootstrap never updates it |
 
-`--checks` replaces the required checks. Without it, bootstrap keeps whatever checks the ruleset already requires, so a re-run never drops the gate. `--checks ""` removes them.
+The gate's checks are always required. `--checks` sets the extra checks on top of them. Without it, bootstrap keeps the extras the ruleset already requires; `--checks ""` removes them. No flag drops the gate.
+
+The checks are required as soon as bootstrap runs, before the callers are on the default branch. The bootstrap PR runs the gate on itself, because a `pull_request` run uses the PR's own workflow files. A PR opened before the callers merged gets no gate run, so it stays blocked until it's updated from the default branch.
+
+The gate's `check` job runs `make check`, so the repo needs a Makefile with a `check` target.
+
+### Gate pin
+
+The callers pin `GATE_REPO` (this repo) to a full commit SHA, so a change here reaches a consumer only when the consumer merges a new pin.
+
+| Run | Pin |
+| --- | --- |
+| First run | The head of `GATE_REPO`'s default branch |
+| Re-run | The repo's current pin: the open bootstrap PR's if there is one, then the default branch's |
+| `--update-gate <sha>` | That commit, through the bootstrap PR. Refused unless it's on `GATE_REPO`'s default branch, so a branch commit nobody reviewed can't be pinned |
 
 Bootstrap manages only its own ruleset. It lists other rulesets on the repo and leaves them alone.
 
 Running claude-shared's `protect-branch.sh` on a bootstrapped repo rewrites `protect-default` without the check pinning. Re-run bootstrap afterward.
-
-The gate caller and tier map come next (#16), through the same managed-files mechanism.
 
 ## Managed files
 

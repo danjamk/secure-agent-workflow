@@ -3,16 +3,18 @@
 #
 #   bash bootstrap/bootstrap.sh danjamk/myrepo --dry-run
 #   bash bootstrap/bootstrap.sh danjamk/myrepo
-#   bash bootstrap/bootstrap.sh danjamk/myrepo --checks gate-checks,tier-check
+#   bash bootstrap/bootstrap.sh danjamk/myrepo --checks deploy-preview
+#   bash bootstrap/bootstrap.sh danjamk/myrepo --update-gate <sha>
 #
 # Idempotent: each setting is read, compared with what bootstrap wants, and
 # written only if it differs. After writing, every setting is read back and
 # compared again, so a setting GitHub refuses fails the run instead of passing
 # silently. A second run reports no changes.
 #
-# What it sets (spec 0001, issues #4 and #5):
+# What it sets (spec 0001, issues #4, #5 and #16):
 #   ruleset   protect-default on the default branch: no force-push, no deletion,
-#             linear history, PR required, required checks pinned to GitHub Actions
+#             linear history, PR required, the gate's checks plus --checks
+#             required, each pinned to GitHub Actions
 #   merge     squash only, auto-merge allowed, branches deleted on merge
 #   actions   GitHub-owned actions plus allowed-actions.txt, SHA pinning required,
 #             read-only GITHUB_TOKEN, Actions cannot create or approve PRs
@@ -21,9 +23,11 @@
 #   scanning  public only: secret scanning and push protection
 #   envs      dev and production, deployable from the default branch only
 #   labels    agent:ready, agent:stop, agent:blocked
-#   files     files/ templates (CODEOWNERS), written through one PR from the
+#   files     files/ templates (CODEOWNERS and the gate callers, pinned to a
+#             commit of GATE_REPO), written through one PR from the
 #             bootstrap/managed-files branch, because the default branch needs
-#             a PR. A file without the bootstrap marker is never overwritten
+#             a PR. A file without the bootstrap marker is never overwritten.
+#             The tier map is copied once, if the repo has none
 #
 # Runs as the caller's gh identity, which needs admin on the repo. A human runs
 # this, never the agent: the agent App has no administration permission.
@@ -34,18 +38,20 @@ REPO=""
 CHECKS=""
 CHECKS_SET=false
 DRY_RUN=false
+UPDATE_GATE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --checks)  CHECKS="${2:-}"; CHECKS_SET=true; shift 2 ;;
-        --dry-run) DRY_RUN=true; shift ;;
-        -*)        echo "Unknown flag: $1"; exit 1 ;;
-        *)         REPO="$1"; shift ;;
+        --checks)      CHECKS="${2:-}"; CHECKS_SET=true; shift 2 ;;
+        --dry-run)     DRY_RUN=true; shift ;;
+        --update-gate) UPDATE_GATE="${2:-}"; shift 2 ;;
+        -*)            echo "Unknown flag: $1"; exit 1 ;;
+        *)             REPO="$1"; shift ;;
     esac
 done
 
 if [ -z "$REPO" ]; then
-    echo "Usage: bootstrap.sh <owner>/<repo> [--dry-run] [--checks a,b]"
+    echo "Usage: bootstrap.sh <owner>/<repo> [--dry-run] [--checks a,b] [--update-gate <sha>]"
     exit 1
 fi
 
@@ -59,6 +65,12 @@ trap 'rm -rf "$WORK"' EXIT
 RULESET_NAME="protect-default"
 FILES_BRANCH="bootstrap/managed-files"
 MARKER="Managed by secure-agent-workflow bootstrap"
+# The repo whose reusable workflows the callers in files/ use. A fork changes
+# it here and in allowed-actions.txt.
+GATE_REPO="danjamk/secure-agent-workflow"
+# Check names the callers produce: "<caller job> / <reusable job>". Always
+# required; --checks adds to them.
+GATE_CHECKS="checks / check,checks / dependency-scan,checks / secret-scan,checks / code-scan,checks / misconfig-scan,checks / workflow-lint,tier / tier-check"
 OWNER="${REPO%/*}"
 VISIBILITY=$($GH api "repos/$REPO" --jq .visibility)
 DEFAULT_BRANCH=$($GH api "repos/$REPO" --jq .default_branch)
@@ -123,23 +135,26 @@ ruleset() {
     fi
 
     ACTIONS_ID="$actions_id" CHECKS="$CHECKS" CHECKS_SET="$CHECKS_SET" \
-    RULESET_NAME="$RULESET_NAME" CURRENT="$WORK/current.json" \
+    GATE_CHECKS="$GATE_CHECKS" RULESET_NAME="$RULESET_NAME" CURRENT="$WORK/current.json" \
     python3 > "$WORK/desired.json" <<'PY'
 import json, os
 
 current = json.load(open(os.environ["CURRENT"]))
+gate = os.environ["GATE_CHECKS"].split(",")
 
 if os.environ["CHECKS_SET"] == "true":
-    checks = [c for c in os.environ["CHECKS"].split(",") if c]
+    extra = [c for c in os.environ["CHECKS"].split(",") if c]
 else:
-    # No --checks: keep whatever checks the ruleset already requires, so a
-    # re-run doesn't silently drop the gate.
-    checks = [
+    # No --checks: keep the extra checks the ruleset already requires, so a
+    # re-run doesn't silently drop them.
+    extra = [
         c["context"]
         for r in current.get("rules", [])
         if r["type"] == "required_status_checks"
         for c in r["parameters"]["required_status_checks"]
     ]
+# The gate's checks are always required, so no flag can drop them.
+checks = list(dict.fromkeys(gate + extra))
 
 rules = [
     {"type": "non_fast_forward"},
@@ -335,7 +350,8 @@ fetch_file() {
 managed_file() {
     local path=$1 template=$2 rendered="$WORK/files/$1"
     mkdir -p "$(dirname "$rendered")"
-    sed "s/{{OWNER}}/$OWNER/g" "$HERE/files/$template" > "$rendered"
+    sed -e "s/{{OWNER}}/$OWNER/g" -e "s|{{GATE_REPO}}|$GATE_REPO|g" -e "s/{{GATE_SHA}}/$GATE_SHA/g" \
+        "$HERE/files/$template" > "$rendered"
 
     if fetch_file "$path" "$DEFAULT_BRANCH" > "$WORK/default-file"; then
         if cmp -s "$rendered" "$WORK/default-file"; then
@@ -361,6 +377,25 @@ managed_file() {
     CHANGES=$((CHANGES + 1))
     printf '  ~  file %s\n' "$path"
     diff -u "$WORK/default-file" "$rendered" | tail -n +3 | sed 's/^/       /' || true
+    QUEUE+=("$path")
+}
+
+# seed_file PATH SOURCE — copy SOURCE into the repo if PATH doesn't exist there.
+# No marker: the repo owns the file from then on and bootstrap never updates it.
+seed_file() {
+    local path=$1 source=$2
+    if fetch_file "$path" "$DEFAULT_BRANCH" >/dev/null; then
+        printf '  =  file %s: present, owned by the repo\n' "$path"
+        return 0
+    fi
+    if [ -n "$OPEN_PR" ] && fetch_file "$path" "$FILES_BRANCH" >/dev/null; then
+        printf '  =  file %s: pending in PR #%s\n' "$path" "$OPEN_PR"
+        return 0
+    fi
+    CHANGES=$((CHANGES + 1))
+    printf '  ~  file %s: copied once, the repo owns it after\n' "$path"
+    mkdir -p "$(dirname "$WORK/files/$path")"
+    cp "$source" "$WORK/files/$path"
     QUEUE+=("$path")
 }
 
@@ -406,8 +441,46 @@ PY
 }
 
 files() {
-    OPEN_PR=$($GH api "repos/$REPO/pulls?head=$OWNER:$FILES_BRANCH&state=open" --jq '.[0].number // empty')
     managed_file .github/CODEOWNERS CODEOWNERS
+    managed_file .github/workflows/gate.yml gate.yml
+    managed_file .github/workflows/tier-check.yml tier-check.yml
+    seed_file standards/tier-map.yml "$HERE/../standards/tier-map.yml"
+}
+
+# resolve_gate_sha — the GATE_REPO commit the callers pin. --update-gate takes
+# a commit on GATE_REPO's default branch. Otherwise keep the repo's current pin
+# (the open bootstrap PR's first, then the default branch's), or on a first run
+# use GATE_REPO's default branch head.
+resolve_gate_sha() {
+    local gate_branch status ref
+    gate_branch=$($GH api "repos/$GATE_REPO" --jq .default_branch)
+    if [ -n "$UPDATE_GATE" ]; then
+        if ! $GH api "repos/$GATE_REPO/commits/$UPDATE_GATE" --jq .sha > "$WORK/sha.txt" 2>/dev/null; then
+            echo "--update-gate: $UPDATE_GATE is not a commit in $GATE_REPO."
+            exit 1
+        fi
+        GATE_SHA=$(cat "$WORK/sha.txt")
+        # Only a commit on the default branch: a branch commit nobody reviewed
+        # can't become every consumer's gate.
+        status=$($GH api "repos/$GATE_REPO/compare/$GATE_SHA...$gate_branch" --jq .status)
+        if [ "$status" != ahead ] && [ "$status" != identical ]; then
+            echo "--update-gate: $GATE_SHA is not on $GATE_REPO's $gate_branch."
+            exit 1
+        fi
+        GATE_SOURCE="--update-gate"
+        return 0
+    fi
+    for ref in ${OPEN_PR:+"$FILES_BRANCH"} "$DEFAULT_BRANCH"; do
+        # A missing file fails the pipeline; that's "no pin here", not an error.
+        GATE_SHA=$( { fetch_file .github/workflows/gate.yml "$ref" 2>/dev/null || true; } \
+            | sed -n "s|.*$GATE_REPO/.github/workflows/gate-checks.yml@\([0-9a-f]\{40\}\).*|\1|p" | head -1)
+        if [ -n "$GATE_SHA" ]; then
+            GATE_SOURCE="kept from $ref"
+            return 0
+        fi
+    done
+    GATE_SHA=$($GH api "repos/$GATE_REPO/commits/$gate_branch" --jq .sha)
+    GATE_SOURCE="$GATE_REPO $gate_branch"
 }
 
 run_all() {
@@ -426,9 +499,13 @@ run_all() {
 
 # --- Run ---
 
+OPEN_PR=$($GH api "repos/$REPO/pulls?head=$OWNER:$FILES_BRANCH&state=open" --jq '.[0].number // empty')
+resolve_gate_sha
+
 echo ""
 echo "Repo:       $REPO ($VISIBILITY)"
 echo "Mode:       $([ "$DRY_RUN" = true ] && echo "dry run" || echo apply)"
+echo "Gate:       $GATE_REPO@${GATE_SHA:0:7} ($GATE_SOURCE)"
 echo ""
 
 MODE=apply

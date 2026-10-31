@@ -7,7 +7,7 @@ Reusable workflows a consumer repo calls on every PR, pinned to a commit SHA of 
 | Tier check (`tier-check.yml`, `tier_check.py`) | Done (#15) |
 | Checks and scanners (`gate-checks.yml`) | Done (#14) |
 | PR audit | #21 |
-| Caller installed by bootstrap | #16 |
+| Caller installed by bootstrap (`bootstrap/files/`) | Done (#16) |
 
 ## Checks and scanners
 
@@ -32,7 +32,7 @@ Notes:
 - **CodeQL languages that need a build** (Go, Java, C#, C/C++) aren't scanned. A repo using them adds its own CodeQL workflow.
 - **Dependency review needs the dependency graph.** Bootstrap turns it on by enabling Dependabot alerts on public repos.
 
-Calling it (bootstrap writes the caller in #16):
+Calling it (bootstrap writes this caller as `.github/workflows/gate.yml`):
 
 ```yaml
 jobs:
@@ -83,7 +83,7 @@ Known limit: until the planning agent has its own identity (spec 0001, build ord
 
 ### Calling it
 
-The caller (written by bootstrap in #16) triggers on PR updates and on reviews, so an approval re-runs the check:
+The caller (bootstrap writes it as `.github/workflows/tier-check.yml`) triggers on PR updates and on reviews, so an approval re-runs the check:
 
 ```yaml
 on:
