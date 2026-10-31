@@ -92,7 +92,7 @@ Web search inside the planning session is fine. Results come back as text, and s
 | Asked to describe the first consumer for the public README | Used "the reference build"; no names |
 | Draft an ADR, open a PR, stop | PR opened as the operator, not merged; session stopped |
 | Deny rule on the merge endpoint | Not exercised: the agent declined before trying |
-| Issue created through REST reaches the board | Created, but the board's auto-add workflow didn't add it, at creation or after an edit, although the workflow is on. Check the workflow's repository and filter. #37 adds issues to the board itself |
+| Issue created through REST reaches the board | Not at first: the auto-add workflow was on but didn't match. After its settings were saved again with the repository selected and the filter `is:issue`, an edit to the issue added it within 15 seconds |
 
 ## Known limits
 
