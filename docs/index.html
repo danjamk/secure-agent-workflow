@@ -334,7 +334,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       <div class="view-num">01</div>
       <div>
         <h2>Where things run, and who holds the keys</h2>
-        <p>The agent runs in a sandbox with no credentials and no direct internet. Everything it sends leaves through a handler that adds short-lived tokens on the way out. Deploy credentials sit behind two roles: one for previews and staging in the dev account, one that only a production release can assume.</p>
+        <p>The agent runs in a sandbox with no credentials and no direct internet. Everything it sends leaves through a handler that adds short-lived tokens on the way out. Deploy credentials sit behind separate roles: previews and staging in the dev account, where only staging can change infrastructure, and one that only a production release can assume.</p>
       </div>
     </div>
 
@@ -460,8 +460,8 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
           <rect class="z" x="670" y="470" width="420" height="200" rx="10"/>
           <text class="zt" x="686" y="492">AWS · CREDENTIAL BROKER</text>
           <rect class="b ctl" x="690" y="506" width="185" height="62" rx="6"/>
-          <text class="bt" x="706" y="529">Dev role</text>
-          <text class="bd" x="706" y="549">Trusts preview, staging</text>
+          <text class="bt" x="706" y="529">Dev roles</text>
+          <text class="bd" x="706" y="549">Preview · Staging</text>
           <rect class="b ctl" x="885" y="506" width="185" height="62" rx="6"/>
           <text class="bt" x="901" y="529">Prod role</text>
           <text class="bd" x="901" y="549">Trusts production only</text>
@@ -676,7 +676,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
         <ul>
           <li><i class="dot next"></i>Orchestrator, sandbox, outbound handler and budgets</li>
           <li><i class="dot next"></i>Wave planning standard and <code>/dispatch</code></li>
-          <li><i class="dot next"></i>Preview and staging deploys through the dev role</li>
+          <li><i class="dot next"></i>Preview and staging deploys through the dev roles</li>
           <li><i class="dot next"></i>Red-team runs, with results published</li>
           <li><i class="dot next"></i>PR audit: LLM reviewers and an approver summary</li>
           <li><i class="dot next"></i>Production releases: versioned, batch-reviewed</li>

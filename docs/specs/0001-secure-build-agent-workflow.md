@@ -67,7 +67,8 @@ Dispatching is labeling. The `agent:ready` label on each issue is the trigger; a
 | `production` | Production | Prod | CI on a merged release PR, from `production` only |
 
 - Previews and staging share the dev account. Production is always a separate account.
-- The agent triggers previews by pushing. It never holds a deploy credential; the preview job gets one from the dev role.
+- The agent triggers previews by pushing. It never holds a deploy credential; the preview job gets one from the preview role.
+- Previews never apply infrastructure changes or migrations. A PR that changes either gets a plan and no preview (ADR-006).
 - The preview job runs the PR's build scripts with dev credentials. That is accepted: dev is not production, and the agent can't edit the workflow.
 
 ## Components
@@ -79,7 +80,7 @@ Dispatching is labeling. The `agent:ready` label on each issue is the trigger; a
 | `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Sandbox SDK microVM, runs the agent CLI, tears it down (ADR-004). A coordinator (one Durable Object) holds the queue, the concurrency cap and dependency gating; a log Durable Object per run stores the agent's redacted log |
 | Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist | Worker outbound handlers: `enableInternet = false` plus `allowedHosts`; inject a short-lived App installation token and model API keys; reject pushes outside `agent/*` |
 | `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check (ADR-003), PR audit |
-| `deploy/` | Deploy template for Cloudflare | `preview` and `staging` in the dev account first; `production` from the `production` branch later. OIDC broker, attested artifacts (ADR-002) |
+| `deploy/` | Deploy template for Cloudflare | `preview` and `staging` in the dev account first; `production` from the `production` branch later. OIDC broker, attested artifacts (ADR-002). Project infrastructure as OpenTofu in the consumer's `infra/`, planned on PRs and applied only by the pipeline; Workers stay in `wrangler.jsonc` (ADR-006) |
 | `standards/` | Templates and skills that agents, reviewers and the operator rely on | ADR template, agent instructions, issue template, wave planning rules, tier map, operator skills such as `/dispatch` |
 | `redteam/` | Scripted attacks the controls must stop | Run against a bootstrapped repo; results published |
 | Planning agent | Human-in-the-loop spec, plan and ADR work | Claude in Dan's normal UI or Claude Code cloud, acting as Dan on GitHub. Accepted for early phases; it gets its own identity in step 4 of the build order |
@@ -225,20 +226,23 @@ Public repos only: fork PRs require approval before workflows run, and AI review
 Deploys use one trust anchor, GitHub OIDC, and a broker issues each platform's credentials (ADR-002). There are two stores, dev and prod, each behind its own role.
 
 1. The deploy job requests a GitHub OIDC token whose subject names its environment, such as `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging`. The numeric IDs are GitHub's immutable subject format (ADR-002).
-2. The dev role trusts only the `preview` and `staging` subjects. The prod role trusts only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store.
+2. The preview role trusts only `environment:preview`, the staging role only `environment:staging`, and the prod role only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store. Only the staging and prod roles read the token that changes infrastructure (ADR-006).
 3. The role reads that environment's Cloudflare token and third-party keys. Later, the job mints a short-lived Cloudflare token per deploy.
 4. The broker sits behind one small interface in `deploy/`, so Vault, OpenBao or another cloud's store can replace AWS.
 
-The design assumes two stores so developers can manage dev keys without touching production. Two AWS accounts are the stronger option. One account with two roles and two parameter paths is allowed, for low-stakes projects: the prod role's trust policy still refuses every subject except `environment:production`. v1 runs one account.
+The design assumes two stores so developers can manage dev keys without touching production. Two AWS accounts are the stronger option. One account with the roles and parameter paths side by side is allowed, for low-stakes projects: the prod role's trust policy still refuses every subject except `environment:production`. v1 runs one account.
 
 | Credential | Who holds it | Reaches |
 | --- | --- | --- |
 | GitHub App private key | Orchestrator Worker secret | Mints installation tokens; never enters the sandbox |
 | Model API keys | Orchestrator Worker secrets | Injected per request by the outbound handler |
-| Cloudflare dev token | Dev store, read by the dev role | The dev account only |
-| Cloudflare prod token | Prod store, read by the prod role | The prod account |
-| AWS dev role | OIDC trust policy | Assumed only by `environment:preview` and `environment:staging` |
+| Cloudflare dev deploy token (Workers only) and read-only token | Dev store, read by the preview and staging roles | The dev account only |
+| Cloudflare dev infrastructure token | Dev store, read by the staging role | The dev account only |
+| Cloudflare prod tokens | Prod store, read by the prod role | The prod account |
+| AWS preview role | OIDC trust policy | Assumed only by `environment:preview` |
+| AWS staging role | OIDC trust policy | Assumed only by `environment:staging` |
 | AWS prod role | OIDC trust policy | Assumed only by `environment:production` |
+| OpenTofu state | S3 bucket in the broker's account | Read-only for preview; read-write for staging (dev state) and prod (prod state) |
 | Slack bot token | Orchestrator Worker secret | Posts to Dan's personal Slack channel; reads replies in run threads |
 
 ## Developer experience requirements
@@ -284,6 +288,7 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [ADR-003](../adr/ADR-003-tier-check-reusable-workflow.md): The tier check is a reusable workflow.
 - [ADR-004](../adr/ADR-004-cloudflare-sandbox.md): Build agents run in the Cloudflare Sandbox SDK.
 - [ADR-005](../adr/ADR-005-coordinator.md): One Durable Object coordinates runs, with GitHub as the source of truth (proposed).
+- [ADR-006](../adr/ADR-006-infrastructure-as-code.md): Project infrastructure is OpenTofu applied by the pipeline, and Workers stay in wrangler (proposed).
 
 ## Open decisions
 

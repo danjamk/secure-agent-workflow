@@ -1,6 +1,6 @@
 # ADR-002: Deploy credentials come through a GitHub OIDC broker on AWS
 
-Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores; OIDC subjects with immutable IDs)
+Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores; OIDC subjects with immutable IDs; dev role split into preview and staging, OpenTofu state bucket, per ADR-006)
 
 ## Context
 
@@ -10,18 +10,23 @@ Deploys go to two places: previews and staging in a dev account, and production 
 
 ## Decision
 
-GitHub OIDC is the single trust anchor. The broker has two AWS IAM roles, each with its own SSM Parameter Store path of standard parameters:
+GitHub OIDC is the single trust anchor. The broker has three AWS IAM roles per consumer repo. Secrets are SSM Parameter Store standard parameters, under one path per store:
 
 | Role | Trusts only | Reads |
 | --- | --- | --- |
-| Dev | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:preview` and `:environment:staging` | `/<repo>/dev/*`, including the Cloudflare dev token |
-| Prod | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:production` | `/<repo>/prod/*`, including the Cloudflare prod token |
+| Preview | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:preview` | From `/<repo>/dev/`: the Cloudflare deploy token (Workers only) and read-only token. Dev OpenTofu state, read-only |
+| Staging | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging` | All of `/<repo>/dev/*`, including the Cloudflare infrastructure token. Dev OpenTofu state, read-write |
+| Prod | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:production` | All of `/<repo>/prod/*`. Prod OpenTofu state, read-write |
+
+Preview and staging both deploy to the dev account, but only staging can change its infrastructure. Preview jobs run the PR's build scripts, so they never get the infrastructure token (ADR-006).
+
+The broker's template also creates the S3 bucket that holds OpenTofu state (ADR-006).
 
 The subjects include GitHub's numeric owner and repo IDs. Repos created after July 15, 2026 get this format by default; older repos opt in through the repo's OIDC settings. Matching on IDs means a repo deleted and recreated under the same name can't assume the role. Seen on a testbed token (bootstrap README, #30).
 
 The roles may live in two AWS accounts or one. Two accounts are stronger: a developer with dev-account access has no access to prod at all. One account is allowed for low-stakes projects, and v1 uses one; the prod role's trust policy still refuses every subject except `environment:production`. The broker sits behind one small interface in `deploy/`.
 
-The dev role is built first. The prod role is built with the production release path (spec 0001, build order step 3).
+The preview and staging roles are built first. The prod role is built with the production release path (spec 0001, build order step 3).
 
 ## Alternatives considered
 
@@ -33,5 +38,5 @@ The dev role is built first. The prod role is built with the production release 
 ## Consequences
 
 - No static deploy secrets in GitHub.
-- The cloud provider, not just GitHub, refuses prod credentials to any job outside `environment:production`, and dev credentials to any job outside `preview` and `staging`.
+- The cloud provider, not just GitHub, refuses prod credentials to any job outside `environment:production`, and dev credentials to any job outside `preview` and `staging`. Only `staging` gets the dev infrastructure token.
 - A fork or client with Vault, OpenBao or another cloud's store swaps the broker without touching workflows, and can put each store wherever its own key management requires.
