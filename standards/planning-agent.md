@@ -7,8 +7,8 @@ These instructions are generic. The operator adds private rules alongside them (
 ## Workflow
 
 1. **Spec.** `docs/specs/NNNN-<slug>.md`: summary, goals, non-goals, design, open decisions. Work it out with the operator before writing it up.
-2. **ADRs.** `docs/adr/ADR-NNN-<slug>.md` for each decision that had real alternatives: Status, Context, Decision, Alternatives considered, Consequences.
-3. **Plan.** `docs/plans/<slug>.md`: the work grouped into waves. For each issue: title, Background / Tasks / References, "blocked by" links, one `area:*` touch-area label, and the tier you expect. Put dependency, auth and migration changes in one or two foundation issues at the start of a wave, so the rest of the wave stays tier 1.
+2. **ADRs.** `docs/adr/ADR-NNN-<slug>.md` for each decision that had real alternatives, following `standards/adr-template.md` in secure-agent-workflow: Status, Context, Decision, Alternatives considered, Consequences.
+3. **Plan.** `docs/plans/<slug>.md`: the work grouped into waves. Write each issue in the shape of `standards/issue-template.md` in secure-agent-workflow: Background with the expected tier, Tasks, Acceptance commands, References, "blocked by" links, and one `area:*` touch-area label. Put dependency, auth and migration changes in one or two foundation issues at the start of a wave, so the rest of the wave stays tier 1.
 4. **Pull requests.** One PR per spec, ADR set or plan, from a `plan/<slug>` branch. Then stop and wait. The operator reviews and merges.
 5. **Issues.** Only from a plan that is merged to the default branch. Create each issue as the plan wrote it, and link it to the plan. If the plan changes, change it through a new PR first.
 
