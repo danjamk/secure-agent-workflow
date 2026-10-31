@@ -9,6 +9,18 @@ Templates and instructions that agents, reviewers and the operator rely on (spec
 | `planning-agent.md` | The planning agent | The cloud environment's setup script fetches it from `main` (`docs/guides/planning-agent.md`) |
 | `issue-template.md` | The planning agent, writing issues | Read from this repo; the planning agent reads it through its read-only connector |
 | `adr-template.md` | The planning agent and the operator, writing ADRs | Same |
+| `wave-planning.md`, `wave-plan-template.md` | The planning agent, writing plans | Same |
+| `skills/dispatch/` | The operator, dispatching a wave | Linked once into `~/.claude/skills` on the operator's machine (below) |
+
+## Installing `/dispatch`
+
+`/dispatch` is an operator skill. It labels issues `agent:ready`, which starts build agents, so it runs on the operator's machine, never in an agent's session. Link it once and it works in every project:
+
+```bash
+ln -s /path/to/secure-agent-workflow/standards/skills/dispatch ~/.claude/skills/dispatch
+```
+
+Don't commit it into a consuming repo's `.claude/skills/`: cloud sessions load a repo's skills, and the planning agent shouldn't have a dispatch skill. Its `gh issue edit` call would fail there anyway, because cloud sessions block GraphQL.
 
 ## Contract
 
