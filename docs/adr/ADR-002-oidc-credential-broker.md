@@ -1,6 +1,6 @@
 # ADR-002: Deploy credentials come through a GitHub OIDC broker on AWS
 
-Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores)
+Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores; OIDC subjects with immutable IDs)
 
 ## Context
 
@@ -14,8 +14,10 @@ GitHub OIDC is the single trust anchor. The broker has two AWS IAM roles, each w
 
 | Role | Trusts only | Reads |
 | --- | --- | --- |
-| Dev | `repo:danjamk/<repo>:environment:preview` and `:environment:staging` | `/<repo>/dev/*`, including the Cloudflare dev token |
-| Prod | `repo:danjamk/<repo>:environment:production` | `/<repo>/prod/*`, including the Cloudflare prod token |
+| Dev | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:preview` and `:environment:staging` | `/<repo>/dev/*`, including the Cloudflare dev token |
+| Prod | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:production` | `/<repo>/prod/*`, including the Cloudflare prod token |
+
+The subjects include GitHub's numeric owner and repo IDs. Repos created after July 15, 2026 get this format by default; older repos opt in through the repo's OIDC settings. Matching on IDs means a repo deleted and recreated under the same name can't assume the role. Seen on a testbed token (bootstrap README, #30).
 
 The roles may live in two AWS accounts or one. Two accounts are stronger: a developer with dev-account access has no access to prod at all. One account is allowed for low-stakes projects, and v1 uses one; the prod role's trust policy still refuses every subject except `environment:production`. The broker sits behind one small interface in `deploy/`.
 

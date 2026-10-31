@@ -224,7 +224,7 @@ Public repos only: fork PRs require approval before workflows run, and AI review
 
 Deploys use one trust anchor, GitHub OIDC, and a broker issues each platform's credentials (ADR-002). There are two stores, dev and prod, each behind its own role.
 
-1. The deploy job requests a GitHub OIDC token whose subject names its environment, such as `repo:danjamk/<repo>:environment:staging`.
+1. The deploy job requests a GitHub OIDC token whose subject names its environment, such as `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging`. The numeric IDs are GitHub's immutable subject format (ADR-002).
 2. The dev role trusts only the `preview` and `staging` subjects. The prod role trusts only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store.
 3. The role reads that environment's Cloudflare token and third-party keys. Later, the job mints a short-lived Cloudflare token per deploy.
 4. The broker sits behind one small interface in `deploy/`, so Vault, OpenBao or another cloud's store can replace AWS.

@@ -34,7 +34,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | Forks, private repos | Fork PR workflows off | Same, for private repos |
 | Scanning, public repos | Secret scanning and push protection | Free on public repos. Private repos get gitleaks in the merge gate |
 | | Dependabot alerts | Turns on the dependency graph, which the gate's dependency review needs. Without it the review fails with "not supported on this repository" |
-| Environments | `dev` and `production`, each deployable from the default branch only (a named-branch policy) | Only `main` can deploy (ADR-002). No secrets are created here |
+| Environments | `preview` from PR runs (`refs/pull/*/merge`), `staging` from the default branch, `production` from the `production` branch. Each has one named-branch policy. An old `dev` environment with no deployments is deleted | The broker's roles trust these environment names (ADR-002), so the policy decides which runs can get which credentials. No secrets are created here |
 | Labels | `agent:ready`, `agent:stop`, `agent:blocked` | How Dan releases, stops and unblocks agent runs. The orchestrator acts on them only when the repo owner applies them |
 | Files | `.github/CODEOWNERS`: tier 3 paths to the repo owner | Routes tier 3 review requests. The tier check is the control |
 | | `.github/workflows/gate.yml` and `tier-check.yml`: the gate callers, pinned to a commit of `GATE_REPO` | The merge gate (`gate/README.md`). Two files because the tier check re-runs on every review and the scanners don't need to |
@@ -91,6 +91,23 @@ Environments, labels and CODEOWNERS (#5), on both testbeds:
 | `danjamk/agent-testbed-private` (private) | 7 settings, all read back; CODEOWNERS PR #2 opened | No changes; CODEOWNERS pending in PR #2 |
 
 - Personal Pro allows environments with deployment branch policies on private repos.
+
+Environments for the branch model (#30), 2026-10-31:
+
+| Repo | First run | Second run |
+| --- | --- | --- |
+| `danjamk/agent-testbed` (public) | `preview` and `staging` created, `production` moved to the `production` branch, `dev` removed; all read back | No changes |
+| `danjamk/agent-testbed-private` (private) | Same | No changes |
+
+A throwaway workflow on the public testbed tried each environment:
+
+| Run | `preview` | `staging` | `production` |
+| --- | --- | --- | --- |
+| `pull_request` | Allowed | Refused: "Branch "refs/pull/17/merge" is not allowed to deploy to staging" | Refused |
+| Push to `main` | — | Allowed | Refused: "Branch "main" is not allowed to deploy to production" |
+
+- **A branch policy is matched against the run's `GITHUB_REF`.** For a `pull_request` run that's `refs/pull/<n>/merge`, never the PR's branch name, so `preview` uses that pattern. GitHub accepts it as a branch-type policy.
+- **The OIDC subject includes numeric IDs.** The preview job's token had `sub: repo:danjamk@52805208/agent-testbed@1440138099:environment:preview`. Repos created after July 15, 2026 use this format by default, and older repos can opt in. The broker's trust policies must match it (ADR-002).
 - Changing the template and re-running updated the open PR in place; no second PR was opened.
 - Not tested: a repo that already has its own CODEOWNERS. The leave-alone path is read in code review only.
 - Applied to this repo on 2026-10-30, while enabling Dependabot alerts for the gate (#14). Its CODEOWNERS PR is #27.
