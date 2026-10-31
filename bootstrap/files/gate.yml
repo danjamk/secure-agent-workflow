@@ -1,0 +1,21 @@
+# Managed by secure-agent-workflow bootstrap. Change the template in
+# secure-agent-workflow/bootstrap/files/gate.yml and re-run bootstrap, not this
+# copy. `bootstrap.sh <repo> --update-gate <sha>` moves the pin.
+#
+# Merge gate checks and scanners (spec 0001). Every job is a required check on
+# the default branch. The check job runs `make check` in the repo root.
+
+name: gate
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  checks:
+    uses: {{GATE_REPO}}/.github/workflows/gate-checks.yml@{{GATE_SHA}}
+    permissions:
+      contents: read
+      actions: read
+      security-events: write

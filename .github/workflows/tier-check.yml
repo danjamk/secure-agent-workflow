@@ -3,6 +3,13 @@
 #
 # The caller triggers it on pull_request and pull_request_review, so an
 # approval re-runs the check.
+#
+# A review can't just run the check again. Each event gets its own check suite,
+# and GitHub counts the failed run in the pull_request suite even after a
+# passing run in the review suite (seen on a testbed, #16). So on a review the
+# check is skipped (a skipped required check passes) and rerun-on-review
+# re-runs the pull_request run, which replaces the failed attempt in its suite.
+# The caller grants actions: write for that.
 
 name: tier-check
 
@@ -23,6 +30,7 @@ permissions: {}
 jobs:
   tier-check:
     name: tier-check
+    if: github.event_name != 'pull_request_review'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -48,3 +56,35 @@ jobs:
           TIER_MAP: ${{ inputs.tier-map }}
           DEFAULT_TIER_MAP: .tier-check/standards/tier-map.yml
         run: python3 .tier-check/gate/tier_check.py
+
+  rerun-on-review:
+    name: rerun-on-review
+    if: github.event_name == 'pull_request_review'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      # Re-runs the caller workflow's latest pull_request run for the PR's head
+      # commit. That run reads the PR's current reviews, so it sees this one.
+      - name: Re-run the tier check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          workflow=$(basename "${WORKFLOW_REF%@*}")
+          run=$(gh api "repos/$REPO/actions/workflows/$workflow/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=1" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run" ]; then
+            echo "No pull_request run of $workflow for $HEAD_SHA to re-run."
+            exit 1
+          fi
+          # A run can only be re-run once it has finished.
+          for _ in $(seq 1 50); do
+            [ "$(gh api "repos/$REPO/actions/runs/$run" --jq .status)" = completed ] && break
+            sleep 10
+          done
+          gh api -X POST "repos/$REPO/actions/runs/$run/rerun" --silent
+          echo "Re-ran https://github.com/$REPO/actions/runs/$run"
