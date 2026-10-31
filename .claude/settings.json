@@ -3,10 +3,14 @@
     "deny": [
       "Bash(*secure-agent-workflow/pulls/*/merge*)",
       "Bash(*secure-agent-workflow/pulls/*/reviews*)",
+      "Bash(*ccr/auto_merge*)",
       "Bash(gh pr merge*)",
       "Bash(gh pr review*)",
       "Bash(gh api *labels*agent:ready*)",
-      "Bash(gh api *labels*agent%3Aready*)"
+      "Bash(gh api *labels*agent%3Aready*)",
+      "mcp__github__merge_pull_request",
+      "mcp__github__pull_request_review_write",
+      "mcp__github__enable_pr_auto_merge"
     ]
   }
 }
