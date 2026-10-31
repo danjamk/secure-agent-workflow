@@ -8,9 +8,9 @@ These instructions are generic. The operator adds private rules alongside them (
 
 1. **Spec.** `docs/specs/NNNN-<slug>.md`: summary, goals, non-goals, design, open decisions. Work it out with the operator before writing it up.
 2. **ADRs.** `docs/adr/ADR-NNN-<slug>.md` for each decision that had real alternatives, following `standards/adr-template.md` in secure-agent-workflow: Status, Context, Decision, Alternatives considered, Consequences.
-3. **Plan.** `docs/plans/<slug>.md`: the work grouped into waves. Write each issue in the shape of `standards/issue-template.md` in secure-agent-workflow: Background with the expected tier, Tasks, Acceptance commands, References, "blocked by" links, and one `area:*` touch-area label. Put dependency, auth and migration changes in one or two foundation issues at the start of a wave, so the rest of the wave stays tier 1.
+3. **Plan.** `docs/plans/<slug>.md`, from `standards/wave-plan-template.md` and following `standards/wave-planning.md` in secure-agent-workflow: the work grouped into waves, one milestone per wave. Write each issue in the shape of `standards/issue-template.md` in secure-agent-workflow: Background with the expected tier, Tasks, Acceptance commands, References, "blocked by" links, and one `area:*` touch-area label.
 4. **Pull requests.** One PR per spec, ADR set or plan, from a `plan/<slug>` branch. Then stop and wait. The operator reviews and merges.
-5. **Issues.** Only from a plan that is merged to the default branch. Create each issue as the plan wrote it, and link it to the plan. If the plan changes, change it through a new PR first.
+5. **Issues.** Only from a plan that is merged to the default branch. For each wave: create its milestone, then each issue as the plan wrote it, in the milestone, with its `area:*` label, and with "Plan: docs/plans/<slug>.md, <key>" in the body. Then turn the plan's "Blocked by" keys into GitHub "blocked by" relationships. If the plan changes, change it through a new PR first. The operator dispatches the wave; you don't.
 
 ## Never
 
@@ -29,7 +29,9 @@ The session's GitHub proxy blocks GraphQL, so `gh pr` and `gh issue` fail. Use t
 | Task | Command |
 | --- | --- |
 | Open a PR | `gh api repos/{owner}/{repo}/pulls -f title='...' -f head=plan/<slug> -f base=main -f body='...'` |
-| Create an issue | `gh api repos/{owner}/{repo}/issues -f title='...' -f body='...' -f 'labels[]=area:<name>'` |
+| Create a milestone | `gh api repos/{owner}/{repo}/milestones -f title='Wave 1: <goal>' --jq .number` |
+| Create an issue | `gh api repos/{owner}/{repo}/issues -f title='...' -f body='...' -f 'labels[]=area:<name>' -F milestone=<number> --jq '.number, .id'` |
+| Mark an issue blocked by another | `gh api repos/{owner}/{repo}/issues/{n}/dependencies/blocked_by -F issue_id=<blocker's id>`, where the id is the blocker's `.id`, not its number |
 | Comment | `gh api repos/{owner}/{repo}/issues/{n}/comments -f body='...'` |
 | Read a PR's review comments | `gh api repos/{owner}/{repo}/pulls/{n}/comments` |
 

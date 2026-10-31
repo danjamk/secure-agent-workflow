@@ -37,7 +37,7 @@ Two things a newcomer gets wrong:
 | `.github/workflows/` | The reusable gate workflows consumers call, pinned by SHA |
 | `standards/tier-map.yml` | Default tier map; consumers get a copy from bootstrap |
 | `standards/planning-agent.md` | Planning agent instructions; the cloud environment's setup script fetches them |
-| `standards/` (other files) | Build agent instructions, issue and ADR templates. `standards/README.md` says who uses each and how it reaches them |
+| `standards/` (other files) | Build agent instructions, issue, ADR and wave plan templates, wave planning rules, and the operator's `/dispatch` skill. `standards/README.md` says who uses each and how it reaches them |
 
 The other component directories listed in the README do not exist yet.
 
