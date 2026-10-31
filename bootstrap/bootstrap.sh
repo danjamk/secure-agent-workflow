@@ -21,7 +21,8 @@
 #   forks     public: approval before any external contributor's fork PR runs
 #             workflows; private: fork PR workflows off
 #   scanning  public only: secret scanning and push protection
-#   envs      dev and production, deployable from the default branch only
+#   envs      preview from PR runs, staging from the default branch, production
+#             from the production branch; the old dev environment is retired
 #   labels    agent:ready, agent:stop, agent:blocked
 #   files     files/ templates (CODEOWNERS and the gate callers, pinned to a
 #             commit of GATE_REPO), written through one PR from the
@@ -273,16 +274,18 @@ dependency_alerts() {
     fi
 }
 
+# environment NAME PATTERN — the environment, deployable only from refs matching
+# PATTERN (fnmatch; GitHub matches it against the run's GITHUB_REF).
 environment() {
-    local env=$1 what policies id
+    local env=$1 pattern=$2 what policies id
     sync "environment $env" \
         "repos/$REPO/environments/$env" PUT "repos/$REPO/environments/$env" \
         '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
 
-    # Deploys only from the default branch (spec 0001, ADR-002). A named-branch
-    # policy, because "protected branches" isn't documented to cover rulesets.
-    # Policies have no update call, so stale ones are deleted and ours created.
-    what="environment $env: deploys from $DEFAULT_BRANCH only"
+    # A named-branch policy, because "protected branches" isn't documented to
+    # cover rulesets. Policies have no update call, so stale ones are deleted
+    # and ours created.
+    what="environment $env: deploys from $pattern only"
     # gh prints a 404's body on stdout, so only trust the output on success.
     policies=""
     if $GH api "repos/$REPO/environments/$env/deployment-branch-policies" \
@@ -290,29 +293,53 @@ environment() {
         > "$WORK/policies.txt" 2>/dev/null; then
         policies=$(cat "$WORK/policies.txt")
     fi
-    if [ "$policies" = "branch:$DEFAULT_BRANCH" ]; then
+    if [ "$policies" = "branch:$pattern" ]; then
         [ "$MODE" = apply ] && printf '  =  %s\n' "$what"
         return 0
     fi
     CHANGES=$((CHANGES + 1))
     printf '  ~  %s\n' "$what"
-    printf '       branch policies: %s -> branch:%s\n' "${policies:-none}" "$DEFAULT_BRANCH"
+    printf '       branch policies: %s -> branch:%s\n' "${policies:-none}" "$pattern"
     if [ "$MODE" = apply ] && [ "$DRY_RUN" = false ]; then
         for id in $($GH api "repos/$REPO/environments/$env/deployment-branch-policies" --jq \
-            ".branch_policies[] | select(.type != \"branch\" or .name != \"$DEFAULT_BRANCH\") | .id"); do
+            ".branch_policies[] | select(.type != \"branch\" or .name != \"$pattern\") | .id"); do
             $GH api -X DELETE "repos/$REPO/environments/$env/deployment-branch-policies/$id" --silent
         done
         case ",$policies," in
-            *",branch:$DEFAULT_BRANCH,"*) ;;
+            *",branch:$pattern,"*) ;;
             *) $GH api -X POST "repos/$REPO/environments/$env/deployment-branch-policies" \
-                   -f name="$DEFAULT_BRANCH" -f type=branch --silent ;;
+                   -f name="$pattern" -f type=branch --silent ;;
         esac
     fi
 }
 
+# retire_environment NAME — delete an environment bootstrap used to create,
+# but only if nothing was ever deployed to it.
+retire_environment() {
+    local env=$1 count
+    $GH api "repos/$REPO/environments/$env" --silent >/dev/null 2>&1 || return 0
+    count=$($GH api "repos/$REPO/deployments?environment=$env&per_page=1" --jq length)
+    if [ "$count" != 0 ]; then
+        [ "$MODE" = apply ] && printf '  !  environment %s has deployments; left in place\n' "$env"
+        return 0
+    fi
+    CHANGES=$((CHANGES + 1))
+    printf '  ~  environment %s: removed (replaced by preview and staging, no deployments)\n' "$env"
+    if [ "$MODE" = apply ] && [ "$DRY_RUN" = false ]; then
+        $GH api -X DELETE "repos/$REPO/environments/$env" --silent
+    fi
+}
+
 environments() {
-    environment dev
-    environment production
+    # Spec 0001, Branches and environments; ADR-002 roles trust these names.
+    # A pull_request run's GITHUB_REF is refs/pull/<n>/merge, so previews
+    # match that, not branch names. Fork PR runs get no OIDC token, so they
+    # can't reach the dev role even though the ref matches.
+    environment preview 'refs/pull/*/merge'
+    environment staging "$DEFAULT_BRANCH"
+    # The production branch needn't exist yet; until it does, nothing deploys.
+    environment production production
+    retire_environment dev
 }
 
 # label NAME COLOR DESCRIPTION
