@@ -75,6 +75,7 @@ Computes a PR's tier from the paths it changes, and fails until the approval tha
 
 - **The tier map comes from the base commit.** `tier_check.py` reads `standards/tier-map.yml` through the API at the PR's base SHA, never from the PR. A PR can't change the map that judges it. If the repo has no map at the base, the default in this repo is used.
 - **Highest tier wins.** A rename counts both the old and the new path, and paths that match no rule are tier 2.
+- **What agents work from is tier 2.** Specs, ADRs and plans (`docs/specs/`, `docs/adr/`, `docs/plans/`) decide what gets built, and `CLAUDE.md`, `AGENTS.md`, `.claude/` and `standards/` decide how. Other docs are tier 1. Without this, an agent could rewrite the instructions the next agent reads, and the PR would merge on green.
 - **Only the approver's login counts.** The approver is the repo owner by default, and must be a `User`, not a bot. The ruleset's approval count isn't used. Other people's approvals, App approvals and stale approvals don't count. A later `CHANGES_REQUESTED` or a dismissal cancels an approval; a `COMMENTED` review doesn't.
 - **Bots can't pass tier 3.** GitHub only blocks the agent App from `.github/workflows/`. The App can write `CODEOWNERS`, other `.github/` files and the tier map, and this rule covers those. It applies to every bot, so a Dependabot PR that touches `.github/` needs a human to re-author it.
 - **The check fails closed.** A tier map it can't parse, an API error, or a PR over GitHub's 3,000-file listing limit all fail the check.

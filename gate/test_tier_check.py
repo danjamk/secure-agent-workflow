@@ -83,6 +83,16 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(self.tier("docs/CODEOWNERS"), 3)
         self.assertEqual(self.tier(".github/CODEOWNERS"), 3)
 
+    def test_what_agents_work_from_is_tier_2(self):
+        for path in ("docs/specs/0002-x.md", "docs/adr/ADR-006-x.md",
+                     "docs/plans/wave-1.md", "CLAUDE.md", "app/AGENTS.md",
+                     ".claude/settings.json", "standards/agent-instructions.md"):
+            self.assertEqual(self.tier(path), 2, path)
+        # Other docs stay tier 1; the tier map stays tier 3.
+        self.assertEqual(self.tier("docs/guides/setup.md"), 1)
+        self.assertEqual(self.tier("README.md"), 1)
+        self.assertEqual(self.tier("standards/tier-map.yml"), 3)
+
     def test_no_files_is_tier_1(self):
         self.assertEqual(self.tier(), 1)
 

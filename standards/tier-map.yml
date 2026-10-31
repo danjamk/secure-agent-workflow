@@ -45,6 +45,16 @@ tiers:
     - "**/migrations/**"
     # Cloudflare config
     - "**/wrangler.*"
+    # What agents work from: specs, decisions and plans direct what gets
+    # built, and instruction files direct how. An agent's change to them waits
+    # for the approver even though other docs are tier 1.
+    - docs/specs/**
+    - docs/adr/**
+    - docs/plans/**
+    - "**/CLAUDE.md"
+    - "**/AGENTS.md"
+    - .claude/**
+    - standards/**
   1:
     - src/**
     - test/**
