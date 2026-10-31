@@ -1,0 +1,63 @@
+# Planning agent setup
+
+The planning agent is a Claude Code cloud session that writes specs, ADRs and plans with the operator, and turns an approved plan into issues (spec 0001, Workflow). One cloud environment serves every project; each session attaches the one repo being planned.
+
+Until the planning agent has its own GitHub identity (spec 0001, build order step 4), it acts as the operator on GitHub. That limits what can be enforced against it. See [planning agent identity](../research/planning-agent-identity.md).
+
+## What enforces what
+
+| Requirement | Mechanism | Strength |
+| --- | --- | --- |
+| One setup for every project | One personal cloud environment. The repo is chosen per session | — |
+| No access to the operator's machine | The session runs in an Anthropic-hosted VM holding only the cloned repo | Strong |
+| Writes only to the planned repo | Attach only that repo. The GitHub proxy rejects API calls and source downloads for unattached repos, public ones included | Strong (Anthropic's proxy) |
+| Reads other repos | A read-only GitHub connector whose token has only Contents: read on chosen repos. Committed files of public repos are also reachable through `raw.githubusercontent.com` | Strong, if the token is read-only |
+| No merge without the operator's approval | The instructions, plus deny rules in the repo's `.claude/settings.json`. The session can merge through the REST API as the operator, and rulesets can't tell the difference | Weak until step 4 |
+| Plan approved before issues exist | The instructions. Later, a workflow creates issues from a merged plan, so the agent creates none (#37) | Weak now |
+| Private information stays out of public repos | Private rules in the environment's setup script. Later, a gate check that fails a PR containing listed private terms (#36) | Weak now |
+| Specs, ADRs and plans need approval | Today the default tier map makes `docs/**` tier 1. #38 makes these paths tier 2 | Strong for agents with their own identity. A PR the planning agent opens as the operator still passes, until step 4 |
+
+## Setup
+
+1. **Read-only connector.** Create a fine-grained personal access token: resource owner your account, only the repos the planning agent may read (for example your notes repo and your other projects), permissions Contents: read and Metadata: read. Add a GitHub MCP connector in claude.ai that uses it. Check that its tools are read-only, and block any write tool in the connector's settings.
+2. **Environment.** At claude.ai/code, add an environment named `planning`:
+   - **Network access:** Trusted. Planning installs nothing, but Trusted keeps `raw.githubusercontent.com` reachable for the setup script.
+   - **Environment variables:** none. Anyone using the environment can read them.
+   - **Setup script:** the template below, with your private rules added.
+3. **Board.** In the project board's workflows, turn on auto-add for issues from the repos you plan in. A cloud session can't add issues to a board, because Projects is GraphQL-only.
+4. **Repo guardrails.** Commit a `.claude/settings.json` with deny rules for the merge, review and dispatch-label endpoints (this repo's file is an example). They load only in single-repo sessions and the agent can edit them, so they catch mistakes, not intent.
+5. **Session.** Start a cloud session with the `planning` environment, only the planned repo attached, and the read-only connector on.
+
+## Setup script template
+
+The script runs before Claude starts. It fetches the generic instructions from this repo and writes `~/.claude/CLAUDE.md`, which the session loads as user instructions. Your private rules go in that file, not in any repo.
+
+```bash
+#!/bin/bash
+set -euo pipefail
+mkdir -p ~/.claude
+
+# Generic instructions, from this repo's default branch.
+if ! curl -fsSL https://raw.githubusercontent.com/danjamk/secure-agent-workflow/main/standards/planning-agent.md \
+    -o ~/.claude/planning-agent.md; then
+  echo "The planning instructions failed to load. Stop and tell the operator." > ~/.claude/planning-agent.md
+fi
+
+cat > ~/.claude/CLAUDE.md <<'EOF'
+@~/.claude/planning-agent.md
+
+## Private rules
+
+<!-- Names that must never appear in a public repo, personal conventions, and so on. -->
+EOF
+```
+
+The environment caches the script's result for about seven days. To pick up changed instructions sooner, edit the script, which rebuilds the cache.
+
+A fork changes the URL to its own copy of `standards/planning-agent.md`.
+
+## Known limits
+
+- **The session acts as the operator.** It can approve and merge PRs through the REST API, push to any unprotected branch, and add `agent:*` labels. The instructions and deny rules discourage this; nothing stops it. The fix is a machine user for the planning agent (build order step 4).
+- **Settings and hooks load only in single-repo sessions.** Keep planning sessions to one attached repo.
+- **Skills on your machine don't reach the session.** Commit them to the repo's `.claude/skills/`, or enable them on claude.ai, where cloud sessions load them.

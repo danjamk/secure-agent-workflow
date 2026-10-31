@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(*secure-agent-workflow/pulls/*/merge*)",
+      "Bash(*secure-agent-workflow/pulls/*/reviews*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh pr review*)",
+      "Bash(gh api *labels*agent:ready*)",
+      "Bash(gh api *labels*agent%3Aready*)"
+    ]
+  }
+}
