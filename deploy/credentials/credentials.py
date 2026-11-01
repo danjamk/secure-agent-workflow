@@ -33,6 +33,7 @@ the agent. Standard library only; calls the aws and gh CLIs.
 import base64
 import datetime as dt
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -255,9 +256,11 @@ def get_param(name: str, decrypt: bool):
 
 
 def put_param(name: str, value: str, secure: bool) -> None:
-    """The value goes over stdin, so it never appears in a process list."""
-    spec = {"Name": name, "Value": value, "Type": "SecureString" if secure else "String", "Overwrite": True}
-    aws("ssm", "put-parameter", "--cli-input-json", "file:///dev/stdin", stdin=json.dumps(spec))
+    """The value goes over stdin, so it never appears in a process list or a file.
+    --value reads stdin once; --cli-input-json file:///dev/stdin reads it twice and
+    gets nothing the second time (aws-cli 2.39)."""
+    aws("ssm", "put-parameter", "--name", name, "--type", "SecureString" if secure else "String",
+        "--overwrite", "--value", "file:///dev/stdin", stdin=value)
 
 
 def tag_param(name: str, tags: dict) -> None:
@@ -350,10 +353,32 @@ def describe(repo_name: str, e: dict) -> None:
 STORED, FAILED, SKIPPED = 0, 1, 2
 
 
-def store(repo: str, e: dict, dry_run: bool, allow_skip: bool = False) -> int:
-    """Prompt for one credential's value, check it, and store it. Returns STORED, FAILED or SKIPPED."""
+def fingerprint(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def received(value: str) -> str:
+    """Feedback after a hidden paste: length and the last 4 characters, never more."""
+    tail = f", ending in {value[-4:]}" if len(value) >= 16 else ""
+    return f"Received {len(value)} characters{tail}."
+
+
+def paste_problem(value: str, name: str, seen: dict):
+    """A reason to refuse a pasted value before checking it, or None. Pure, for tests."""
+    if re.search(r"\s", value):
+        return "the value contains spaces or line breaks; paste only the token"
+    other = seen.get(fingerprint(value))
+    if other and other != name:
+        return f"same value as {other}; each credential needs its own token (standards/credentials.md)"
+    return None
+
+
+def store(repo: str, e: dict, dry_run: bool, allow_skip: bool = False, seen: dict = None) -> int:
+    """Prompt for one credential's value, check it, and store it. Returns STORED, FAILED or SKIPPED.
+    seen maps fingerprints of values already given or stored to their credential names."""
     repo_name = repo.split("/", 1)[1]
     path = param_path(repo_name, e)
+    seen = {} if seen is None else seen
     value = read_secret(e["name"], allow_skip)
     if not value and allow_skip:
         print("Skipped.")
@@ -361,6 +386,12 @@ def store(repo: str, e: dict, dry_run: bool, allow_skip: bool = False) -> int:
     if not value or value == PLACEHOLDER:
         print("FAIL  empty or placeholder value; nothing stored")
         return FAILED
+    print(received(value))
+    problem = paste_problem(value, e["name"], seen)
+    if problem:
+        print(f"FAIL  {problem}. Nothing stored.")
+        return FAILED
+    seen[fingerprint(value)] = e["name"]
 
     check = run_checker(e["system"], e["check"], value)
     if check is None:
@@ -444,10 +475,12 @@ def cmd_setup(repo: str, dry_run: bool, manifest_file) -> int:
         return 1
     repo_name = repo.split("/", 1)[1]
     entries = load_manifest(repo, manifest_file)
-    todo = []
+    todo, seen = [], {}
     for e in entries:
         label = f"{e['name']} [{dashboard_name(repo_name, e)}]"
         value = get_param(param_path(repo_name, e), decrypt=True)
+        if value and value != PLACEHOLDER:
+            seen[fingerprint(value)] = e["name"]
         if value is None:
             todo.append((e, "missing"))
         elif value == PLACEHOLDER:
@@ -469,7 +502,11 @@ def cmd_setup(repo: str, dry_run: bool, manifest_file) -> int:
     for i, (e, reason) in enumerate(todo, 1):
         print(f"\n[{i}/{len(todo)}] {e['name']} ({reason})")
         describe(repo_name, e)
-        counts[store(repo, e, dry_run, allow_skip=True)] += 1
+        try:
+            counts[store(repo, e, dry_run, allow_skip=True, seen=seen)] += 1
+        except RuntimeError as err:
+            print(f"FAIL  {err}")
+            counts[FAILED] += 1
     if todo:
         print(f"\n{counts[STORED]} stored, {counts[SKIPPED]} skipped, {counts[FAILED]} failed. "
               "Run setup again to pick up the rest.")

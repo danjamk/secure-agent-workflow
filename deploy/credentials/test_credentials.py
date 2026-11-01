@@ -177,6 +177,28 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(self.levels(out), ["WARN"])
 
 
+class Paste(unittest.TestCase):
+    TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789WXYZ"
+
+    def test_received_shows_length_and_last_four(self):
+        self.assertEqual(c.received(self.TOKEN), "Received 40 characters, ending in WXYZ.")
+
+    def test_received_hides_tail_of_short_values(self):
+        self.assertEqual(c.received("short-value"), "Received 11 characters.")
+
+    def test_whitespace_refused(self):
+        self.assertIn("spaces or line breaks", c.paste_problem("abc def", "x-deploy-token", {}))
+
+    def test_same_value_for_another_credential_refused(self):
+        seen = {c.fingerprint(self.TOKEN): "cloudflare-deploy-token"}
+        self.assertIn("same value as cloudflare-deploy-token",
+                      c.paste_problem(self.TOKEN, "cloudflare-read-token", seen))
+
+    def test_same_value_for_itself_allowed(self):
+        seen = {c.fingerprint(self.TOKEN): "cloudflare-deploy-token"}
+        self.assertIsNone(c.paste_problem(self.TOKEN, "cloudflare-deploy-token", seen))
+
+
 class Confirm(unittest.TestCase):
     """confirm() on a real pseudo-terminal. It once opened the tty "r+", which
     raises on a terminal, so every first credential was refused without a prompt."""
