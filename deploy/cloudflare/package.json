@@ -1,8 +1,11 @@
 {
   "name": "saw-cloudflare-deploy",
   "private": true,
-  "description": "The wrangler version the deploy job runs, locked with its dependencies. Installed with npm ci --ignore-scripts.",
+  "description": "The wrangler version the deploy job runs, locked with its dependencies. Installed with npm ci --ignore-scripts. The undici override replaces miniflare's pinned 7.29.1, which has eight advisories fixed in 7.30.1.",
   "dependencies": {
     "wrangler": "4.151.1"
+  },
+  "overrides": {
+    "undici": "7.30.1"
   }
 }
