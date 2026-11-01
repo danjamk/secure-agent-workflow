@@ -31,8 +31,11 @@ credentials:
     exposure: preview          # preview, staging or prod: the first job that may read it
     purpose: Deploy preview and staging Workers
     permissions: "Workers Scripts: Edit. Account Settings: Read"
+    check: workers             # arguments for the checker: what this credential must be able to do
     rotate_days: 90
 ```
+
+The manifest uses only this flat shape, so the broker reads it with a few lines of standard-library Python, as the gate does for `tier-map.yml`.
 
 **Exposure is set by the parameter's path.** Parameters live at `/<repo>/<account>/<exposure>/<name>`. Each role reads by path prefix, so a new credential needs no IAM change:
 
@@ -59,8 +62,9 @@ Tags on the parameter record:
 
 A system with no checker can still be stored, and it is reported as unchecked.
 
-**Checkers.** Each system has one file in `deploy/credentials/checks/<system>.sh`, with a fixed contract:
+**Checkers.** Each system has one executable at `deploy/credentials/checks/<system>`, in any language, with a fixed contract:
 
+- It receives the manifest's `check` words as arguments.
 - It reads the secret on stdin, never from an argument or the environment.
 - It writes lines of the form `PASS <text>`, `FAIL <text>` or `INFO <text>`.
 - It may also write `EXPIRES <date>` and `IDENTITY <id> <label>`.
