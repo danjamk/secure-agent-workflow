@@ -3,11 +3,13 @@
 #
 #   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh account [--dry-run]
 #   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh add-repo danjamk/myrepo [--dry-run]
+#   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh setup danjamk/myrepo [--dry-run]
 #   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh set danjamk/myrepo <credential> [--dry-run]
 #   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh status danjamk/myrepo
 #
-# set and status run deploy/credentials/credentials.py (ADR-007): set checks a
-# credential and stores it; status reports on the broker and every credential.
+# setup, set and status run deploy/credentials/credentials.py (ADR-007): setup
+# walks through every missing credential, set checks one and stores it, status
+# reports on the broker and every credential.
 #
 # account   Once per AWS account: the GitHub OIDC provider (or reuse of an
 #           existing one) and the OpenTofu state bucket. Stack saw-broker.
@@ -37,7 +39,7 @@ shift || true
 
 # Credential commands live with the manifest and checkers (ADR-007).
 case "$CMD" in
-    set|status) exec python3 "$HERE/../../credentials/credentials.py" "$CMD" "$@" ;;
+    setup|set|status) exec python3 "$HERE/../../credentials/credentials.py" "$CMD" "$@" ;;
 esac
 
 REPO=""
@@ -53,6 +55,7 @@ done
 usage() {
     echo "Usage: AWS_PROFILE=<profile> broker.sh account [--dry-run]"
     echo "       AWS_PROFILE=<profile> broker.sh add-repo <owner>/<repo> [--dry-run]"
+    echo "       AWS_PROFILE=<profile> broker.sh setup <owner>/<repo> [--dry-run] [--manifest FILE]"
     echo "       AWS_PROFILE=<profile> broker.sh set <owner>/<repo> <credential> [--dry-run] [--manifest FILE]"
     echo "       AWS_PROFILE=<profile> broker.sh status <owner>/<repo> [--manifest FILE]"
     exit 1

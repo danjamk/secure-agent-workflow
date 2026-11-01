@@ -5,6 +5,7 @@ Templates and instructions that agents, reviewers and the operator rely on (spec
 | File | Used by | How it reaches them |
 | --- | --- | --- |
 | `tier-map.yml` | The tier check | Bootstrap copies it into each repo once; the repo owns its copy. The tier check reads the copy at the PR's base commit, falling back to this file |
+| `credentials.md` | Operators, build agents and AI assistants, naming and storing credentials | Linked from `CLAUDE.md`, the agent instructions and the example manifest; printed by `broker.sh setup`, `set` and `status` |
 | `agent-instructions.md` | Build agents | The orchestrator puts it in the sandbox at the start of each run (#9) |
 | `planning-agent.md` | The planning agent | The cloud environment's setup script fetches it from `main` (`docs/guides/planning-agent.md`) |
 | `issue-template.md` | The planning agent, writing issues | Read from this repo; the planning agent reads it through its read-only connector |

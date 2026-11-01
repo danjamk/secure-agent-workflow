@@ -37,6 +37,8 @@ credentials:
 
 The manifest uses only this flat shape, so the broker reads it with a few lines of standard-library Python, as the gate does for `tier-map.yml`.
 
+**Names** follow `standards/credentials.md`. A credential is `<system>-<role>-<kind>`, and its token in the provider's dashboard is `<repo>-<target>-<name>`, so a dashboard token maps to its parameter path with no lookup table. The validator rejects names outside the pattern, and `broker.sh setup`, `set` and `status` print the dashboard name.
+
 **Exposure is set by the parameter's path.** Parameters live at `/<repo>/<target>/<exposure>/<name>`. Each role reads by path prefix, so a new credential needs no IAM change:
 
 | Role | Reads |

@@ -37,9 +37,10 @@ Two things a newcomer gets wrong:
 | `.github/workflows/` | The reusable gate workflows consumers call, pinned by SHA |
 | `standards/tier-map.yml` | Default tier map; consumers get a copy from bootstrap |
 | `standards/planning-agent.md` | Planning agent instructions; the cloud environment's setup script fetches them |
+| `standards/credentials.md` | Credential naming: manifest names, dashboard names, parameter paths. Applies here and in every consumer project |
 | `standards/` (other files) | Build agent instructions, issue, ADR and wave plan templates, wave planning rules, and the operator's `/dispatch` skill. `standards/README.md` says who uses each and how it reaches them |
 | `deploy/broker/aws/` | Broker CloudFormation templates and `broker.sh` (run by a human with `AWS_PROFILE`), plus testbed workflows that check every role's allows and denies |
-| `deploy/credentials/` | `credentials.py` (`broker.sh set` and `status`), one checker per system in `checks/`, and the example `infra/credentials.yml`. Tests: `python3 -m unittest discover -s deploy/credentials` |
+| `deploy/credentials/` | `credentials.py` (`broker.sh setup`, `set` and `status`), one checker per system in `checks/`, and the example `infra/credentials.yml`. Tests: `python3 -m unittest discover -s deploy/credentials` |
 
 `orchestrator/` and `redteam/` do not exist yet.
 
@@ -56,6 +57,10 @@ Two things a newcomer gets wrong:
   deploys staging, both to the dev target. Production deploys to the prod target,
   only from the `production` branch through a release PR (spec 0001, Branches and
   environments).
+- **Credential names** follow `standards/credentials.md`: `<system>-<role>-<kind>`,
+  and `<repo>-<target>-<name>` in the provider's dashboard. Use them when helping
+  create or find a token. Never ask for a credential's value in a conversation;
+  point to `broker.sh setup`.
 - **Account terms.** Use these names, not "tooling account" or "dev account":
 
   | Term | What it is | Holds |

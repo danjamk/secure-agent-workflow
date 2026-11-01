@@ -29,7 +29,7 @@ credentials:
     purpose: "Deploy # not a comment"
     check: workers kv
     rotate_days: 90
-  - name: stripe-key
+  - name: stripe-secret-key
     system: stripe
     target: prod
     exposure: prod
@@ -84,7 +84,7 @@ class Manifest(unittest.TestCase):
         self.bad(GOOD.replace("exposure: prod", "exposure: staging"), "must be prod")
 
     def test_rejects_reserved_name(self):
-        self.bad(GOOD.replace("stripe-key", "stripe-account-id"), "reserved")
+        self.bad(GOOD.replace("stripe-secret-key", "stripe-account-id"), "reserved")
 
     def test_rejects_duplicate(self):
         dup = GOOD + GOOD.split("credentials:\n", 1)[1]
@@ -95,6 +95,24 @@ class Manifest(unittest.TestCase):
 
     def test_rejects_field_given_twice(self):
         self.bad(GOOD.replace("    system: stripe\n", "    system: stripe\n    system: x\n"), "given twice")
+
+    def test_rejects_name_without_system_prefix(self):
+        self.bad(GOOD.replace("stripe-secret-key", "payments-secret-key"), "<system>-<role>-<kind>")
+
+    def test_rejects_name_without_kind(self):
+        self.bad(GOOD.replace("stripe-secret-key", "stripe-secret"), "<system>-<role>-<kind>")
+
+    def test_rejects_name_without_role(self):
+        self.bad(GOOD.replace("stripe-secret-key", "stripe-key"), "<system>-<role>-<kind>")
+
+    def test_dashboard_name(self):
+        e = entry(name="cloudflare-deploy-token")
+        self.assertEqual(c.dashboard_name("agent-testbed", e), "agent-testbed-dev-cloudflare-deploy-token")
+
+    def test_status_lines_carry_dashboard_name(self):
+        out = c.evaluate(entry(name="cloudflare-deploy-token"), None, None, {}, None, TODAY, "danjamk/app")
+        self.assertIn("cloudflare-deploy-token [app-dev-cloudflare-deploy-token]: missing", out[0][1])
+        self.assertIn("broker.sh setup danjamk/app", out[0][1])
 
     def test_paths(self):
         e = entry(name="cloudflare-infra-token", exposure="staging")

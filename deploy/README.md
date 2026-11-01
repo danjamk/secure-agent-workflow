@@ -51,20 +51,25 @@ Every credential a consumer repo needs is declared in the repo, checked before i
 | Checkers | `credentials/checks/<system>`, one executable per system |
 
 ```bash
+AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh setup <owner>/<repo>
 AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh set <owner>/<repo> <name> --dry-run
 AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh set <owner>/<repo> <name>
 AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh status <owner>/<repo>
 ```
 
-**`set`** reads the entry from the manifest on the default branch and prints its purpose and the permissions to grant. It then prompts for the value without echoing it and runs the system's checker. It stores the value only if every check passes. A value piped on stdin is read instead of prompting.
+Names follow `standards/credentials.md`: `<system>-<role>-<kind>` in the manifest, and `<repo>-<target>-<name>` for the token in the provider's dashboard.
+
+**`setup`** is the usual way in. It lists every declared credential and skips the ones stored and passing. For each missing or failing one, it prints the account to create it in, the dashboard name, the permissions and the parameter path. Then it prompts for the value, checks it and stores it, the same as `set`. Enter on an empty prompt skips one. It ends with `status`. It needs a terminal.
+
+**`set`** stores one credential. It reads the entry from the manifest on the default branch and prints its purpose and the permissions to grant. It then prompts for the value without echoing it and runs the system's checker. It stores the value only if every check passes. A value piped on stdin is read instead of prompting.
 
 - The checker reports which account the credential belongs to. The first credential for a system and target records it as `<system>-account-id`, after you confirm the account's name. Later credentials must match it.
 - A credential from your factory account is refused. The factory account is any `<SYSTEM>_ACCOUNT_ID`, such as `CLOUDFLARE_ACCOUNT_ID`, in this repo's `.env.local` or the environment.
-- Tags on the parameter record `saw:set-at`, `saw:set-by`, `saw:checked-at`, `saw:expires` and `saw:checker`.
+- Tags on the parameter record `saw:set-at`, `saw:set-by`, `saw:checked-at`, `saw:expires`, `saw:checker` and `saw:dashboard-name`.
 - A system with no checker can be stored after you type `yes`. `status` reports it as unchecked.
 - `--dry-run` runs every check and stores nothing. `--manifest FILE` reads a local manifest instead of the default branch.
 
-**`status`** prints one line per check, at PASS, WARN or FAIL, and exits 1 on any FAIL:
+**`status`** prints one line per check, naming each credential and its dashboard token, at PASS, WARN or FAIL, and exits 1 on any FAIL:
 
 - the broker: both stacks, each role's trust subject, `AWS_ROLE_ARN` in each environment;
 - each declared credential: missing, placeholder, check failing, wrong account, expired (FAIL); expiring within 14 days, older than `rotate_days`, no checker (WARN);
@@ -82,9 +87,9 @@ AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh status <owner>/<repo>
 
 ### Cloudflare tokens
 
-Create each one in the dev target's Cloudflare account, under My Profile > API Tokens > Create Custom Token. Under Account Resources, choose that account only. Add no zone permissions.
+Create each one in the dev target's Cloudflare account, under My Profile > API Tokens > Create Custom Token, named `<repo>-dev-<credential>`, such as `agent-testbed-dev-cloudflare-deploy-token`. Under Account Resources, choose that account only. Add no zone permissions. `broker.sh setup` prints all of this for each token.
 
-| Token | Exposure | Permissions | `check` |
+| Credential | Exposure | Permissions | `check` |
 | --- | --- | --- | --- |
 | `cloudflare-deploy-token` | preview | Account: Workers Scripts Edit, Account Settings Read | `workers` |
 | `cloudflare-read-token` | preview | Account: Workers Scripts Read, Workers KV Storage Read, D1 Read, Account Settings Read. Add R2 and Queues Read if the app uses them | `workers kv d1` |
@@ -94,14 +99,14 @@ The checker confirms each token is active and reaches exactly one account. It co
 
 ### Adding a system
 
-1. Add the entries to the consumer's `infra/credentials.yml`.
+1. Add the entries to the consumer's `infra/credentials.yml`, named `<system>-<role>-<kind>`.
 2. If the system has an API that can confirm a key, add `credentials/checks/<system>`. The contract:
    - It receives the manifest's `check` words as arguments and reads the secret on stdin.
    - It writes `PASS`, `FAIL` or `INFO` lines, plus optional `EXPIRES <YYYY-MM-DD>` and `IDENTITY <id> <label>`.
    - It exits non-zero on any FAIL and never prints the secret.
 
    The tool discards a checker's output if the secret appears in it. `checks/cloudflare` is the example to copy.
-3. Store each value with `broker.sh set`.
+3. Store the values with `broker.sh setup`.
 
 ### Tests
 

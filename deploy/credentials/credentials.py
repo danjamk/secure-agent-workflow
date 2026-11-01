@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Operator credentials: store a checked value, and report on all of them (ADR-007).
 
+    AWS_PROFILE=<profile> python3 deploy/credentials/credentials.py setup <owner>/<repo> [--dry-run] [--manifest FILE]
     AWS_PROFILE=<profile> python3 deploy/credentials/credentials.py set <owner>/<repo> <name> [--dry-run] [--manifest FILE]
     AWS_PROFILE=<profile> python3 deploy/credentials/credentials.py status <owner>/<repo> [--manifest FILE]
 
-Usually run through `deploy/broker/aws/broker.sh set|status`.
+Usually run through `deploy/broker/aws/broker.sh setup|set|status`. Names follow
+standards/credentials.md: each credential's dashboard name is
+<repo>-<target>-<credential name>, and the tools print it.
 
+setup   Walks through every declared credential that is missing, a placeholder
+        or failing its check. For each one it prints where to create it, the
+        name to give it, the permissions and the parameter path, then runs set's
+        prompt and checks. Enter on an empty prompt skips one. Ends with status.
 set     Reads the credential's entry from infra/credentials.yml on the repo's
         default branch, prompts for the value without echoing it, runs the
         system's checker, and stores the value in Parameter Store only if every
@@ -112,6 +119,9 @@ def validate(entries: list) -> None:
             raise ValueError(f"{label}: names ending in -account-id are reserved for checker identities")
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", e["system"]):
             raise ValueError(f"{label}: system must be lowercase letters, digits and hyphens")
+        if not re.fullmatch(rf"{re.escape(e['system'])}-[a-z0-9-]+-(token|key|secret)", e["name"]):
+            raise ValueError(f"{label}: name must be <system>-<role>-<kind>, such as {e['system']}-deploy-token; "
+                             "kind is token, key or secret (standards/credentials.md)")
         if e["target"] not in EXPOSURES:
             raise ValueError(f"{label}: target must be dev or prod")
         if e["exposure"] not in EXPOSURES[e["target"]]:
@@ -130,6 +140,11 @@ def validate(entries: list) -> None:
 
 def param_path(repo_name: str, e: dict) -> str:
     return f"/{repo_name}/{e['target']}/{e['exposure']}/{e['name']}"
+
+
+def dashboard_name(repo_name: str, e: dict) -> str:
+    """The name to give the token in the provider's dashboard (standards/credentials.md)."""
+    return f"{repo_name}-{e['target']}-{e['name']}"
 
 
 def identity_path(repo_name: str, system: str, target: str) -> str:
@@ -172,10 +187,11 @@ def run_checker(system: str, words: list, value: str):
 # --- Status of one credential ---
 
 def evaluate(e: dict, value, check, tags: dict, stored_identity, today: dt.date, repo="<repo>") -> list:
-    """Return [(level, message)] for one declared credential. Pure, for tests."""
-    name = e["name"]
+    """Return [(level, message)] for one declared credential. Pure, for tests.
+    Each message starts with the credential name and its dashboard name."""
+    name = f"{e['name']} [{dashboard_name(repo.split('/')[-1], e)}]"
     if value is None:
-        return [("FAIL", f"{name}: missing. Run: broker.sh set {repo} {name}")]
+        return [("FAIL", f"{name}: missing. Run: broker.sh setup {repo}")]
     if value == PLACEHOLDER:
         return [("FAIL", f"{name}: still a placeholder")]
     out = []
@@ -304,9 +320,10 @@ def confirm(prompt: str) -> bool:
         return False
 
 
-def read_secret(name: str) -> str:
+def read_secret(name: str, allow_skip: bool = False) -> str:
     if sys.stdin.isatty():
-        return getpass.getpass(f"Value for {name} (not echoed): ").strip()
+        hint = "not echoed; Enter to skip" if allow_skip else "not echoed"
+        return getpass.getpass(f"Paste {name} ({hint}): ").strip()
     return sys.stdin.read().strip()
 
 
@@ -316,32 +333,39 @@ def now_iso() -> str:
 
 # --- Commands ---
 
-def cmd_set(repo: str, name: str, dry_run: bool, manifest_file) -> int:
-    repo_name = repo.split("/", 1)[1]
-    entries = load_manifest(repo, manifest_file)
-    e = next((x for x in entries if x["name"] == name), None)
-    if e is None:
-        print(f"{name} is not declared in the manifest. Declared: {', '.join(x['name'] for x in entries)}")
-        return 1
-    path = param_path(repo_name, e)
-    print(f"Credential: {name} -> {path}")
-    print(f"  Purpose: {e['purpose']}")
+def describe(repo_name: str, e: dict) -> None:
+    """Print what to create and where it goes (standards/credentials.md)."""
+    print(f"  Create in:  your {e['target']} target's {e['system']} account")
+    print(f"  Name it:    {dashboard_name(repo_name, e)}")
     if e.get("permissions"):
-        print(f"  Create it with: {e['permissions']}")
+        print(f"  Grant:      {e['permissions']}")
+    print(f"  Purpose:    {e['purpose']}")
+    print(f"  Stored at:  {param_path(repo_name, e)}")
     if e["exposure"] == "preview":
-        print("  Exposure preview: code in any PR can read it. Use a test-mode or read-only credential.")
+        print("  Exposure:   preview. Code in any PR can read it, so use a test-mode or read-only credential.")
 
-    value = read_secret(name)
+
+STORED, FAILED, SKIPPED = 0, 1, 2
+
+
+def store(repo: str, e: dict, dry_run: bool, allow_skip: bool = False) -> int:
+    """Prompt for one credential's value, check it, and store it. Returns STORED, FAILED or SKIPPED."""
+    repo_name = repo.split("/", 1)[1]
+    path = param_path(repo_name, e)
+    value = read_secret(e["name"], allow_skip)
+    if not value and allow_skip:
+        print("Skipped.")
+        return SKIPPED
     if not value or value == PLACEHOLDER:
         print("FAIL  empty or placeholder value; nothing stored")
-        return 1
+        return FAILED
 
     check = run_checker(e["system"], e["check"], value)
     if check is None:
         print(f"WARN  no checker for {e['system']}; the value can't be checked")
         if not dry_run and not confirm("Store it unchecked? Type yes: "):
             print("Nothing stored.")
-            return 1
+            return FAILED
     else:
         for kind, text in check["lines"]:
             print(f"{kind:<5} {text}")
@@ -349,7 +373,7 @@ def cmd_set(repo: str, name: str, dry_run: bool, manifest_file) -> int:
             print(f"INFO  expires {check['expires']}")
         if check["fails"]:
             print("Nothing stored.")
-            return 1
+            return FAILED
 
     ident = check["identity"] if check else None
     id_path = identity_path(repo_name, e["system"], e["target"])
@@ -359,12 +383,12 @@ def cmd_set(repo: str, name: str, dry_run: bool, manifest_file) -> int:
         factory_key = f"{e['system'].upper().replace('-', '_')}_ACCOUNT_ID"
         if factory_identities().get(factory_key) == ident_id:
             print(f"FAIL  {label} is your factory account ({factory_key}); target credentials never belong to it")
-            return 1
+            return FAILED
         stored = get_param(id_path, decrypt=False)
         if stored and stored != PLACEHOLDER:
             if stored != ident_id:
                 print(f"FAIL  {label} is not the {e['system']} {e['target']} target already recorded at {id_path}")
-                return 1
+                return FAILED
             print(f"PASS  same {e['system']} account as the credentials already stored")
         else:
             record_identity = True
@@ -372,16 +396,17 @@ def cmd_set(repo: str, name: str, dry_run: bool, manifest_file) -> int:
                 print(f"INFO  first {e['system']} credential for this repo: you'd be asked to confirm {label}")
             elif not confirm(f"Is {label} ({ident_id}) your {e['system']} {e['target']} target for {repo}? Type yes: "):
                 print("Nothing stored.")
-                return 1
+                return FAILED
 
     if dry_run:
         print(f"Dry run: would store {path} (SecureString)"
               + (f" and record {id_path}" if record_identity else "") + ".")
-        return 0
+        return STORED
 
     put_param(path, value, secure=True)
     caller = aws("sts", "get-caller-identity")["Arn"]
-    tags = {"set-at": now_iso(), "set-by": caller, "checker": e["system"] if check else "none"}
+    tags = {"set-at": now_iso(), "set-by": caller, "checker": e["system"] if check else "none",
+            "dashboard-name": dashboard_name(repo_name, e)}
     if check:
         tags["checked-at"] = tags["set-at"]
         tags["expires"] = str(check["expires"]) if check["expires"] else "none"
@@ -391,7 +416,61 @@ def cmd_set(repo: str, name: str, dry_run: bool, manifest_file) -> int:
         put_param(id_path, ident[0], secure=False)
         tag_param(id_path, {"set-at": tags["set-at"], "set-by": caller})
         print(f"Recorded {id_path}.")
-    return 0
+    return STORED
+
+
+def cmd_set(repo: str, name: str, dry_run: bool, manifest_file) -> int:
+    repo_name = repo.split("/", 1)[1]
+    entries = load_manifest(repo, manifest_file)
+    e = next((x for x in entries if x["name"] == name), None)
+    if e is None:
+        print(f"{name} is not declared in the manifest. Declared: {', '.join(x['name'] for x in entries)}")
+        return 1
+    print(f"\n{name}")
+    describe(repo_name, e)
+    return 0 if store(repo, e, dry_run) == STORED else 1
+
+
+def cmd_setup(repo: str, dry_run: bool, manifest_file) -> int:
+    """Walk through every declared credential that is missing or failing, then run status."""
+    if not sys.stdin.isatty():
+        print("setup needs a terminal. To pipe a value, use: broker.sh set <owner>/<repo> <name>")
+        return 1
+    repo_name = repo.split("/", 1)[1]
+    entries = load_manifest(repo, manifest_file)
+    todo = []
+    for e in entries:
+        label = f"{e['name']} [{dashboard_name(repo_name, e)}]"
+        value = get_param(param_path(repo_name, e), decrypt=True)
+        if value is None:
+            todo.append((e, "missing"))
+        elif value == PLACEHOLDER:
+            todo.append((e, "placeholder"))
+        else:
+            check = run_checker(e["system"], e["check"], value)
+            if check is None:
+                print(f"WARN  {label}: stored; no checker, so left as is")
+            elif check["fails"]:
+                todo.append((e, f"check fails: {check['fails'][0]}"))
+            else:
+                print(f"PASS  {label}: stored and passing")
+    if not todo:
+        print("Every declared credential is stored and passing.")
+    else:
+        print(f"\n{len(todo)} to set up. For each: create it in the dashboard with the name shown, "
+              "then paste it here. Press Enter on an empty prompt to skip one.")
+    counts = {STORED: 0, FAILED: 0, SKIPPED: 0}
+    for i, (e, reason) in enumerate(todo, 1):
+        print(f"\n[{i}/{len(todo)}] {e['name']} ({reason})")
+        describe(repo_name, e)
+        counts[store(repo, e, dry_run, allow_skip=True)] += 1
+    if todo:
+        print(f"\n{counts[STORED]} stored, {counts[SKIPPED]} skipped, {counts[FAILED]} failed. "
+              "Run setup again to pick up the rest.")
+    if dry_run:
+        return 0
+    print()
+    return cmd_status(repo, manifest_file)
 
 
 def broker_checks(repo: str, repo_name: str) -> list:
@@ -478,7 +557,8 @@ def cmd_status(repo: str, manifest_file) -> int:
 
 
 def main(argv: list) -> int:
-    usage = ("usage: credentials.py set <owner>/<repo> <name> [--dry-run] [--manifest FILE]\n"
+    usage = ("usage: credentials.py setup <owner>/<repo> [--dry-run] [--manifest FILE]\n"
+             "       credentials.py set <owner>/<repo> <name> [--dry-run] [--manifest FILE]\n"
              "       credentials.py status <owner>/<repo> [--manifest FILE]")
     args, dry_run, manifest = [], False, None
     it = iter(argv)
@@ -492,7 +572,7 @@ def main(argv: list) -> int:
             return 1
         else:
             args.append(arg)
-    if not args or args[0] not in ("set", "status") or len(args) < 2 \
+    if not args or args[0] not in ("setup", "set", "status") or len(args) < 2 \
             or not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+", args[1]):
         print(usage)
         return 1
@@ -506,6 +586,8 @@ def main(argv: list) -> int:
                 print(usage)
                 return 1
             return cmd_set(args[1], args[2], dry_run, manifest)
+        if args[0] == "setup":
+            return cmd_setup(args[1], dry_run, manifest)
         return cmd_status(args[1], manifest)
     except (RuntimeError, ValueError) as err:
         print(f"FAIL  {err}")
