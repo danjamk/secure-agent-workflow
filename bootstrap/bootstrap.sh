@@ -25,7 +25,7 @@
 #             from the production branch; the old dev environment is retired
 #   labels    agent:ready, agent:stop, agent:blocked, credentials
 #   files     files/ templates (CODEOWNERS, the gate callers and the daily
-#             credential check caller, pinned to a
+#             credential check, pinned to a
 #             commit of GATE_REPO), written through one PR from the
 #             bootstrap/managed-files branch, because the default branch needs
 #             a PR. A file without the bootstrap marker is never overwritten.
@@ -474,9 +474,9 @@ files() {
     managed_file .github/CODEOWNERS CODEOWNERS
     managed_file .github/workflows/gate.yml gate.yml
     managed_file .github/workflows/tier-check.yml tier-check.yml
-    # A pin older than the credential check has no workflow to call; the
-    # caller waits for --update-gate rather than failing every day.
-    if $GH api "repos/$GATE_REPO/contents/.github/workflows/credential-check.yml?ref=$GATE_SHA" \
+    # A pin older than the credential check has no script to run; the
+    # workflow waits for --update-gate rather than failing every day.
+    if $GH api "repos/$GATE_REPO/contents/deploy/credentials/daily-check.sh?ref=$GATE_SHA" \
             --silent >/dev/null 2>&1; then
         managed_file .github/workflows/credential-check.yml credential-check.yml
     else

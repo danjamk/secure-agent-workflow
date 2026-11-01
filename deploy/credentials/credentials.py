@@ -25,7 +25,7 @@ status  One line per check: the broker stacks, the roles' trust subjects, the
         environment secrets, then every declared credential (missing,
         placeholder, failing, expiring, overdue for rotation, unchecked) and
         every stored parameter the manifest doesn't declare. Exits 1 on any FAIL.
-check   The daily job's status (#55), run by .github/workflows/credential-check.yml
+check   The daily job's status (#55), run by daily-check.sh
         as the staging role: the dev target's credentials only, no broker
         checks. Masks every value it reads. --issue opens, updates or closes one
         issue labeled `credentials`; it opens one on any FAIL or any credential

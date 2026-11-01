@@ -36,7 +36,7 @@ Two things a newcomer gets wrong:
 | `bootstrap/` | `bootstrap.sh`: applies repo controls to one repo, idempotent, verified by read-back |
 | `bootstrap/github-app/` | Agent GitHub App manifest, creation and token scripts, verification |
 | `gate/` | Merge gate scripts and tests. `python3 -m unittest discover -s gate` |
-| `.github/workflows/` | The reusable workflows consumers call, pinned by SHA: the gate and the daily credential check |
+| `.github/workflows/` | The gate's reusable workflows, which consumers call pinned by SHA |
 | `standards/tier-map.yml` | Default tier map; consumers get a copy from bootstrap |
 | `standards/planning-agent.md` | Planning agent instructions; the cloud environment's setup script fetches them |
 | `standards/credentials.md` | Credential naming: manifest names, dashboard names, parameter paths. Applies here and in every consumer project |

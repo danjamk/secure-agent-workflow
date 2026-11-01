@@ -39,7 +39,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | | `credentials` | The daily credential check's one issue (`deploy/README.md`, Daily check) |
 | Files | `.github/CODEOWNERS`: tier 3 paths to the repo owner | Routes tier 3 review requests. The tier check is the control |
 | | `.github/workflows/gate.yml` and `tier-check.yml`: the gate callers, pinned to a commit of `GATE_REPO` | The merge gate (`gate/README.md`). Two files because the tier check re-runs on every review and the scanners don't need to |
-| | `.github/workflows/credential-check.yml`: the daily credential check caller, same pin | Opens an issue when a stored credential fails, expires or is due for rotation (`deploy/README.md`). Skipped with a note when the pin predates it; `--update-gate` adds it |
+| | `.github/workflows/credential-check.yml`: the daily credential check, running `deploy/credentials/daily-check.sh` from the same pin | Opens an issue when a stored credential fails, expires or is due for rotation (`deploy/README.md`). Skipped with a note when the pin predates it; `--update-gate` adds it |
 | | `standards/tier-map.yml`, copied once if the repo has none | The repo's own tier map. No marker: the repo owns it and bootstrap never updates it |
 
 The gate's checks are always required. `--checks` sets the extra checks on top of them. Without it, bootstrap keeps the extras the ruleset already requires; `--checks ""` removes them. No flag drops the gate.
