@@ -30,8 +30,8 @@ Don't commit it into a consuming repo's `.claude/skills/`: cloud sessions load a
 
 - **The issue template's shape is what the coordinator and the build agent expect.** "Blocked by" relationships and one `area:*` label feed the coordinator's queue (ADR-005). The acceptance commands are what the build agent runs before marking a PR ready.
 - **The agent instructions name the labels, branch pattern and PR format** that the orchestrator, the outbound handler and the gate rely on: `agent/*` branches, `agent:blocked`, the tier line at the top of the PR, and the `## Run notes` section `/retro` reads.
-- **The `run:<class>-<effort>` labels** are what the coordinator snapshots and the orchestrator maps to a model (ADR-007).
-- **The issue's `Data change` line** is what the PR audit checks against the diff and `/release-prep` reads (ADR-008).
+- **The `run:<class>-<effort>` labels** are what the coordinator snapshots and the orchestrator maps to a model (ADR-008).
+- **The issue's `Data change` line** is what the PR audit checks against the diff and `/release-prep` reads (ADR-009).
 - Changing any of those names means changing those components too.
 
 ## Other options for a fork

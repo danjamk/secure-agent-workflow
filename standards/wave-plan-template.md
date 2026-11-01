@@ -33,7 +33,7 @@ Milestone: `Wave 1: <goal>`
 
 **Done when:** <what the operator can see or test on staging after the last PR merges.>
 
-**Data changes:** <none, or the steps in this wave and the release each must ship in. Contract steps belong in a wave after a release (ADR-008).>
+**Data changes:** <none, or the steps in this wave and the release each must ship in. Contract steps belong in a wave after a release (ADR-009).>
 
 ### W1-1: <imperative title>
 

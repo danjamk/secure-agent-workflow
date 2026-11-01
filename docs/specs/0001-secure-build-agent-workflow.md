@@ -114,7 +114,7 @@ Check order:
 2. Scanners: CodeQL, secret scanning and dependency review on public repos; Semgrep CE, gitleaks, osv-scanner and trivy on private repos, where GitHub's versions are paid.
 3. zizmor and actionlint when `.github/**` changes.
 4. Tier check: computes the tier from changed paths and fails until the required approval exists.
-5. PR audit, spec conformance: checks the diff against the issue, plan and ADRs, including the issue's declared data-change step (ADR-008).
+5. PR audit, spec conformance: checks the diff against the issue, plan and ADRs, including the issue's declared data-change step (ADR-009).
 6. PR audit, security: a reviewer on a different model family than the builder.
 
 ### PR audit
@@ -143,7 +143,7 @@ Designed now, built after the dev path works.
 
 ### Rollback first
 
-- **When a release fails verification or causes an incident, roll back** to the recorded target (ADR-008). It takes minutes and needs no new code or review.
+- **When a release fails verification or causes an incident, roll back** to the recorded target (ADR-009). It takes minutes and needs no new code or review.
 - **Forward fix instead** only when the release is one-way, or when Dan judges that rolling back hurts users more than the defect. A forward fix goes through `main` and an expedited release PR. There is no hotfix branch.
 - **Every release is compatible with the one before it.** The previous release's code must run against the data the new release writes, which also makes gradual deployments safe. Schema changes use expand/contract (`standards/data-change-patterns.md`): a release may add, and removals ship in a later release.
 - **Data changes are designed at plan time.** Every issue that touches persisted data declares its step and direction. Contract steps go in a wave after a release. A release that can't be two-way is marked one-way and needs a restore point, a forward-fix plan, and Dan's acknowledgment in the release PR.
@@ -188,7 +188,7 @@ Sandbox cost is bounded by the same limits: a sandbox runs only while its run is
 
 ### Run profiles
 
-Model and effort are chosen per issue (ADR-007). The plan gives each issue a `run:<class>-<effort>` label: class `small`, `standard` or `frontier`, effort `low`, `medium` or `high`. The coordinator snapshots it at dispatch. The orchestrator maps the class to a concrete model and sets the token budget and wall-clock limit from `RUN_PROFILES`, a Worker variable Dan sets. A failed run is retried once at the next class up, if the daily budget allows. The PR audit's reviewer profile follows the PR's tier.
+Model and effort are chosen per issue (ADR-008). The plan gives each issue a `run:<class>-<effort>` label: class `small`, `standard` or `frontier`, effort `low`, `medium` or `high`. The coordinator snapshots it at dispatch. The orchestrator maps the class to a concrete model and sets the token budget and wall-clock limit from `RUN_PROFILES`, a Worker variable Dan sets. A failed run is retried once at the next class up, if the daily budget allows. The PR audit's reviewer profile follows the PR's tier.
 
 ### Run metrics
 
@@ -265,7 +265,7 @@ Public repos only: fork PRs require approval before workflows run, and AI review
 Deploys use one trust anchor, GitHub OIDC, and a broker issues each platform's credentials (ADR-002). There are two stores, dev and prod, each behind its own role.
 
 1. The deploy job requests a GitHub OIDC token whose subject names its environment, such as `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging`. The numeric IDs are GitHub's immutable subject format (ADR-002).
-2. The preview role trusts only `environment:preview`, the staging role only `environment:staging`, and the prod role only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store. Only the staging and prod roles read the token that changes infrastructure (ADR-006).
+2. The preview role trusts only `environment:preview`, the staging role only `environment:staging`, and the prod role only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store. Only the staging and prod roles read the token that changes infrastructure (ADR-006). Each repo declares the credentials it needs in `infra/credentials.yml`. The operator stores each one with `broker.sh set`, which checks it first. `broker.sh status` and a daily check report anything missing, failing or expiring (ADR-007).
 3. The role reads that environment's Cloudflare token and third-party keys. Later, the job mints a short-lived Cloudflare token per deploy.
 4. The broker sits behind one small interface in `deploy/`, so Vault, OpenBao or another cloud's store can replace AWS.
 
@@ -330,13 +330,14 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [ADR-004](../adr/ADR-004-cloudflare-sandbox.md): Build agents run in the Cloudflare Sandbox SDK.
 - [ADR-005](../adr/ADR-005-coordinator.md): One Durable Object coordinates runs, with GitHub as the source of truth (proposed).
 - [ADR-006](../adr/ADR-006-infrastructure-as-code.md): Project infrastructure is OpenTofu applied by the pipeline, and Workers stay in wrangler (proposed).
-- [ADR-007](../adr/ADR-007-model-and-effort-routing.md): Each issue carries a run profile, chosen by the plan and capped by the orchestrator (proposed).
-- [ADR-008](../adr/ADR-008-rollback-first-and-data-compatibility.md): Releases roll back first, so every data change stays compatible with the previous release (proposed).
+- [ADR-007](../adr/ADR-007-operator-credentials.md): Every credential is declared in the repo, checked before it is stored, and reported on (proposed).
+- [ADR-008](../adr/ADR-008-model-and-effort-routing.md): Each issue carries a run profile, chosen by the plan and capped by the orchestrator (proposed).
+- [ADR-009](../adr/ADR-009-rollback-first-and-data-compatibility.md): Releases roll back first, so every data change stays compatible with the previous release (proposed).
 
 ## Open decisions
 
 - [ ] Which agent CLIs to support first (suggest Claude Code and Codex).
-- [ ] Builder and reviewer model families: the concrete models behind each run profile class (ADR-007).
+- [ ] Builder and reviewer model families: the concrete models behind each run profile class (ADR-008).
 - [ ] AWS account to host the OIDC broker (one account for v1; see Credentials).
 - [ ] Planning agent identity (build order step 4).
 - [x] ADR-005: coordinator design (queue, concurrency cap, dependency and touch-area rules).

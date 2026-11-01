@@ -35,7 +35,7 @@ The operator's work per wave is the number of tier 2 and 3 PRs, not the number o
 
 ## Choosing a run profile
 
-Give each issue the smallest profile you expect to pass on the first run (ADR-007). A miss costs more than it saves: a failed run, an escalation, and often an approver send-back. When unsure between two, pick the larger.
+Give each issue the smallest profile you expect to pass on the first run (ADR-008). A miss costs more than it saves: a failed run, an escalation, and often an approver send-back. When unsure between two, pick the larger.
 
 | Profile | Use for |
 | --- | --- |
@@ -50,7 +50,7 @@ This table is a starting point. `/retro` proposes changes from the run metrics; 
 
 ## Data changes
 
-Design them first, then split them (`data-change-patterns.md`, ADR-008).
+Design them first, then split them (`data-change-patterns.md`, ADR-009).
 
 - **Every issue that touches persisted data declares its step** (`expand`, `migrate`, `switch`, `contract`) and direction in its **Data change** line.
 - **Expand and migrate go in foundation issues**, since migrations are tier 2 anyway.

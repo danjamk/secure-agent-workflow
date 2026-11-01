@@ -30,7 +30,7 @@ Infrastructure changes: <OpenTofu plan summary or "None">
 | --- | --- | --- | --- |
 | #<n> | `expand` | Two-way | <table.column added, nullable> |
 
-<"None" if no PR changes persisted data. A `contract` step or a Durable Object class deletion makes the release one-way (ADR-008).>
+<"None" if no PR changes persisted data. A `contract` step or a Durable Object class deletion makes the release one-way (ADR-009).>
 
 ## Risks
 

@@ -24,7 +24,7 @@ For each PR that changed persisted data, read its issue's **Data change** line a
 - Migrations under `**/migrations/**`, Durable Object migrations in `wrangler.*`, and code that changes a stored shape (KV values, JSON columns, DO storage, message formats).
 - A diff that removes or renames what the previous release reads is a `contract` step, whatever the issue said. Flag the mismatch.
 
-The release is **one-way** if any change is one-way (ADR-008). Say so on the first line of the body, with the reason.
+The release is **one-way** if any change is one-way (ADR-009). Say so on the first line of the body, with the reason.
 
 ## Step 3: Risks and mitigations
 

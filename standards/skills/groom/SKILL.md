@@ -34,7 +34,7 @@ Apply `standards/definition-of-ready.md` to every item. Put it in exactly one gr
 
 For a new requirement too big for one issue, don't force it: put it under **Needs operator** with "needs a spec" or "needs a plan", and offer to write it.
 
-For a bug, add the bug fields from the definition of ready. A production bug that is hurting users right now is an incident: tell the operator to roll back first (ADR-008), then groom the bug.
+For a bug, add the bug fields from the definition of ready. A production bug that is hurting users right now is an incident: tell the operator to roll back first (ADR-009), then groom the bug.
 
 ## Step 3: Review readiness with a second view
 

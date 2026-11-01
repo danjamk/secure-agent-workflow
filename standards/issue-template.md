@@ -11,7 +11,7 @@ Before saving:
 - Add exactly one area:<name> label for the part of the codebase it changes.
   Two issues with the same area never run at the same time.
 - Add exactly one run:<class>-<effort> label, from the default table in
-  wave-planning.md (ADR-007).
+  wave-planning.md (ADR-008).
 - Check it against definition-of-ready.md.
 - Size it for one reviewable PR. If the tasks reach into a second area, split
   the issue.

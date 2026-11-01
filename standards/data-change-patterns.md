@@ -1,6 +1,6 @@
 # Data change patterns
 
-How to change schemas and stored data so every release can be rolled back (ADR-008). The planning agent uses this when it designs a feature and writes the plan. Build agents follow it when an issue changes persisted data. `/release-prep` reads the steps it declares.
+How to change schemas and stored data so every release can be rolled back (ADR-009). The planning agent uses this when it designs a feature and writes the plan. Build agents follow it when an issue changes persisted data. `/release-prep` reads the steps it declares.
 
 The rule: **the previous release's code must run correctly against the data the new release writes.** Everything below is a way to keep that true.
 
@@ -11,7 +11,7 @@ Rollback risk is set when the feature is designed, not when it ships. When a spe
 1. **What does the old code read?** Every table, column, key, Durable Object field and message shape the current release reads must still be there, and still mean the same thing, after the new release.
 2. **Which steps does it need?** Pick from the steps below. Most changes need expand, then switch; a removal needs contract in a later release.
 3. **Which release does each step land in?** Write it in the plan. Contract steps go in a wave after a release.
-4. **Is anything one-way?** If yes, say why it can't be two-way, and plan the restore point and forward fix (ADR-008).
+4. **Is anything one-way?** If yes, say why it can't be two-way, and plan the restore point and forward fix (ADR-009).
 
 ## The steps
 
@@ -51,4 +51,4 @@ Each issue that changes persisted data declares one step in its **Data change** 
 
 ## When one-way can't be avoided
 
-Say so in the plan and in the issue's **Data change** line (`contract, one-way`). The release that carries it needs a restore point taken right before the migration, a forward-fix plan instead of a rollback plan, and the operator's acknowledgment in the release PR (ADR-008).
+Say so in the plan and in the issue's **Data change** line (`contract, one-way`). The release that carries it needs a restore point taken right before the migration, a forward-fix plan instead of a rollback plan, and the operator's acknowledgment in the release PR (ADR-009).

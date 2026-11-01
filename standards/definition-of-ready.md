@@ -9,7 +9,7 @@ Checking early is the point. A problem found at dispatch costs a plan PR; a prob
 `/dispatch` and the readiness review both run these.
 
 - [ ] Exactly one `area:*` label.
-- [ ] Exactly one `run:*` profile label (ADR-007).
+- [ ] Exactly one `run:*` profile label (ADR-008).
 - [ ] Every "blocked by" link points to an issue in this wave or one already closed as `completed`. None closed as `not_planned`.
 - [ ] An **Acceptance** section with at least one command that runs in the sandbox: no secrets, and no network beyond the package registries.
 - [ ] An expected tier with the paths that set it.
@@ -25,7 +25,7 @@ The planning agent answers each one. The readiness reviewer challenges them.
 - **Does it fit one run?** One touch area, one PR, about ten minutes to review. If the task list has more than six or seven items, split it.
 - **Are the references enough?** The agent reads only the issue, its references and the repo's instructions. Anything the operator knows but hasn't written down is missing.
 - **Is the profile right?** Compare it with the default table in `wave-planning.md`. A foundation issue on `small` is a likely escalation.
-- **Is the data change safe to roll back?** Two-way unless the plan says otherwise and puts the issue after a release (ADR-008).
+- **Is the data change safe to roll back?** Two-way unless the plan says otherwise and puts the issue after a release (ADR-009).
 - **What would the agent most likely get wrong?** If there's an obvious wrong turn, name it in Background.
 
 ## Bugs
@@ -37,4 +37,4 @@ A bug issue is ready when, in addition to the checks above, it has:
 - [ ] Where it was seen: preview, staging or production, and the build id from `/health`.
 - [ ] A failing test as the first task, so the fix is proven.
 
-A production bug that is hurting users is an incident, not backlog. Roll back first (ADR-008); the bug issue comes after.
+A production bug that is hurting users is an incident, not backlog. Roll back first (ADR-009); the bug issue comes after.

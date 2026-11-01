@@ -1,4 +1,4 @@
-# ADR-008: Releases roll back first, so every data change stays compatible with the previous release
+# ADR-009: Releases roll back first, so every data change stays compatible with the previous release
 
 Status: Proposed · Date: 2026-11-01
 

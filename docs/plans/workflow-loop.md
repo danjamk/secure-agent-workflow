@@ -1,6 +1,6 @@
 # Plan: Workflow loop
 
-Status: Draft · Date: 2026-11-01 · Spec: [0001](../specs/0001-secure-build-agent-workflow.md) (Backlog and readiness, Run profiles, Run metrics, Retrospectives, Releases) · ADRs: [007](../adr/ADR-007-model-and-effort-routing.md), [008](../adr/ADR-008-rollback-first-and-data-compatibility.md)
+Status: Draft · Date: 2026-11-01 · Spec: [0001](../specs/0001-secure-build-agent-workflow.md) (Backlog and readiness, Run profiles, Run metrics, Retrospectives, Releases) · ADRs: [007](../adr/ADR-008-model-and-effort-routing.md), [008](../adr/ADR-009-rollback-first-and-data-compatibility.md)
 
 ## Summary
 
@@ -49,7 +49,7 @@ Milestone: `Wave 1: Run profiles and run metrics`
 - **Data change:** none
 - **Blocked by:** nothing
 
-**Background.** ADR-007 puts a `run:<class>-<effort>` label on every issue. Bootstrap already creates the `agent:*` labels; the nine profile labels belong with them.
+**Background.** ADR-008 puts a `run:<class>-<effort>` label on every issue. Bootstrap already creates the `agent:*` labels; the nine profile labels belong with them.
 
 **Tasks**
 
@@ -65,7 +65,7 @@ make check
 
 - A dry run against a repo with no `run:*` labels lists all nine as to be created; a second dry run after applying lists none.
 
-**References:** ADR-007, `bootstrap/README.md`
+**References:** ADR-008, `bootstrap/README.md`
 
 ### W1-2: Snapshot the run profile at dispatch
 
@@ -75,7 +75,7 @@ make check
 - **Data change:** none beyond the queue entry #13 defines
 - **Blocked by:** #13
 
-**Background.** The coordinator snapshots an issue's blockers and area when the operator adds `agent:ready` (ADR-005). The run profile must be snapshotted the same way, so an agent editing its label later changes nothing (ADR-007).
+**Background.** The coordinator snapshots an issue's blockers and area when the operator adds `agent:ready` (ADR-005). The run profile must be snapshotted the same way, so an agent editing its label later changes nothing (ADR-008).
 
 **Tasks**
 
@@ -92,7 +92,7 @@ make check
 
 - A queue entry created from an issue labeled `run:frontier-high` keeps `frontier-high` after the label is changed to `run:small-low`.
 
-**References:** ADR-005 (Entering the queue), ADR-007
+**References:** ADR-005 (Entering the queue), ADR-008
 
 ### W1-3: Map run profiles to models and budgets, with one escalation
 
@@ -102,7 +102,7 @@ make check
 - **Data change:** none
 - **Blocked by:** W1-2, #9, #11
 
-**Background.** The orchestrator turns a profile into a concrete agent CLI, model, effort setting, token budget and wall-clock limit from `RUN_PROFILES`, a Worker variable the operator sets (ADR-007). A failed run gets one retry at the next class up.
+**Background.** The orchestrator turns a profile into a concrete agent CLI, model, effort setting, token budget and wall-clock limit from `RUN_PROFILES`, a Worker variable the operator sets (ADR-008). A failed run gets one retry at the next class up.
 
 **Tasks**
 
@@ -120,7 +120,7 @@ make check
 
 - A failing `small-medium` run is restarted once as `standard-medium`; a second failure marks the issue `agent:blocked` with the reason.
 
-**References:** ADR-007, ADR-005 (Daily spend budget), spec 0001 (Cost controls)
+**References:** ADR-008, ADR-005 (Daily spend budget), spec 0001 (Cost controls)
 
 ### W1-4: Record run metrics and a per-wave report
 
@@ -147,7 +147,7 @@ make check
 
 - The report for a milestone with one clean run and one escalated run shows a first-pass rate of 50% and counts both runs' cost against the escalated issue's merged PR.
 
-**References:** spec 0001 (Run metrics, Retrospectives), ADR-007, `standards/skills/retro/SKILL.md`
+**References:** spec 0001 (Run metrics, Retrospectives), ADR-008, `standards/skills/retro/SKILL.md`
 
 ## Wave 2: PR audit additions
 
@@ -196,7 +196,7 @@ python3 -m unittest discover -s gate
 - **Data change:** none
 - **Blocked by:** W2-1
 
-**Background.** ADR-008 depends on each issue's **Data change** line being true. The spec-conformance reviewer compares it with the diff.
+**Background.** ADR-009 depends on each issue's **Data change** line being true. The spec-conformance reviewer compares it with the diff.
 
 **Tasks**
 
@@ -213,7 +213,7 @@ python3 -m unittest discover -s gate
 
 - A fixture diff with `ALTER TABLE ... DROP COLUMN` under an `expand, two-way` issue fails the check.
 
-**References:** ADR-008, `standards/data-change-patterns.md`
+**References:** ADR-009, `standards/data-change-patterns.md`
 
 ### W2-3: Set the reviewer's profile by tier
 
@@ -223,7 +223,7 @@ python3 -m unittest discover -s gate
 - **Data change:** none
 - **Blocked by:** W2-2
 
-**Background.** ADR-007: tier 1 PRs get a `standard-low` reviewer, tier 2 and 3 and release PRs get `frontier-high`. The security reviewer is always a different family than the builder.
+**Background.** ADR-008: tier 1 PRs get a `standard-low` reviewer, tier 2 and 3 and release PRs get `frontier-high`. The security reviewer is always a different family than the builder.
 
 **Tasks**
 
@@ -240,7 +240,7 @@ python3 -m unittest discover -s gate
 
 - A tier 1 PR built by one family gets a `standard-low` reviewer from another family.
 
-**References:** ADR-007, spec 0001 (PR audit)
+**References:** ADR-008, spec 0001 (PR audit)
 
 ## Wave 3: Release safety
 
@@ -262,7 +262,7 @@ Milestone: `Wave 3: Release safety`
 - **Data change:** none
 - **Blocked by:** #34
 
-**Background.** A rollback restores the version the deploy replaced (ADR-008), so the deploy must record it. The smoke tests are the automatic half of a release's verification plan.
+**Background.** A rollback restores the version the deploy replaced (ADR-009), so the deploy must record it. The smoke tests are the automatic half of a release's verification plan.
 
 **Tasks**
 
@@ -280,7 +280,7 @@ make check
 
 - A staging deploy whose smoke test fails reports the failure and the recorded rollback target.
 
-**References:** ADR-008, spec 0001 (Releases), [Cloudflare Workers rollbacks](https://developers.cloudflare.com/workers/configuration/versions-and-deployments/rollbacks/)
+**References:** ADR-009, spec 0001 (Releases), [Cloudflare Workers rollbacks](https://developers.cloudflare.com/workers/configuration/versions-and-deployments/rollbacks/)
 
 ### W3-2: Add the rollback script and a staging rehearsal
 
@@ -308,4 +308,4 @@ make check
 
 - With a one-way release recorded, `rollback.sh production` refuses and prints the forward-fix instruction.
 
-**References:** ADR-008, `standards/release-template.md`
+**References:** ADR-009, `standards/release-template.md`

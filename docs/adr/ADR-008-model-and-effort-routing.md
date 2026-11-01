@@ -1,4 +1,4 @@
-# ADR-007: Each issue carries a run profile, chosen by the plan and capped by the orchestrator
+# ADR-008: Each issue carries a run profile, chosen by the plan and capped by the orchestrator
 
 Status: Proposed · Date: 2026-11-01
 
