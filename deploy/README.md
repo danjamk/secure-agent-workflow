@@ -87,6 +87,18 @@ Bootstrap installs `.github/workflows/credential-check.yml` in each consumer. It
 - It's a plain workflow in the consumer, not a call to a reusable workflow. The first testbed run called one: the job got staging's `AWS_REGION` variable, but its `AWS_ROLE_ARN` secret arrived empty. A called workflow gets environment secrets only when the caller passes `secrets: inherit`, which hands it every repo secret and which the gate's zizmor scan refuses. The broker action in #18 has the same constraint: the job that reads `AWS_ROLE_ARN` must be in the consumer's own workflow.
 - The staging role needs `ssm:ListTagsForResource` for the rotation warning. Repos added before #55 get it from `broker.sh add-repo <owner>/<repo>`.
 
+Tested on `danjamk/agent-testbed`, 2026-11-01, run from the Actions tab:
+
+| Run | Result |
+| --- | --- |
+| All three tokens valid | 3 pass, no issue, no staging deployment record |
+| Read token overwritten with an invalid value | Issue opened: 1 failing, account details removed |
+| Infra token set to `placeholder` | Same issue: title updated to 2 failing, one comment listing the change |
+| Rerun with nothing changed | Body updated to the new run, no comment |
+| Both restored from parameter version 1 | Issue closed with a comment |
+
+No account ID or account name appeared in the logs or the issue.
+
 ### Parameter layout
 
 `/<repo>/<target>/<exposure>/<name>`. The roles read by prefix, so a new credential needs no IAM change:
