@@ -400,7 +400,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       <div class="view-num">01</div>
       <div>
         <h2>Where things run, and who holds the keys</h2>
-        <p>The agent runs in a sandbox with no credentials and no direct internet. Everything it sends leaves through a handler that adds short-lived tokens on the way out. Deploy credentials sit behind separate roles: previews and staging in the dev account, where only staging can change infrastructure, and one that only a production release can assume.</p>
+        <p>The agent runs in a sandbox with no credentials and no direct internet. Everything it sends leaves through a handler that adds short-lived tokens on the way out. Deploy credentials sit behind separate roles: previews and staging in the dev target, where only staging can change infrastructure, and one that only a production release can assume.</p>
       </div>
     </div>
 
@@ -408,7 +408,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       <div class="diagram-wrap">
         <svg viewBox="0 0 1280 690" role="img" aria-labelledby="topo-title topo-desc">
           <title id="topo-title">Topology of secure-agent-workflow</title>
-          <desc id="topo-desc">A Cloudflare orchestrator, in its own tooling account, starts a credential-free sandbox per issue. Its traffic leaves through an outbound handler that injects tokens and allows only listed hosts. The agent pushes branches and opens pull requests on GitHub, where a merge gate decides what reaches main. Merges to main deploy to staging in the dev account; production deploys only from the production branch. Each deploy job gets a short-lived token from an AWS role that trusts only its environment's OIDC token. Infrastructure is OpenTofu, planned on the PR and applied only after merge, with its state in AWS.</desc>
+          <desc id="topo-desc">A Cloudflare orchestrator, in its own factory account, starts a credential-free sandbox per issue. Its traffic leaves through an outbound handler that injects tokens and allows only listed hosts. The agent pushes branches and opens pull requests on GitHub, where a merge gate decides what reaches main. Merges to main deploy to staging in the dev target; production deploys only from the production branch. Each deploy job gets a short-lived token from an AWS role that trusts only its environment's OIDC token. Infrastructure is OpenTofu, planned on the PR and applied only after merge, with its state in AWS.</desc>
           <defs>
             <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,0 L10,5 L0,10 z" class="head"/>
@@ -427,7 +427,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
 
           <!-- Cloudflare orchestrator zone -->
           <rect class="z" x="210" y="20" width="430" height="410" rx="10"/>
-          <text class="zt" x="226" y="42">CLOUDFLARE · TOOLING ACCOUNT</text>
+          <text class="zt" x="226" y="42">CLOUDFLARE · FACTORY ACCOUNT</text>
 
           <rect class="b" x="230" y="56" width="390" height="96" rx="6"/>
           <text class="bt" x="246" y="80">Orchestrator Worker + coordinator</text>
@@ -510,21 +510,21 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
 
           <!-- Cloudflare app accounts -->
           <rect class="z" x="210" y="470" width="430" height="200" rx="10"/>
-          <text class="zt" x="226" y="492">CLOUDFLARE · APP ACCOUNTS</text>
+          <text class="zt" x="226" y="492">CLOUDFLARE · DEPLOY TARGETS</text>
           <rect class="b" x="230" y="510" width="185" height="96" rx="6"/>
-          <text class="bt" x="246" y="534">Dev account</text>
+          <text class="bt" x="246" y="534">Dev target</text>
           <text class="bd" x="246" y="554">Previews from branches</text>
           <text class="bd" x="246" y="571">Staging from main</text>
           <text class="bd" x="246" y="588">Infra applied by CI only</text>
           <rect class="b" x="435" y="510" width="185" height="96" rx="6"/>
-          <text class="bt" x="451" y="534">Prod account</text>
+          <text class="bt" x="451" y="534">Prod target</text>
           <text class="bd" x="451" y="554">Deployed only from</text>
           <text class="bd" x="451" y="571">the production branch</text>
           <text class="bd" x="451" y="588">after a release PR</text>
 
           <!-- AWS -->
           <rect class="z" x="670" y="470" width="420" height="200" rx="10"/>
-          <text class="zt" x="686" y="492">AWS · CREDENTIAL BROKER</text>
+          <text class="zt" x="686" y="492">AWS · BROKER ACCOUNT</text>
           <rect class="b ctl" x="690" y="506" width="185" height="62" rx="6"/>
           <text class="bt" x="706" y="529">Dev roles</text>
           <text class="bd" x="706" y="549">Preview · Staging</text>
@@ -633,7 +633,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
         <span class="step-n">6</span>
         <span class="who">GitHub Actions</span>
         <h4>Stage</h4>
-        <p>Every merge to main applies infrastructure, then deploys to staging, in the dev account.</p>
+        <p>Every merge to main applies infrastructure, then deploys to staging, in the dev target.</p>
       </div>
       <div class="step later">
         <span class="step-n">7</span>
@@ -833,7 +833,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
     ];
     const tail = t === 1 ? [
       { step: 4, ms: 3000, pr: 'Merged', checks: 'pass', cap: '<b>Tier 1.</b> Every path is app code or tests. All checks pass and auto-merge squashes it into main. Nobody touched it.' },
-      { step: 5, ms: 2600, pr: 'Merged', checks: 'pass', cap: '<b>Stage.</b> The merge deploys the build to staging in the dev account, and checks it reports the right build id.' },
+      { step: 5, ms: 2600, pr: 'Merged', checks: 'pass', cap: '<b>Stage.</b> The merge deploys the build to staging in the dev target, and checks it reports the right build id.' },
     ] : [
       { step: 4, ms: 3400, pr: 'Waiting', checks: 'wait', you: true, cap: '<b>Tier 2.</b> The PR adds a storage bucket. The plan is on the PR, and the tier check fails until you approve its latest commit.' },
       { step: 4, ms: 2800, pr: 'Merged', checks: 'pass', cap: '<b>You approve in GitHub,</b> on the web or your phone. The tier check re-runs, passes, and auto-merge squashes the PR into main.' },

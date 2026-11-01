@@ -6,7 +6,7 @@ Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores
 
 Deploys target Cloudflare, AWS and third-party services. Cloudflare's documented GitHub Actions path is a stored API token; it has no OIDC federation. Long-lived secrets in GitHub are what a compromised workflow or action steals first.
 
-Deploys go to two places: previews and staging in a dev account, and production in a separate prod account (spec 0001, Branches and environments). Developers need to manage dev keys without any path to production keys.
+Deploys go to two places: previews and staging in the dev target, and production in a separate prod target (spec 0001, Branches and environments). Developers need to manage dev keys without any path to production keys.
 
 ## Decision
 
@@ -18,7 +18,7 @@ GitHub OIDC is the single trust anchor. The broker has three AWS IAM roles per c
 | Staging | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging` | `/<repo>/dev/preview/*` and `/<repo>/dev/staging/*`, which holds the Cloudflare infrastructure token. Dev OpenTofu state, read-write |
 | Prod | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:production` | All of `/<repo>/prod/*`. Prod OpenTofu state, read-write |
 
-Preview and staging both deploy to the dev account, but only staging can change its infrastructure. Preview jobs run the PR's build scripts, so they never get the infrastructure token (ADR-006).
+Preview and staging both deploy to the dev target, but only staging can change its infrastructure. Preview jobs run the PR's build scripts, so they never get the infrastructure token (ADR-006).
 
 The broker's template also creates the S3 bucket that holds OpenTofu state (ADR-006).
 

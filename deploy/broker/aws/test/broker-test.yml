@@ -1,8 +1,9 @@
-# Broker test (#17). Copied to a testbed's .github/workflows/ to check that
+# Broker test (#17, paths per ADR-007 in #53). Copied to a testbed's .github/workflows/ to check that
 # each role is assumable only from its environment and reads only what it should.
 #
-# Needs, on the testbed: broker.sh add-repo run, the placeholder parameters
-# under /<repo>/dev/, and repo secrets BROKER_TEST_PREVIEW_ROLE and
+# Needs, on the testbed: broker.sh add-repo run, the three Cloudflare
+# credentials stored with broker.sh set (which records cloudflare-account-id),
+# and repo secrets BROKER_TEST_PREVIEW_ROLE and
 # BROKER_TEST_STAGING_ROLE holding the two role ARNs (for the negative cases,
 # which run outside the environments that carry AWS_ROLE_ARN). Role ARNs are
 # secrets only so the account ID is masked in public logs.
@@ -62,7 +63,9 @@ env:
       elif grep -q AccessDenied <<<"$out"; then echo "PASS  $what: refused (AccessDenied)"
       else echo "FAIL  $what: unexpected error"; FAILED=1; fi
     }
+    # param EXPOSURE/NAME, under /<repo>/dev/
     param() { aws ssm get-parameter --with-decryption --name "/$REPO/dev/$1" --query Parameter.Name --output text; }
+    by_path() { aws ssm get-parameters-by-path --recursive --path "$1" --query 'length(Parameters)'; }
 
 jobs:
   preview:
@@ -85,11 +88,13 @@ jobs:
           ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
           echo "::add-mask::$ACCOUNT"
           BUCKET="saw-tfstate-$ACCOUNT"
-          expect ok     "read deploy token"         param cloudflare-deploy-token
-          expect ok     "read read-only token"      param cloudflare-read-token
-          expect ok     "read account id"           param cloudflare-account-id
-          expect denied "read infrastructure token" param cloudflare-infra-token
-          expect denied "read another repo's token" aws ssm get-parameter --name /other-repo/dev/cloudflare-deploy-token
+          expect ok     "read deploy token"         param preview/cloudflare-deploy-token
+          expect ok     "read read-only token"      param preview/cloudflare-read-token
+          expect ok     "read account id"           param preview/cloudflare-account-id
+          expect ok     "list preview path"         by_path "/$REPO/dev/preview"
+          expect denied "read infrastructure token" param staging/cloudflare-infra-token
+          expect denied "list staging path"         by_path "/$REPO/dev/staging"
+          expect denied "read another repo's token" aws ssm get-parameter --name /other-repo/dev/preview/cloudflare-deploy-token
           expect ok     "list dev state"            aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$REPO/dev/"
           echo probe > probe.txt
           expect denied "write dev state"           aws s3api put-object --bucket "$BUCKET" --key "$REPO/dev/broker-test" --body probe.txt
@@ -138,9 +143,11 @@ jobs:
           ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
           echo "::add-mask::$ACCOUNT"
           BUCKET="saw-tfstate-$ACCOUNT"
-          expect ok     "read infrastructure token" param cloudflare-infra-token
-          expect ok     "read dev path"             aws ssm get-parameters-by-path --path "/$REPO/dev" --query 'length(Parameters)'
-          expect denied "read prod path"            aws ssm get-parameter --name "/$REPO/prod/cloudflare-deploy-token"
+          expect ok     "read infrastructure token" param staging/cloudflare-infra-token
+          expect ok     "read deploy token"         param preview/cloudflare-deploy-token
+          expect ok     "list preview path"         by_path "/$REPO/dev/preview"
+          expect ok     "list staging path"         by_path "/$REPO/dev/staging"
+          expect denied "read prod path"            aws ssm get-parameter --name "/$REPO/prod/prod/cloudflare-deploy-token"
           echo probe > probe.txt
           expect ok     "write dev state"           aws s3api put-object --bucket "$BUCKET" --key "$REPO/dev/broker-test" --body probe.txt
           expect ok     "delete dev state"          aws s3api delete-object --bucket "$BUCKET" --key "$REPO/dev/broker-test"

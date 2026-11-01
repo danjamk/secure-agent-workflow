@@ -39,8 +39,8 @@ One deliberate extension: `claude-shared` reserves every merge for Dan. Repos bo
 3. Dan dispatches a wave: one command labels its issues `agent:ready`.
 4. The coordinator queues them. The orchestrator starts a sandbox per issue as dependencies and the concurrency cap allow. The agent works on `agent/<issue>-<slug>`, opens a PR and enables auto-merge.
 5. The merge gate runs. Tier 1 PRs merge on green; tier 2 and 3 PRs wait for Dan's approval in GitHub.
-6. A merge to `main` deploys to staging, in the dev account.
-7. Dan cuts a release: a versioned PR from `main` into `production`, which deploys to the prod account. Designed here, built later (see Releases).
+6. A merge to `main` deploys to staging, in the dev target.
+7. Dan cuts a release: a versioned PR from `main` into `production`, which deploys to the prod target. Designed here, built later (see Releases).
 8. After each wave, a retrospective (`/retro`) turns what the wave cost into changes to the standards.
 
 ## Work units
@@ -70,14 +70,14 @@ Work reaches a build agent only through a merged plan. Grooming is how loose wor
 
 ## Branches and environments
 
-| Branch | Deploys to | Account | Who can deploy |
+| Branch | Deploys to | Target | Who can deploy |
 | --- | --- | --- | --- |
 | `agent/*` and feature branches | Preview | Dev | CI on the PR, for the agent's branches; developers from their machines |
 | `main` | Staging | Dev | CI on every merge |
 | `production` | Production | Prod | CI on a merged release PR, from `production` only |
 
-- Previews and staging share the dev account. Production is always a separate account.
-- The orchestrator and the operator console run in a third Cloudflare account, the tooling account. A Cloudflare token that can deploy Workers can change every Worker in its account, so no deploy token may reach the account that holds the App private key and model keys.
+- Previews and staging share the dev target. Production is always a separate target. A target is one account per provider the app uses, such as a Cloudflare account or an Auth0 tenant.
+- The orchestrator and the operator console run in their own Cloudflare account, the factory account, which is never a deploy target. A Cloudflare token that can deploy Workers can change every Worker in its account, so no deploy token may reach the account that holds the App private key and model keys.
 - The agent triggers previews by pushing. It never holds a deploy credential; the preview job gets one from the preview role.
 - Previews never apply infrastructure changes or migrations. A PR that changes either gets a plan and no preview (ADR-006).
 - The preview job runs the PR's build scripts with dev credentials. That is accepted: dev is not production, and the agent can't edit the workflow.
@@ -91,8 +91,8 @@ Work reaches a build agent only through a merged plan. Grooming is how loose wor
 | `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Sandbox SDK microVM, runs the agent CLI, tears it down (ADR-004). A coordinator (one Durable Object) holds the queue, the concurrency cap and dependency gating; a log Durable Object per run stores the agent's redacted log |
 | Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist | Worker outbound handlers: `enableInternet = false` plus `allowedHosts`; inject a short-lived App installation token and model API keys; reject pushes outside `agent/*` |
 | `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check (ADR-003), PR audit |
-| `deploy/` | Deploy template for Cloudflare | `preview` and `staging` in the dev account first; `production` from the `production` branch later. OIDC broker, attested artifacts (ADR-002). Project infrastructure as OpenTofu in the consumer's `infra/`, planned on PRs and applied only by the pipeline; Workers stay in `wrangler.jsonc` (ADR-006) |
-| `standards/` | Templates and skills that agents, reviewers and the operator rely on | ADR template, agent instructions, issue template, wave planning rules, definition of ready, data change patterns, retro and release templates, tier map, operator skills such as `/dispatch`, planning skills `/groom`, `/retro` and `/release-prep` |
+| `deploy/` | Deploy template for Cloudflare | `preview` and `staging` in the dev target first; `production` from the `production` branch later. OIDC broker, attested artifacts (ADR-002). Project infrastructure as OpenTofu in the consumer's `infra/`, planned on PRs and applied only by the pipeline; Workers stay in `wrangler.jsonc` (ADR-006) |
+| `standards/` | Templates and skills that agents, reviewers and the operator rely on | ADR template, agent instructions, issue template, wave planning rules, definition of ready, data change patterns, retro and release templates, credential naming, tier map, operator skills such as `/dispatch`, planning skills `/groom`, `/retro` and `/release-prep` |
 | `redteam/` | Scripted attacks the controls must stop | Run against a bootstrapped repo; results published |
 | Planning agent | Human-in-the-loop spec, plan and ADR work, backlog grooming, retrospectives and release prep | Claude in Dan's normal UI or Claude Code cloud, acting as Dan on GitHub. Accepted for early phases; it gets its own identity in step 4 of the build order |
 
@@ -207,7 +207,7 @@ Most of what a wave teaches is visible while it runs, so the evidence is written
 
 ### Later: operator console
 
-A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. It runs in the tooling account with the orchestrator, never in an account a deploy token can reach. It works on a phone: the queue, a run's status and log, stopping a run, and the PRs waiting on Dan all fit a narrow screen, since that is where approvals already happen. Visual design goes through Claude Design.
+A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. It runs in the factory account with the orchestrator, never in an account a deploy token can reach. It works on a phone: the queue, a run's status and log, stopping a run, and the PRs waiting on Dan all fit a narrow screen, since that is where approvals already happen. Visual design goes through Claude Design.
 
 ## Coordination and parallelism
 
@@ -236,7 +236,7 @@ The orchestrator has a coordinator (one Durable Object) in front of the per-run 
 
 The pieces are hardened one at a time. No step waits on a later one.
 
-1. **Build agent, through staging.** App identity, bootstrap, orchestrator and sandbox, deterministic gate and tier check, preview and staging deploys in the dev account, red-team, run profiles and run metrics. The planning skills `/groom` and `/retro` are standards only and land alongside.
+1. **Build agent, through staging.** App identity, bootstrap, orchestrator and sandbox, deterministic gate and tier check, preview and staging deploys in the dev target, red-team, run profiles and run metrics. The planning skills `/groom` and `/retro` are standards only and land alongside.
 2. **PR audit.** LLM reviewers and the approver summary, the data-change check, and the readiness review on plan PRs.
 3. **Production releases.** The `production` branch and ruleset, the prod role, versioned release PRs with a batch review and `/release-prep`, the production deploy with smoke tests and a recorded rollback target, and the rollback workflow with a staging rehearsal.
 4. **Planning agent.** Its own GitHub identity, so its approvals don't count as Dan's.
@@ -275,9 +275,9 @@ The design assumes two stores so developers can manage dev keys without touching
 | --- | --- | --- |
 | GitHub App private key | Orchestrator Worker secret | Mints installation tokens; never enters the sandbox |
 | Model API keys | Orchestrator Worker secrets | Injected per request by the outbound handler |
-| Cloudflare dev deploy token (Workers only) and read-only token | Dev store, read by the preview and staging roles | The dev account only |
-| Cloudflare dev infrastructure token | Dev store, read by the staging role | The dev account only |
-| Cloudflare prod tokens | Prod store, read by the prod role | The prod account |
+| Cloudflare dev deploy token (Workers only) and read-only token | Dev store, read by the preview and staging roles | The dev target only |
+| Cloudflare dev infrastructure token | Dev store, read by the staging role | The dev target only |
+| Cloudflare prod tokens | Prod store, read by the prod role | The prod target |
 | AWS preview role | OIDC trust policy | Assumed only by `environment:preview` |
 | AWS staging role | OIDC trust policy | Assumed only by `environment:staging` |
 | AWS prod role | OIDC trust policy | Assumed only by `environment:production` |

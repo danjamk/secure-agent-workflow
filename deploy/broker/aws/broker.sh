@@ -3,6 +3,13 @@
 #
 #   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh account [--dry-run]
 #   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh add-repo danjamk/myrepo [--dry-run]
+#   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh setup danjamk/myrepo [--dry-run]
+#   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh set danjamk/myrepo <credential> [--dry-run]
+#   AWS_PROFILE=saw bash deploy/broker/aws/broker.sh status danjamk/myrepo
+#
+# setup, set and status run deploy/credentials/credentials.py (ADR-007): setup
+# walks through every missing credential, set checks one and stores it, status
+# reports on the broker and every credential.
 #
 # account   Once per AWS account: the GitHub OIDC provider (or reuse of an
 #           existing one) and the OpenTofu state bucket. Stack saw-broker.
@@ -29,6 +36,12 @@ ACCOUNT_STACK=saw-broker
 
 CMD="${1:-}"
 shift || true
+
+# Credential commands live with the manifest and checkers (ADR-007).
+case "$CMD" in
+    setup|set|status) exec python3 "$HERE/../../credentials/credentials.py" "$CMD" "$@" ;;
+esac
+
 REPO=""
 DRY_RUN=false
 while [ $# -gt 0 ]; do
@@ -42,6 +55,9 @@ done
 usage() {
     echo "Usage: AWS_PROFILE=<profile> broker.sh account [--dry-run]"
     echo "       AWS_PROFILE=<profile> broker.sh add-repo <owner>/<repo> [--dry-run]"
+    echo "       AWS_PROFILE=<profile> broker.sh setup <owner>/<repo> [--dry-run] [--manifest FILE]"
+    echo "       AWS_PROFILE=<profile> broker.sh set <owner>/<repo> <credential> [--dry-run] [--manifest FILE]"
+    echo "       AWS_PROFILE=<profile> broker.sh status <owner>/<repo> [--manifest FILE]"
     exit 1
 }
 
@@ -79,7 +95,9 @@ deploy() {
         local status
         status="$(aws_ cloudformation describe-stacks --stack-name "$stack" \
             --query 'Stacks[0].StackStatus' --output text)"
-        [ "$status" = REVIEW_IN_PROGRESS ] && aws_ cloudformation delete-stack --stack-name "$stack"
+        if [ "$status" = REVIEW_IN_PROGRESS ]; then
+            aws_ cloudformation delete-stack --stack-name "$stack"
+        fi
     else
         aws_ cloudformation deploy --stack-name "$stack" --template-file "$template" \
             --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset \

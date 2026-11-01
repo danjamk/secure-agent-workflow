@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   secure-agent-workflow credential broker, one consumer repo (ADR-002, ADR-006).
-  The preview and staging roles, which deploy to the dev account. Deployed by
+  The preview and staging roles, which deploy to the dev target. Deployed by
   broker.sh add-repo. Needs the saw-broker account stack.
 
 Parameters:
@@ -19,9 +19,10 @@ Parameters:
     AllowedPattern: "[0-9]+"
 
 Resources:
-  # Preview jobs run the PR's build scripts, so this role gets only what a
-  # preview deploy and a read-only plan need. Never the infrastructure token,
-  # never a state write (ADR-006).
+  # Preview jobs run the PR's build scripts, so this role reads only
+  # /<repo>/dev/preview/*: credentials the operator accepts the agent's code
+  # seeing. Never the infrastructure token, never a state write (ADR-006,
+  # ADR-007).
   PreviewRole:
     Type: AWS::IAM::Role
     Properties:
@@ -44,15 +45,15 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ReadDeployAndReadOnlyTokens
+              - Sid: ReadPreviewExposure
                 Effect: Allow
                 Action:
                   - ssm:GetParameter
                   - ssm:GetParameters
+                  - ssm:GetParametersByPath
                 Resource:
-                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/cloudflare-deploy-token
-                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/cloudflare-read-token
-                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/cloudflare-account-id
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/preview
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/preview/*
               - Sid: DecryptThroughSsmOnly
                 Effect: Allow
                 Action: kms:Decrypt
@@ -76,8 +77,8 @@ Resources:
                   - arn:${AWS::Partition}:s3:::${Bucket}/${RepoName}/dev/*
                   - Bucket: !ImportValue saw-broker-state-bucket
 
-  # Staging runs only from the default branch, after merge, so it gets all
-  # dev secrets and can apply infrastructure (ADR-006).
+  # Staging runs only from the default branch, after merge, so it reads both
+  # dev exposures and can apply infrastructure (ADR-006, ADR-007).
   StagingRole:
     Type: AWS::IAM::Role
     Properties:
@@ -100,15 +101,17 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ReadAllDevSecrets
+              - Sid: ReadPreviewAndStagingExposure
                 Effect: Allow
                 Action:
                   - ssm:GetParameter
                   - ssm:GetParameters
                   - ssm:GetParametersByPath
                 Resource:
-                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev
-                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/*
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/preview
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/preview/*
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/staging
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/staging/*
               - Sid: DecryptThroughSsmOnly
                 Effect: Allow
                 Action: kms:Decrypt
