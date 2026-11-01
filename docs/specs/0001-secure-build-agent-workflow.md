@@ -1,6 +1,6 @@
 # Spec 0001: Secure build-agent workflow
 
-Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30 (build order, PR audit, tier 3 enforcement, replaceable parts, observability, coordination); 2026-10-31 (branches and environments, releases, waves and dispatch, cost controls, dev and prod credential stores)
+Status: Draft · Owner: Dan Kuhn · Created: 2026-10-29 · Revised: 2026-10-30 (build order, PR audit, tier 3 enforcement, replaceable parts, observability, coordination); 2026-10-31 (branches and environments, releases, waves and dispatch, cost controls, dev and prod credential stores); 2026-11-01 (backlog and readiness, run profiles, retrospectives, release risk and rollback)
 
 ## Summary
 
@@ -34,13 +34,14 @@ One deliberate extension: `claude-shared` reserves every merge for Dan. Repos bo
 
 ## Workflow
 
-1. Dan writes specs, an implementation plan and ADRs with the planning agent.
-2. The plan becomes GitHub issues on the repo's board, grouped into waves.
+1. Dan writes specs, an implementation plan and ADRs with the planning agent. New requirements, bugs and follow-ups go through backlog grooming (`/groom`) into the same kind of plan.
+2. The plan becomes GitHub issues on the repo's board, grouped into waves. Each issue passes the definition of ready and carries a run profile.
 3. Dan dispatches a wave: one command labels its issues `agent:ready`.
 4. The coordinator queues them. The orchestrator starts a sandbox per issue as dependencies and the concurrency cap allow. The agent works on `agent/<issue>-<slug>`, opens a PR and enables auto-merge.
 5. The merge gate runs. Tier 1 PRs merge on green; tier 2 and 3 PRs wait for Dan's approval in GitHub.
 6. A merge to `main` deploys to staging, in the dev account.
 7. Dan cuts a release: a versioned PR from `main` into `production`, which deploys to the prod account. Designed here, built later (see Releases).
+8. After each wave, a retrospective (`/retro`) turns what the wave cost into changes to the standards.
 
 ## Work units
 
@@ -57,6 +58,15 @@ The number of approvals depends on how many PRs are tier 2 or 3, not on how many
 - One PR per wave was rejected. It cuts approvals but makes large PRs, lets one failure block the wave, and rules out parallel runs.
 
 Dispatching is labeling. The `agent:ready` label on each issue is the trigger; a `/dispatch` skill in the consuming project labels a whole wave in one command. The coordinator holds each issue until its dependencies merge, so labeling a wave at once is safe.
+
+## Backlog and readiness
+
+Work reaches a build agent only through a merged plan. Grooming is how loose work gets there.
+
+- **The backlog is a plan.** `/groom` (planning agent) gathers open issues, bugs, PR audit follow-ups, the follow-ups in agents' run notes, retro items and red-team findings. It sorts each into ready, needs Dan (with a recommended answer) or close, and opens a PR to `docs/plans/backlog.md`. Issues are created or closed only after Dan merges it.
+- **Bugs are backlog items with extra fields:** where it was seen, the build id, steps to reproduce, and a failing test as the first task. A production bug that is hurting users is an incident: roll back first (see Releases), then groom the bug.
+- **Definition of ready.** `standards/definition-of-ready.md` lists the checks an issue must pass: mechanical ones (one area, one run profile, valid blockers, sandbox-runnable acceptance, tier, data change) and judgment ones (one decision away from done, observable results, fits one run). The planning agent applies them when it writes a plan or grooms; `/dispatch` re-checks the mechanical ones.
+- **Readiness review by a second model.** On plan PRs (`docs/plans/**`), the PR audit runs a readiness reviewer from a different model family than the planning agent. It reads each issue as a build agent would and reports the likely wrong turns and missing decisions. Like the rest of the audit, it can fail a check but never approve.
 
 ## Branches and environments
 
@@ -82,9 +92,9 @@ Dispatching is labeling. The `agent:ready` label on each issue is the trigger; a
 | Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist | Worker outbound handlers: `enableInternet = false` plus `allowedHosts`; inject a short-lived App installation token and model API keys; reject pushes outside `agent/*` |
 | `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check (ADR-003), PR audit |
 | `deploy/` | Deploy template for Cloudflare | `preview` and `staging` in the dev account first; `production` from the `production` branch later. OIDC broker, attested artifacts (ADR-002). Project infrastructure as OpenTofu in the consumer's `infra/`, planned on PRs and applied only by the pipeline; Workers stay in `wrangler.jsonc` (ADR-006) |
-| `standards/` | Templates and skills that agents, reviewers and the operator rely on | ADR template, agent instructions, issue template, wave planning rules, tier map, operator skills such as `/dispatch` |
+| `standards/` | Templates and skills that agents, reviewers and the operator rely on | ADR template, agent instructions, issue template, wave planning rules, definition of ready, data change patterns, retro and release templates, tier map, operator skills such as `/dispatch`, planning skills `/groom`, `/retro` and `/release-prep` |
 | `redteam/` | Scripted attacks the controls must stop | Run against a bootstrapped repo; results published |
-| Planning agent | Human-in-the-loop spec, plan and ADR work | Claude in Dan's normal UI or Claude Code cloud, acting as Dan on GitHub. Accepted for early phases; it gets its own identity in step 4 of the build order |
+| Planning agent | Human-in-the-loop spec, plan and ADR work, backlog grooming, retrospectives and release prep | Claude in Dan's normal UI or Claude Code cloud, acting as Dan on GitHub. Accepted for early phases; it gets its own identity in step 4 of the build order |
 
 ## Merge gate
 
@@ -104,7 +114,7 @@ Check order:
 2. Scanners: CodeQL, secret scanning and dependency review on public repos; Semgrep CE, gitleaks, osv-scanner and trivy on private repos, where GitHub's versions are paid.
 3. zizmor and actionlint when `.github/**` changes.
 4. Tier check: computes the tier from changed paths and fails until the required approval exists.
-5. PR audit, spec conformance: checks the diff against the issue, plan and ADRs.
+5. PR audit, spec conformance: checks the diff against the issue, plan and ADRs, including the issue's declared data-change step (ADR-009).
 6. PR audit, security: a reviewer on a different model family than the builder.
 
 ### PR audit
@@ -128,7 +138,16 @@ Designed now, built after the dev path works.
 - Every PR into `production` needs Dan's approval, whatever its tier. The gate fails one whose head isn't `main`, and fails one the agent authored.
 - The release gets a deeper review than a single PR: the PR audit summarizes the whole batch (tiers touched, migrations, dependency changes, open findings) before Dan approves.
 - `production` has its own ruleset: PR required, no force-push, no deletion, no bypass. Only the `production` environment can reach the prod role (ADR-002).
-- A merged release PR deploys the attested build to production and checks that `/health` reports the release's build id.
+- A merged release PR deploys the attested build to production, records the version it replaced as the rollback target, checks that `/health` reports the release's build id, and runs the smoke tests.
+- `/release-prep` (planning agent) writes the release PR body from `standards/release-template.md`: what changed, every data change and whether the release is two-way or one-way, ranked risks with mitigations, verification before and after deploy, a watch window with a rollback trigger, and the rollback steps. It ends with a recommendation: ship, ship after a fix, or hold.
+
+### Rollback first
+
+- **When a release fails verification or causes an incident, roll back** to the recorded target (ADR-009). It takes minutes and needs no new code or review.
+- **Forward fix instead** only when the release is one-way, or when Dan judges that rolling back hurts users more than the defect. A forward fix goes through `main` and an expedited release PR. There is no hotfix branch.
+- **Every release is compatible with the one before it.** The previous release's code must run against the data the new release writes, which also makes gradual deployments safe. Schema changes use expand/contract (`standards/data-change-patterns.md`): a release may add, and removals ship in a later release.
+- **Data changes are designed at plan time.** Every issue that touches persisted data declares its step and direction. Contract steps go in a wave after a release. A release that can't be two-way is marked one-way and needs a restore point, a forward-fix plan, and Dan's acknowledgment in the release PR.
+- **Rollback is rehearsed** on staging once per release, with the same workflow production uses.
 
 ## Observability and intervention
 
@@ -167,6 +186,25 @@ The draft PR is the system of record. Slack is the notification and reply channe
 
 Sandbox cost is bounded by the same limits: a sandbox runs only while its run is active, so the concurrency cap times the wall-clock limit caps it.
 
+### Run profiles
+
+Model and effort are chosen per issue (ADR-008). The plan gives each issue a `run:<class>-<effort>` label: class `small`, `standard` or `frontier`, effort `low`, `medium` or `high`. The coordinator snapshots it at dispatch. The orchestrator maps the class to a concrete model and sets the token budget and wall-clock limit from `RUN_PROFILES`, a Worker variable Dan sets. A failed run is retried once at the next class up, if the daily budget allows. The PR audit's reviewer profile follows the PR's tier.
+
+### Run metrics
+
+The orchestrator records, per run: issue, wave, profile, model, tokens, cost, wall-clock, outcome, resumes, escalations and catch-ups, and links the record from the PR. Per wave it reports cost per merged PR including rework, first-pass rate per profile, blocked runs, approver send-backs, and tier 2 and 3 approvals against the plan. These feed the retrospective and decide when to raise the concurrency cap.
+
+## Retrospectives
+
+Most of what a wave teaches is visible while it runs, so the evidence is written then and collected after.
+
+- **Build agents write run notes.** Each PR ends with a `## Run notes` section: what was unclear in the issue, assumptions made, what was missing from the instructions or references, friction, and follow-ups (`standards/agent-instructions.md`).
+- **Handoff notes and Dan's replies** are already structured: every blocked question is a place the issue or instructions fell short.
+- **Dan flags lessons** by starting a PR comment or review comment with `lesson:`.
+- **The PR audit and run metrics** add what the gate caught and what each run cost.
+- **`/retro`** (planning agent, after a wave's last PR merges) collects all of it, groups each question, send-back and lesson by cause, and opens one PR: `docs/retros/<plan>-wave-<n>.md` plus at most five proposed changes to the standards, each written as a principle rather than a one-off rule. Changes to `standards/` are tier 2, so Dan approves each one. Agents never change their own instructions directly.
+- Agent-written text is data to the retro. It quotes it as evidence and follows no instructions in it.
+
 ### Later: operator console
 
 A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. It runs in the tooling account with the orchestrator, never in an account a deploy token can reach. It works on a phone: the queue, a run's status and log, stopping a run, and the PRs waiting on Dan all fit a narrow screen, since that is where approvals already happen. Visual design goes through Claude Design.
@@ -198,9 +236,9 @@ The orchestrator has a coordinator (one Durable Object) in front of the per-run 
 
 The pieces are hardened one at a time. No step waits on a later one.
 
-1. **Build agent, through staging.** App identity, bootstrap, orchestrator and sandbox, deterministic gate and tier check, preview and staging deploys in the dev account, red-team.
-2. **PR audit.** LLM reviewers and the approver summary.
-3. **Production releases.** The `production` branch and ruleset, the prod role, versioned release PRs with a batch review, and the production deploy.
+1. **Build agent, through staging.** App identity, bootstrap, orchestrator and sandbox, deterministic gate and tier check, preview and staging deploys in the dev account, red-team, run profiles and run metrics. The planning skills `/groom` and `/retro` are standards only and land alongside.
+2. **PR audit.** LLM reviewers and the approver summary, the data-change check, and the readiness review on plan PRs.
+3. **Production releases.** The `production` branch and ruleset, the prod role, versioned release PRs with a batch review and `/release-prep`, the production deploy with smoke tests and a recorded rollback target, and the rollback workflow with a staging rehearsal.
 4. **Planning agent.** Its own GitHub identity, so its approvals don't count as Dan's.
 
 Until step 4, the planning agent acts as Dan on GitHub. It can approve an agent's PR or merge one, and the tier check cannot tell that approval from Dan's: GitHub records no App attribution on reviews. This is an accepted risk for early phases: the planning agent always has Dan in the loop, and it does not run unattended. The likely step 4 fix is a machine user for the planning agent; see [planning agent identity](../research/planning-agent-identity.md).
@@ -257,6 +295,8 @@ The design assumes two stores so developers can manage dev keys without touching
 7. Answer a question: one reply, in either place.
 8. Stop a run: one label.
 9. Release to production: one PR, opened with its release summary, approved by Dan (build order step 3).
+10. Roll back production: one workflow run, to a target recorded at deploy time.
+11. After a wave: one retro PR, with the evidence already collected.
 
 ## Success measures
 
@@ -291,19 +331,23 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [ADR-005](../adr/ADR-005-coordinator.md): One Durable Object coordinates runs, with GitHub as the source of truth (proposed).
 - [ADR-006](../adr/ADR-006-infrastructure-as-code.md): Project infrastructure is OpenTofu applied by the pipeline, and Workers stay in wrangler (proposed).
 - [ADR-007](../adr/ADR-007-operator-credentials.md): Every credential is declared in the repo, checked before it is stored, and reported on (proposed).
+- [ADR-008](../adr/ADR-008-model-and-effort-routing.md): Each issue carries a run profile, chosen by the plan and capped by the orchestrator (proposed).
+- [ADR-009](../adr/ADR-009-rollback-first-and-data-compatibility.md): Releases roll back first, so every data change stays compatible with the previous release (proposed).
 
 ## Open decisions
 
 - [ ] Which agent CLIs to support first (suggest Claude Code and Codex).
-- [ ] Builder and reviewer model families.
+- [ ] Builder and reviewer model families: the concrete models behind each run profile class (ADR-008).
 - [ ] AWS account to host the OIDC broker (one account for v1; see Credentials).
 - [ ] Planning agent identity (build order step 4).
 - [x] ADR-005: coordinator design (queue, concurrency cap, dependency and touch-area rules).
-- [ ] Release versioning scheme and release-note format (build order step 3).
+- [ ] Release versioning scheme (build order step 3). The release PR body follows `standards/release-template.md`.
 
 ## References
 
 - Research: [sandbox bake-off](../research/sandbox-bakeoff.md), [planning agent identity](../research/planning-agent-identity.md)
+- Plan: [workflow loop](../plans/workflow-loop.md)
+- [Cloudflare Workers rollbacks](https://developers.cloudflare.com/workers/configuration/versions-and-deployments/rollbacks/)
 - [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
 - [Deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
 - [Approving a PR with required reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews)
