@@ -1,0 +1,44 @@
+# Broker cross-repo test (#17). Copied to a second testbed's .github/workflows/
+# to check that another repo's preview job can't assume the first repo's roles,
+# even from an environment with the same name.
+#
+# Needs repo secrets OTHER_PREVIEW_ROLE and OTHER_STAGING_ROLE on this repo,
+# holding the first testbed's role ARNs.
+name: broker-cross-repo-test
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  cross-repo:
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      id-token: write
+    env:
+      PREVIEW_ROLE: ${{ secrets.OTHER_PREVIEW_ROLE }}
+      STAGING_ROLE: ${{ secrets.OTHER_STAGING_ROLE }}
+      AWS_REGION: us-east-1
+    steps:
+      - name: Another repo's roles refuse this repo
+        run: |
+          set -uo pipefail
+          token="$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)"
+          FAILED=0
+          for pair in "preview:$PREVIEW_ROLE" "staging:$STAGING_ROLE"; do
+            name="${pair%%:*}" role="${pair#*:}"
+            [ -n "$role" ] || { echo "FAIL  secret for the $name role is empty"; FAILED=1; continue; }
+            if out="$(aws sts assume-role-with-web-identity --role-arn "$role" \
+                --role-session-name "cross-repo-$GITHUB_RUN_ID" \
+                --web-identity-token "$token" 2>&1)"; then
+              echo "FAIL  other repo's $name role: assumed"; FAILED=1
+            elif grep -q AccessDenied <<<"$out"; then
+              echo "PASS  other repo's $name role: refused (AccessDenied)"
+            else
+              echo "FAIL  other repo's $name role: unexpected error"; FAILED=1
+            fi
+          done
+          exit "$FAILED"

@@ -1,0 +1,168 @@
+# Broker test (#17). Copied to a testbed's .github/workflows/ to check that
+# each role is assumable only from its environment and reads only what it should.
+#
+# Needs, on the testbed: broker.sh add-repo run, the placeholder parameters
+# under /<repo>/dev/, and repo secrets BROKER_TEST_PREVIEW_ROLE and
+# BROKER_TEST_STAGING_ROLE holding the two role ARNs (for the negative cases,
+# which run outside the environments that carry AWS_ROLE_ARN). Role ARNs are
+# secrets only so the account ID is masked in public logs.
+#
+#   PR                  preview: assume, read allowed, deny infra token and state write
+#                       no-environment: both roles refused
+#   push to main        staging: assume, read infra token, write and delete state
+#   push to production  production: both dev roles refused
+name: broker-test
+
+on:
+  pull_request:
+  push:
+    branches: [main, production]
+
+permissions: {}
+
+env:
+  LIB: |
+    set -uo pipefail
+    oidc_token() {
+      curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+        "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value
+    }
+    # assume ROLE_ARN: exports credentials, returns nonzero if refused
+    assume() {
+      local creds
+      creds="$(aws sts assume-role-with-web-identity --role-arn "$1" \
+        --role-session-name "broker-test-$GITHUB_RUN_ID" \
+        --web-identity-token "$(oidc_token)" \
+        --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' --output text 2>&1)" || return 1
+      read -r AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN <<<"$creds"
+      echo "::add-mask::$AWS_SECRET_ACCESS_KEY"
+      echo "::add-mask::$AWS_SESSION_TOKEN"
+      export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+    }
+    FAILED=0
+    # expect ok|denied DESCRIPTION COMMAND...
+    expect() {
+      local want="$1" what="$2"; shift 2
+      local out
+      if out="$("$@" 2>&1)"; then got=ok
+      elif grep -qE 'AccessDenied|not authorized|is not authorized' <<<"$out"; then got=denied
+      else got="error: $(head -c 200 <<<"$out")"; fi
+      if [ "$got" = "$want" ]; then echo "PASS  $what ($got)"
+      else echo "FAIL  $what: want $want, got $got"; FAILED=1; fi
+    }
+    # expect_refused DESCRIPTION ROLE_ARN: passes only on AccessDenied, so an
+    # empty secret or a typo can't pass as a refusal.
+    expect_refused() {
+      local what="$1" role="$2" out
+      [ -n "$role" ] || { echo "FAIL  $what: role secret is empty"; FAILED=1; return; }
+      if out="$(aws sts assume-role-with-web-identity --role-arn "$role" \
+          --role-session-name "broker-test-$GITHUB_RUN_ID" \
+          --web-identity-token "$(oidc_token)" 2>&1)"; then
+        echo "FAIL  $what: assumed"; FAILED=1
+      elif grep -q AccessDenied <<<"$out"; then echo "PASS  $what: refused (AccessDenied)"
+      else echo "FAIL  $what: unexpected error"; FAILED=1; fi
+    }
+    param() { aws ssm get-parameter --with-decryption --name "/$REPO/dev/$1" --query Parameter.Name --output text; }
+
+jobs:
+  preview:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      id-token: write
+    env:
+      ROLE: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      REPO: ${{ github.event.repository.name }}
+    steps:
+      - name: Preview role
+        run: |
+          eval "$LIB"
+          echo "::add-mask::$ROLE"
+          assume "$ROLE" || { echo "FAIL  preview: could not assume the preview role"; exit 1; }
+          echo "PASS  preview: assumed the preview role"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::$ACCOUNT"
+          BUCKET="saw-tfstate-$ACCOUNT"
+          expect ok     "read deploy token"         param cloudflare-deploy-token
+          expect ok     "read read-only token"      param cloudflare-read-token
+          expect ok     "read account id"           param cloudflare-account-id
+          expect denied "read infrastructure token" param cloudflare-infra-token
+          expect denied "read another repo's token" aws ssm get-parameter --name /other-repo/dev/cloudflare-deploy-token
+          expect ok     "list dev state"            aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$REPO/dev/"
+          echo probe > probe.txt
+          expect denied "write dev state"           aws s3api put-object --bucket "$BUCKET" --key "$REPO/dev/broker-test" --body probe.txt
+          expect denied "list prod state"           aws s3api list-objects-v2 --bucket "$BUCKET" --prefix "$REPO/prod/"
+          exit "$FAILED"
+
+  no-environment:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    env:
+      PREVIEW_ROLE: ${{ secrets.BROKER_TEST_PREVIEW_ROLE }}
+      STAGING_ROLE: ${{ secrets.BROKER_TEST_STAGING_ROLE }}
+      AWS_REGION: us-east-1
+    steps:
+      - name: Both roles refuse a job without an environment
+        run: |
+          eval "$LIB"
+          echo "::add-mask::$PREVIEW_ROLE"
+          echo "::add-mask::$STAGING_ROLE"
+          expect_refused "no environment -> preview role" "$PREVIEW_ROLE"
+          expect_refused "no environment -> staging role" "$STAGING_ROLE"
+          exit "$FAILED"
+
+  staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+    env:
+      ROLE: ${{ secrets.AWS_ROLE_ARN }}
+      PREVIEW_ROLE: ${{ secrets.BROKER_TEST_PREVIEW_ROLE }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      REPO: ${{ github.event.repository.name }}
+    steps:
+      - name: Staging role
+        run: |
+          eval "$LIB"
+          echo "::add-mask::$ROLE"
+          echo "::add-mask::$PREVIEW_ROLE"
+          expect_refused "staging -> preview role" "$PREVIEW_ROLE"
+          assume "$ROLE" || { echo "FAIL  staging: could not assume the staging role"; exit 1; }
+          echo "PASS  staging: assumed the staging role"
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::$ACCOUNT"
+          BUCKET="saw-tfstate-$ACCOUNT"
+          expect ok     "read infrastructure token" param cloudflare-infra-token
+          expect ok     "read dev path"             aws ssm get-parameters-by-path --path "/$REPO/dev" --query 'length(Parameters)'
+          expect denied "read prod path"            aws ssm get-parameter --name "/$REPO/prod/cloudflare-deploy-token"
+          echo probe > probe.txt
+          expect ok     "write dev state"           aws s3api put-object --bucket "$BUCKET" --key "$REPO/dev/broker-test" --body probe.txt
+          expect ok     "delete dev state"          aws s3api delete-object --bucket "$BUCKET" --key "$REPO/dev/broker-test"
+          expect denied "write prod state"          aws s3api put-object --bucket "$BUCKET" --key "$REPO/prod/broker-test" --body probe.txt
+          exit "$FAILED"
+
+  production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/production'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+    env:
+      PREVIEW_ROLE: ${{ secrets.BROKER_TEST_PREVIEW_ROLE }}
+      STAGING_ROLE: ${{ secrets.BROKER_TEST_STAGING_ROLE }}
+      AWS_REGION: us-east-1
+    steps:
+      - name: Dev roles refuse the production environment
+        run: |
+          eval "$LIB"
+          echo "::add-mask::$PREVIEW_ROLE"
+          echo "::add-mask::$STAGING_ROLE"
+          expect_refused "production -> preview role" "$PREVIEW_ROLE"
+          expect_refused "production -> staging role" "$STAGING_ROLE"
+          exit "$FAILED"
