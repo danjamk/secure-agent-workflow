@@ -194,7 +194,7 @@ Not covered yet:
 
 ### Results
 
-`danjamk/agent-testbed` PR #26, 2026-11-01:
+`danjamk/agent-testbed` PR #26 and its merge, 2026-11-01:
 
 | Run | Result |
 | --- | --- |
@@ -202,7 +202,8 @@ Not covered yet:
 | Second push | Version upload only; the same comment edited, not a second one. `/health` returned the new build |
 | Broker | The local action passed "selected actions only". Both values masked; no account ID in the log |
 | Preview reading the infrastructure token | Refused: the testbed's `broker-test.yml` preview job passed on the same PR |
-| Staging | Pending the merge of PR #26 |
+| Merge to `main` | `deploy-staging` deployed `agent-testbed-staging`, and `/health` returned `0.1.0+5928d1c`, the merge commit. No account ID in the log |
+| Assuming the prod role | Not tested: the prod role comes with #32 |
 
 ## Other options for a fork
 
