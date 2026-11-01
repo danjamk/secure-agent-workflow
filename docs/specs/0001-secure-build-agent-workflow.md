@@ -67,6 +67,7 @@ Dispatching is labeling. The `agent:ready` label on each issue is the trigger; a
 | `production` | Production | Prod | CI on a merged release PR, from `production` only |
 
 - Previews and staging share the dev account. Production is always a separate account.
+- The orchestrator and the operator console run in a third Cloudflare account, the tooling account. A Cloudflare token that can deploy Workers can change every Worker in its account, so no deploy token may reach the account that holds the App private key and model keys.
 - The agent triggers previews by pushing. It never holds a deploy credential; the preview job gets one from the preview role.
 - Previews never apply infrastructure changes or migrations. A PR that changes either gets a plan and no preview (ADR-006).
 - The preview job runs the PR's build scripts with dev credentials. That is accepted: dev is not production, and the agent can't edit the workflow.
@@ -168,7 +169,7 @@ Sandbox cost is bounded by the same limits: a sandbox runs only while its run is
 
 ### Later: operator console
 
-A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. Visual design goes through Claude Design.
+A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. It runs in the tooling account with the orchestrator, never in an account a deploy token can reach. It works on a phone: the queue, a run's status and log, stopping a run, and the PRs waiting on Dan all fit a narrow screen, since that is where approvals already happen. Visual design goes through Claude Design.
 
 ## Coordination and parallelism
 
