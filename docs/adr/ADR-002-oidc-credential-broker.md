@@ -1,6 +1,6 @@
 # ADR-002: Deploy credentials come through a GitHub OIDC broker on AWS
 
-Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores; OIDC subjects with immutable IDs; dev role split into preview and staging, OpenTofu state bucket, per ADR-006)
+Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores; OIDC subjects with immutable IDs; dev role split into preview and staging, OpenTofu state bucket, per ADR-006) · Revised: 2026-11-01 (roles read by exposure path, per ADR-007)
 
 ## Context
 
@@ -10,12 +10,12 @@ Deploys go to two places: previews and staging in a dev account, and production 
 
 ## Decision
 
-GitHub OIDC is the single trust anchor. The broker has three AWS IAM roles per consumer repo. Secrets are SSM Parameter Store standard parameters, under one path per store:
+GitHub OIDC is the single trust anchor. The broker has three AWS IAM roles per consumer repo. Secrets are SSM Parameter Store standard parameters at `/<repo>/<account>/<exposure>/<name>`, and each role reads by path prefix (ADR-007):
 
 | Role | Trusts only | Reads |
 | --- | --- | --- |
-| Preview | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:preview` | From `/<repo>/dev/`: the Cloudflare deploy token (Workers only) and read-only token. Dev OpenTofu state, read-only |
-| Staging | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging` | All of `/<repo>/dev/*`, including the Cloudflare infrastructure token. Dev OpenTofu state, read-write |
+| Preview | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:preview` | `/<repo>/dev/preview/*`: the Cloudflare deploy token (Workers only), read-only token and account ID. Dev OpenTofu state, read-only |
+| Staging | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging` | `/<repo>/dev/preview/*` and `/<repo>/dev/staging/*`, which holds the Cloudflare infrastructure token. Dev OpenTofu state, read-write |
 | Prod | `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:production` | All of `/<repo>/prod/*`. Prod OpenTofu state, read-write |
 
 Preview and staging both deploy to the dev account, but only staging can change its infrastructure. Preview jobs run the PR's build scripts, so they never get the infrastructure token (ADR-006).
