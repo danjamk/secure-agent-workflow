@@ -18,10 +18,10 @@ Delete this comment.
 
 <What this plan delivers, in two or three sentences.>
 
-| Wave | Goal | Issues | Tier 2 or 3 PRs | Runs | Recommended cap |
-| --- | --- | --- | --- | --- | --- |
-| 1 | <goal> | <n> | <n> | <in parallel / one at a time> | <n> |
-| 2 | <goal> | <n> | <n> | <...> | <n> |
+| Wave | Goal | Issues | Tier 2 or 3 PRs | Runs | Recommended cap | Profiles |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | <goal> | <n> | <n> | <in parallel / one at a time> | <n> | <e.g. 1 frontier-high, 4 standard-medium> |
+| 2 | <goal> | <n> | <n> | <...> | <n> | <...> |
 
 ## Wave 1: <goal>
 
@@ -33,10 +33,14 @@ Milestone: `Wave 1: <goal>`
 
 **Done when:** <what the operator can see or test on staging after the last PR merges.>
 
+**Data changes:** <none, or the steps in this wave and the release each must ship in. Contract steps belong in a wave after a release (ADR-008).>
+
 ### W1-1: <imperative title>
 
 - **Area:** `area:<name>`
 - **Expected tier:** <1, 2 or 3>, because <paths>
+- **Run profile:** <class-effort>, because <reason>
+- **Data change:** <none, or step and direction>
 - **Blocked by:** <keys, or "nothing">
 
 **Background.** <Why, in one or two sentences.>

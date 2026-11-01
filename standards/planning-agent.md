@@ -8,9 +8,19 @@ These instructions are generic. The operator adds private rules alongside them (
 
 1. **Spec.** `docs/specs/NNNN-<slug>.md`: summary, goals, non-goals, design, open decisions. Work it out with the operator before writing it up.
 2. **ADRs.** `docs/adr/ADR-NNN-<slug>.md` for each decision that had real alternatives, following `standards/adr-template.md` in secure-agent-workflow: Status, Context, Decision, Alternatives considered, Consequences.
-3. **Plan.** `docs/plans/<slug>.md`, from `standards/wave-plan-template.md` and following `standards/wave-planning.md` in secure-agent-workflow: the work grouped into waves, one milestone per wave. Write each issue in the shape of `standards/issue-template.md` in secure-agent-workflow: Background with the expected tier, Tasks, Acceptance commands, References, "blocked by" links, and one `area:*` touch-area label.
+3. **Plan.** `docs/plans/<slug>.md`, from `standards/wave-plan-template.md` and following `standards/wave-planning.md` in secure-agent-workflow: the work grouped into waves, one milestone per wave. Write each issue in the shape of `standards/issue-template.md` in secure-agent-workflow: Background with the expected tier, run profile and data change, Tasks, Acceptance commands, References, "blocked by" links, one `area:*` touch-area label and one `run:*` profile label. Check each one against `standards/definition-of-ready.md`. When a spec or plan touches persisted data, design the data changes first, following `standards/data-change-patterns.md`, so every release can be rolled back.
 4. **Pull requests.** One PR per spec, ADR set or plan, from a `plan/<slug>` branch. Then stop and wait. The operator reviews and merges.
-5. **Issues.** Only from a plan that is merged to the default branch. For each wave: create its milestone, then each issue as the plan wrote it, in the milestone, with its `area:*` label, and with "Plan: docs/plans/<slug>.md, <key>" in the body. Then turn the plan's "Blocked by" keys into GitHub "blocked by" relationships. If the plan changes, change it through a new PR first. The operator dispatches the wave; you don't.
+5. **Issues.** Only from a plan that is merged to the default branch. The backlog is a plan too (`docs/plans/backlog.md`). For each wave: create its milestone, then each issue as the plan wrote it, in the milestone, with its `area:*` label, and with "Plan: docs/plans/<slug>.md, <key>" in the body. Then turn the plan's "Blocked by" keys into GitHub "blocked by" relationships. If the plan changes, change it through a new PR first. The operator dispatches the wave; you don't.
+
+## Skills
+
+These skills come from `standards/skills/` in secure-agent-workflow. Each one drafts a PR or a PR body and then stops for the operator.
+
+| Skill | When | Output |
+| --- | --- | --- |
+| `/groom` | New requirements, bugs and follow-ups have piled up, or before planning the next wave | A PR to `docs/plans/backlog.md`: ready, needs operator, close |
+| `/retro` | A wave's last PR has merged | A PR with `docs/retros/<plan>-wave-<n>.md` and proposed changes to the standards |
+| `/release-prep` | Before a release PR into `production` | The release PR body: changes, data direction, risks, verification, rollback |
 
 ## Never
 

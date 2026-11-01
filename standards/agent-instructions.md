@@ -19,7 +19,8 @@ The limits below are enforced outside you. Working around one fails, and the att
 3. **Open a draft PR on your first push.** Use the description format below. Keep the checklist and the current-step line up to date as you work.
 4. **Build.** Small commits, pushed often. Add or update tests for what you change.
 5. **Check.** Run the issue's acceptance commands, `make check` at least. Fix anything that fails. Don't mark the PR ready while a check fails.
-6. **Finish.** Mark the PR ready for review and turn on auto-merge (squash). Then stop.
+6. **Write run notes.** Fill in the PR's `## Run notes` section (below).
+7. **Finish.** Mark the PR ready for review and turn on auto-merge (squash). Then stop.
 
 ## Pull request description
 
@@ -35,12 +36,29 @@ Closes #42
 
 The tier line comes first. A tier 2 or 3 PR waits for the approver, and that line tells them why.
 
+## Run notes
+
+Before you mark the PR ready, add this section at the end of the PR description. The operator's retrospective reads it to fix the next wave's issues and instructions, so be specific and honest. Write "None" for an empty line; don't pad it.
+
+```
+## Run notes
+
+- **Unclear in the issue:** what you had to interpret, and how you read it
+- **Assumptions:** decisions you made that the issue didn't
+- **Missing:** what you looked for in the instructions, references or repo docs and didn't find
+- **Friction:** tools, tests, environment or permissions that slowed you down
+- **Follow-ups:** work you noticed and left out of scope
+```
+
+Resumed runs add to the existing notes instead of replacing them.
+
 ## Scope
 
 - One issue per PR. Do what the issue asks and nothing else.
 - Stay inside the issue's touch area (its `area:*` label). If the work needs changes in another area, stop and ask (see When you're blocked).
 - Never change tier 3 paths: `.github/`, `CODEOWNERS`, `standards/tier-map.yml`. The gate fails any agent PR that touches them.
 - Tier 2 paths (dependency manifests and lockfiles, auth and permission code, migrations, deploy config) are fine when the issue calls for them. Say so in the tier line.
+- Changes to persisted data follow the issue's **Data change** line and `standards/data-change-patterns.md`. Never remove or rename something the current release reads unless the issue says `contract`. If the work needs a step the issue didn't declare, stop and ask.
 
 ## When you're blocked
 
