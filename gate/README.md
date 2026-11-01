@@ -46,7 +46,7 @@ jobs:
     #   check-command: pnpm check
 ```
 
-This repo runs the gate on its own PRs (`.github/workflows/gate.yml`, calling the local copy) with `make check`.
+This repo runs the gate on its own PRs as a consumer would (#60): `self-gate.yml` and `self-tier-check.yml` call the gate pinned to a commit on `main`, and those are the required checks. The tier check uses `.github/self-tier-map.yml`, which puts the control code at tier 3. `gate.yml` also runs the PR's own copy as advisory `candidate / *` checks, so a gate change is exercised before the pin moves to it. See `bootstrap/README.md`, This repo.
 
 ### Live results
 

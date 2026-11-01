@@ -1,0 +1,30 @@
+# Tier map for secure-agent-workflow's own PRs (#60). Consumers use
+# standards/tier-map.yml; this repo holds the controls, so its control code is
+# tier 3 here: the owner approves it, and no bot may author it.
+#
+# Read by .github/workflows/self-tier-check.yml from the PR's base commit, so a
+# PR can't change the map that judges it. This file is under .github/, so
+# changing it is tier 3 too. Format and rules: standards/tier-map.yml.
+
+tiers:
+  3:
+    - .github/**
+    - .claude/**
+    - CODEOWNERS
+    - docs/CODEOWNERS
+    - bootstrap/**
+    - gate/**
+    - deploy/**
+    - standards/**
+    - Makefile
+    - LICENSE
+  2:
+    # Agent instructions for this repo. Not a control, but it steers agents.
+    - CLAUDE.md
+    # Design decisions and plans: the owner approves them.
+    - docs/adr/**
+    - docs/specs/**
+    - docs/plans/**
+  1:
+    - docs/**
+    - "**/*.md"

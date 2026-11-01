@@ -1,0 +1,25 @@
+# Managed by secure-agent-workflow bootstrap. Change the template in
+# secure-agent-workflow/bootstrap/files/self-gate.yml and re-run bootstrap, not
+# this copy. `bootstrap.sh {{GATE_REPO}} --update-gate <sha>` moves the pin.
+#
+# secure-agent-workflow's own merge gate (#60). It calls the gate pinned to a
+# commit already on the default branch, the way a consumer does, so a PR can't
+# change the code that judges it. Every job is a required check.
+#
+# gate.yml runs the PR's own copy of the gate as advisory "candidate" checks,
+# so a change to the gate is exercised before the pin moves to it.
+
+name: self-gate
+
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  checks:
+    uses: {{GATE_REPO}}/.github/workflows/gate-checks.yml@{{GATE_SHA}}
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
