@@ -84,6 +84,7 @@ Names follow `standards/credentials.md`: `<system>-<role>-<kind>` in the manifes
 - Every value is masked in the log before a checker runs. Account names and IDs are replaced in the issue, which is public on a public repo.
 - The job uses the `staging` environment with `deployment: false`, so it creates no deployment record. Staging's deployment history stays a list of real deploys, which rollback reads (ADR-009).
 - A repo without `infra/credentials.yml` skips the job without touching staging or AWS.
+- The caller passes `secrets: inherit`. A called workflow that declares an environment gets that environment's variables without it, but its secrets arrive empty (found in the first testbed run). `inherit` also hands the repo's own secrets to the pinned workflow.
 - The staging role needs `ssm:ListTagsForResource` for the rotation warning. Repos added before #55 get it from `broker.sh add-repo <owner>/<repo>`.
 
 ### Parameter layout
