@@ -41,7 +41,9 @@ preview)
         echo "$out"
         # A version upload needs the Worker to exist. The first preview
         # deploys it once; previews after that only add versions.
-        if grep -qiE "does not exist|not found|10007" <<<"$out"; then
+        # wrangler 4.151.1: "You cannot upload a new version of a Worker that
+        # does not yet exist. Please run the `deploy` command first."
+        if grep -qiE "does not (yet )?exist|not found|10007" <<<"$out"; then
             echo "The preview Worker doesn't exist yet; deploying it once."
             "$WRANGLER" deploy "${common[@]}" --autoconfig=false
             out=$(upload) || { echo "$out"; exit 1; }
