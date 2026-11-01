@@ -58,8 +58,8 @@ AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh status <owner>/<repo>
 
 **`set`** reads the entry from the manifest on the default branch and prints its purpose and the permissions to grant. It then prompts for the value without echoing it and runs the system's checker. It stores the value only if every check passes. A value piped on stdin is read instead of prompting.
 
-- The checker reports which account the credential belongs to. The first credential for a system and account records it as `<system>-account-id`, after you confirm the account's name. Later credentials must match it.
-- A credential from your tooling account is refused. The tooling account is any `<SYSTEM>_ACCOUNT_ID`, such as `CLOUDFLARE_ACCOUNT_ID`, in this repo's `.env.local` or the environment.
+- The checker reports which account the credential belongs to. The first credential for a system and target records it as `<system>-account-id`, after you confirm the account's name. Later credentials must match it.
+- A credential from your factory account is refused. The factory account is any `<SYSTEM>_ACCOUNT_ID`, such as `CLOUDFLARE_ACCOUNT_ID`, in this repo's `.env.local` or the environment.
 - Tags on the parameter record `saw:set-at`, `saw:set-by`, `saw:checked-at`, `saw:expires` and `saw:checker`.
 - A system with no checker can be stored after you type `yes`. `status` reports it as unchecked.
 - `--dry-run` runs every check and stores nothing. `--manifest FILE` reads a local manifest instead of the default branch.
@@ -72,7 +72,7 @@ AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh status <owner>/<repo>
 
 ### Parameter layout
 
-`/<repo>/<account>/<exposure>/<name>`. The roles read by prefix, so a new credential needs no IAM change:
+`/<repo>/<target>/<exposure>/<name>`. The roles read by prefix, so a new credential needs no IAM change:
 
 | Path | Read by | Holds |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh status <owner>/<repo>
 
 ### Cloudflare tokens
 
-Create each one in the dev account under My Profile > API Tokens > Create Custom Token. Under Account Resources, choose the dev account only. Leave Zone Resources empty.
+Create each one in the dev target's Cloudflare account, under My Profile > API Tokens > Create Custom Token. Under Account Resources, choose that account only. Add no zone permissions.
 
 | Token | Exposure | Permissions | `check` |
 | --- | --- | --- | --- |

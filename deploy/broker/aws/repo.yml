@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   secure-agent-workflow credential broker, one consumer repo (ADR-002, ADR-006).
-  The preview and staging roles, which deploy to the dev account. Deployed by
+  The preview and staging roles, which deploy to the dev target. Deployed by
   broker.sh add-repo. Needs the saw-broker account stack.
 
 Parameters:

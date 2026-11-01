@@ -14,7 +14,20 @@ The agent can't change the controls: they live in the sandbox, GitHub permission
 2. Dispatching a wave labels its issues `agent:ready`. Each one starts a build agent in a fresh, locked-down sandbox, in dependency order and within a concurrency cap and spend budget.
 3. The agent works on its own branch and opens a PR, which gets a preview deploy. It can't touch workflows, settings or `main`.
 4. A merge gate routes the PR by what it touches. Low-risk changes merge on green checks; risky ones wait for a human.
-5. `main` deploys to staging in the dev account. Production is a versioned release PR from `main` into a `production` branch, approved by a human, and only that deploy can get production credentials. The release path is designed and gets built after the path to staging works.
+5. `main` deploys to staging in the dev target. Production, in the prod target, is a versioned release PR from `main` into a `production` branch, approved by a human, and only that deploy can get production credentials. The release path is designed and gets built after the path to staging works.
+
+## Accounts
+
+The platform and the apps it builds run in separate accounts:
+
+| Term | What it is | Holds |
+| --- | --- | --- |
+| Factory account | The platform's own cloud account. Never a deploy target | Orchestrator, sandboxes, operator console |
+| Dev target | Where the app deploys previews and staging. One account per provider the app uses, such as a Cloudflare account, an Auth0 tenant or a database project | Preview and staging deploys |
+| Prod target | Where the app deploys production, again one account per provider | Production deploys |
+| Broker account | The key store. Its dev and prod stores can share one AWS account or use two | OIDC roles, Parameter Store, OpenTofu state |
+
+A Cloudflare token that can deploy Workers can change every Worker in its account. That's why the factory account is never a deploy target: an app's deploy credentials can't reach the orchestrator.
 
 ## Pieces
 

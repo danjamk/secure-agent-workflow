@@ -1,6 +1,6 @@
 # ADR-007: Every credential is declared in the repo, checked before it is stored, and reported on
 
-Status: Proposed · Date: 2026-11-01
+Status: Proposed · Date: 2026-11-01 · Revised: 2026-11-01 (manifest field `account` renamed `target`, with the account terms in the README)
 
 ## Context
 
@@ -27,7 +27,7 @@ Credentials from any system follow one pattern: declare it, check it before stor
 credentials:
   - name: cloudflare-deploy-token
     system: cloudflare         # selects the checker
-    account: dev               # dev or prod
+    target: dev                # dev or prod target
     exposure: preview          # preview, staging or prod: the first job that may read it
     purpose: Deploy preview and staging Workers
     permissions: "Workers Scripts: Edit. Account Settings: Read"
@@ -37,7 +37,7 @@ credentials:
 
 The manifest uses only this flat shape, so the broker reads it with a few lines of standard-library Python, as the gate does for `tier-map.yml`.
 
-**Exposure is set by the parameter's path.** Parameters live at `/<repo>/<account>/<exposure>/<name>`. Each role reads by path prefix, so a new credential needs no IAM change:
+**Exposure is set by the parameter's path.** Parameters live at `/<repo>/<target>/<exposure>/<name>`. Each role reads by path prefix, so a new credential needs no IAM change:
 
 | Role | Reads |
 | --- | --- |
@@ -71,7 +71,7 @@ A system with no checker can still be stored, and it is reported as unchecked.
 - It exits non-zero if any line is `FAIL`.
 - It never prints the secret.
 
-`IDENTITY` is the account the credential belongs to. The first credential stored for a system and account records the identity, and the operator confirms it by name. A later credential for the same system and account must report the same identity. This catches a dev-account token copied into the prod path, or a token from the wrong account entirely. Adding a system means adding one checker file and its manifest entries.
+`IDENTITY` is the account the credential belongs to. The first credential stored for a system and target records the identity, and the operator confirms it by name. A later credential for the same system and target must report the same identity. This catches a dev-account token copied into the prod path, or a token from the wrong account entirely. Adding a system means adding one checker file and its manifest entries.
 
 **Reported on.** `broker.sh status <owner>/<repo>` prints one line per credential, with a pass or fail:
 

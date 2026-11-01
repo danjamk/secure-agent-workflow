@@ -9,7 +9,7 @@ Usually run through `deploy/broker/aws/broker.sh set|status`.
 set     Reads the credential's entry from infra/credentials.yml on the repo's
         default branch, prompts for the value without echoing it, runs the
         system's checker, and stores the value in Parameter Store only if every
-        check passes. Records the account the checker reports as
+        check passes. Records the target account the checker reports as
         <system>-account-id, confirmed by the operator the first time and
         required to match after that. A value piped on stdin is read instead of
         prompting.
@@ -39,8 +39,8 @@ REPO_ROOT = HERE.parent.parent
 MANIFEST_PATH = "infra/credentials.yml"
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 
-FIELDS = {"name", "system", "account", "exposure", "purpose", "permissions", "check", "rotate_days"}
-REQUIRED = ("name", "system", "account", "exposure", "purpose")
+FIELDS = {"name", "system", "target", "exposure", "purpose", "permissions", "check", "rotate_days"}
+REQUIRED = ("name", "system", "target", "exposure", "purpose")
 EXPOSURES = {"dev": ("preview", "staging"), "prod": ("prod",)}
 IDENTITY_EXPOSURE = {"dev": "preview", "prod": "prod"}  # where <system>-account-id lives
 PLACEHOLDER = "placeholder"
@@ -112,28 +112,28 @@ def validate(entries: list) -> None:
             raise ValueError(f"{label}: names ending in -account-id are reserved for checker identities")
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", e["system"]):
             raise ValueError(f"{label}: system must be lowercase letters, digits and hyphens")
-        if e["account"] not in EXPOSURES:
-            raise ValueError(f"{label}: account must be dev or prod")
-        if e["exposure"] not in EXPOSURES[e["account"]]:
-            allowed = " or ".join(EXPOSURES[e["account"]])
-            raise ValueError(f"{label}: exposure for the {e['account']} account must be {allowed}")
+        if e["target"] not in EXPOSURES:
+            raise ValueError(f"{label}: target must be dev or prod")
+        if e["exposure"] not in EXPOSURES[e["target"]]:
+            allowed = " or ".join(EXPOSURES[e["target"]])
+            raise ValueError(f"{label}: exposure for the {e['target']} target must be {allowed}")
         if "rotate_days" in e:
             if not e["rotate_days"].isdigit() or int(e["rotate_days"]) < 1:
                 raise ValueError(f"{label}: rotate_days must be a positive whole number")
             e["rotate_days"] = int(e["rotate_days"])
         e["check"] = e.get("check", "").split()
-        key = (e["account"], e["name"])
+        key = (e["target"], e["name"])
         if key in seen:
-            raise ValueError(f"{label}: declared twice for the {e['account']} account")
+            raise ValueError(f"{label}: declared twice for the {e['target']} target")
         seen.add(key)
 
 
 def param_path(repo_name: str, e: dict) -> str:
-    return f"/{repo_name}/{e['account']}/{e['exposure']}/{e['name']}"
+    return f"/{repo_name}/{e['target']}/{e['exposure']}/{e['name']}"
 
 
-def identity_path(repo_name: str, system: str, account: str) -> str:
-    return f"/{repo_name}/{account}/{IDENTITY_EXPOSURE[account]}/{system}-account-id"
+def identity_path(repo_name: str, system: str, target: str) -> str:
+    return f"/{repo_name}/{target}/{IDENTITY_EXPOSURE[target]}/{system}-account-id"
 
 
 # --- Checker output ---
@@ -186,7 +186,7 @@ def evaluate(e: dict, value, check, tags: dict, stored_identity, today: dt.date,
     else:
         ident = check["identity"]
         if ident and stored_identity and ident[0] != stored_identity:
-            out.append(("FAIL", f"{name}: belongs to {ident[1]}, not the account recorded for this repo"))
+            out.append(("FAIL", f"{name}: belongs to {ident[1]}, not the {e['target']} target recorded for this repo"))
         expires = check["expires"]
         if expires and expires <= today:
             out.append(("FAIL", f"{name}: expired {expires}"))
@@ -276,9 +276,10 @@ def load_manifest(repo: str, local_file) -> list:
     return parse_manifest(base64.b64decode(content).decode())
 
 
-def tooling_identities() -> dict:
+def factory_identities() -> dict:
     """<SYSTEM>_ACCOUNT_ID from the environment or this repo's .env.local: the
-    operator's tooling accounts, which a consumer credential must never belong to."""
+    operator's factory accounts, where the platform runs. A target credential must
+    never belong to one."""
     values = {}
     env_file = REPO_ROOT / ".env.local"
     if env_file.is_file():
@@ -351,25 +352,25 @@ def cmd_set(repo: str, name: str, dry_run: bool, manifest_file) -> int:
             return 1
 
     ident = check["identity"] if check else None
-    id_path = identity_path(repo_name, e["system"], e["account"])
+    id_path = identity_path(repo_name, e["system"], e["target"])
     record_identity = False
     if ident:
         ident_id, label = ident
-        tooling_key = f"{e['system'].upper().replace('-', '_')}_ACCOUNT_ID"
-        if tooling_identities().get(tooling_key) == ident_id:
-            print(f"FAIL  {label} is your tooling account ({tooling_key}); consumer credentials never belong to it")
+        factory_key = f"{e['system'].upper().replace('-', '_')}_ACCOUNT_ID"
+        if factory_identities().get(factory_key) == ident_id:
+            print(f"FAIL  {label} is your factory account ({factory_key}); target credentials never belong to it")
             return 1
         stored = get_param(id_path, decrypt=False)
         if stored and stored != PLACEHOLDER:
             if stored != ident_id:
-                print(f"FAIL  {label} is not the {e['account']} account already recorded at {id_path}")
+                print(f"FAIL  {label} is not the {e['system']} {e['target']} target already recorded at {id_path}")
                 return 1
             print(f"PASS  same {e['system']} account as the credentials already stored")
         else:
             record_identity = True
             if dry_run:
                 print(f"INFO  first {e['system']} credential for this repo: you'd be asked to confirm {label}")
-            elif not confirm(f"Is {label} ({ident_id}) the {e['account']} account for {repo}? Type yes: "):
+            elif not confirm(f"Is {label} ({ident_id}) your {e['system']} {e['target']} target for {repo}? Type yes: "):
                 print("Nothing stored.")
                 return 1
 
@@ -450,7 +451,7 @@ def cmd_status(repo: str, manifest_file) -> int:
     for e in entries:
         path = param_path(repo_name, e)
         declared.add(path)
-        id_path = identity_path(repo_name, e["system"], e["account"])
+        id_path = identity_path(repo_name, e["system"], e["target"])
         if id_path not in identities:
             identities[id_path] = get_param(id_path, decrypt=False)
         value = get_param(path, decrypt=True)

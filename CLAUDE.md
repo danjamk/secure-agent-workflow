@@ -53,8 +53,17 @@ Two things a newcomer gets wrong:
 - **Build order:** build agent through staging, then PR audit, then production
   releases, then planning agent identity. Don't make earlier steps wait on later ones.
 - **Environments:** `agent/*` and feature branches deploy previews and `main`
-  deploys staging, both in the dev account. Production deploys only from the
-  `production` branch through a release PR (spec 0001, Branches and environments).
+  deploys staging, both to the dev target. Production deploys to the prod target,
+  only from the `production` branch through a release PR (spec 0001, Branches and
+  environments).
+- **Account terms.** Use these names, not "tooling account" or "dev account":
+
+  | Term | What it is | Holds |
+  | --- | --- | --- |
+  | Factory account | The platform's own cloud account. Never a deploy target | Orchestrator, sandboxes, operator console |
+  | Dev target | Where the app deploys previews and staging. One account per provider the app uses, such as a Cloudflare account, an Auth0 tenant or a database project | Preview and staging deploys |
+  | Prod target | Where the app deploys production, again one account per provider | Production deploys |
+  | Broker account | The key store. Its dev and prod stores can share one AWS account or use two | OIDC roles, Parameter Store, OpenTofu state |
 
 ## Versioning
 

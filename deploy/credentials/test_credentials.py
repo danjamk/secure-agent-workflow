@@ -24,21 +24,21 @@ GOOD = """\
 credentials:
   - name: cloudflare-deploy-token   # trailing comment
     system: cloudflare
-    account: dev
+    target: dev
     exposure: preview
     purpose: "Deploy # not a comment"
     check: workers kv
     rotate_days: 90
   - name: stripe-key
     system: stripe
-    account: prod
+    target: prod
     exposure: prod
     purpose: Payments
 """
 
 
 def entry(**over):
-    e = {"name": "tok", "system": "cloudflare", "account": "dev", "exposure": "preview",
+    e = {"name": "tok", "system": "cloudflare", "target": "dev", "exposure": "preview",
          "purpose": "p", "check": [], "rotate_days": 90}
     e.update(over)
     return e
@@ -75,7 +75,7 @@ class Manifest(unittest.TestCase):
         self.bad(GOOD + "    colour: red\n", "unknown field")
 
     def test_rejects_missing_required(self):
-        self.bad("credentials:\n  - name: a\n    system: x\n    account: dev\n    exposure: preview\n", "missing 'purpose'")
+        self.bad("credentials:\n  - name: a\n    system: x\n    target: dev\n    exposure: preview\n", "missing 'purpose'")
 
     def test_rejects_prod_exposure_on_dev(self):
         self.bad(GOOD.replace("exposure: preview", "exposure: prod"), "must be preview or staging")
