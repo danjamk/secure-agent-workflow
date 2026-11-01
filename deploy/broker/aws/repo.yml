@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  secure-agent-workflow credential broker, one consumer repo (ADR-002, ADR-006).
+  The preview and staging roles, which deploy to the dev account. Deployed by
+  broker.sh add-repo. Needs the saw-broker account stack.
+
+Parameters:
+  Owner:
+    Type: String
+    AllowedPattern: "[A-Za-z0-9-]+"
+  OwnerId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+  RepoName:
+    Type: String
+    AllowedPattern: "[A-Za-z0-9._-]+"
+  RepoId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+
+Resources:
+  # Preview jobs run the PR's build scripts, so this role gets only what a
+  # preview deploy and a read-only plan need. Never the infrastructure token,
+  # never a state write (ADR-006).
+  PreviewRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub saw-${RepoName}-preview
+      Description: !Sub "secure-agent-workflow: ${Owner}/${RepoName} preview deploys"
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !ImportValue saw-broker-oidc-provider-arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${Owner}@${OwnerId}/${RepoName}@${RepoId}:environment:preview
+      Policies:
+        - PolicyName: preview
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadDeployAndReadOnlyTokens
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/cloudflare-deploy-token
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/cloudflare-read-token
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/cloudflare-account-id
+              - Sid: DecryptThroughSsmOnly
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+              - Sid: ListDevState
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub
+                  - arn:${AWS::Partition}:s3:::${Bucket}
+                  - Bucket: !ImportValue saw-broker-state-bucket
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub ${RepoName}/dev/*
+              - Sid: ReadDevState
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub
+                  - arn:${AWS::Partition}:s3:::${Bucket}/${RepoName}/dev/*
+                  - Bucket: !ImportValue saw-broker-state-bucket
+
+  # Staging runs only from the default branch, after merge, so it gets all
+  # dev secrets and can apply infrastructure (ADR-006).
+  StagingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub saw-${RepoName}-staging
+      Description: !Sub "secure-agent-workflow: ${Owner}/${RepoName} staging deploys"
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !ImportValue saw-broker-oidc-provider-arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${Owner}@${OwnerId}/${RepoName}@${RepoId}:environment:staging
+      Policies:
+        - PolicyName: staging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadAllDevSecrets
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/*
+              - Sid: DecryptThroughSsmOnly
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+              - Sid: ListDevState
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub
+                  - arn:${AWS::Partition}:s3:::${Bucket}
+                  - Bucket: !ImportValue saw-broker-state-bucket
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub ${RepoName}/dev/*
+              - Sid: ReadWriteDevStateAndLock
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub
+                  - arn:${AWS::Partition}:s3:::${Bucket}/${RepoName}/dev/*
+                  - Bucket: !ImportValue saw-broker-state-bucket
+
+Outputs:
+  PreviewRoleArn:
+    Value: !GetAtt PreviewRole.Arn
+  StagingRoleArn:
+    Value: !GetAtt StagingRole.Arn

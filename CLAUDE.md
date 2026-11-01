@@ -5,7 +5,7 @@ while nothing reaches production unchecked.
 
 ## Stack
 
-`bootstrap/` and `gate/` are built; the rest is designed but not built. Stack:
+`bootstrap/` and `gate/` are built, and `deploy/` has the AWS broker; the rest is designed but not built. Stack:
 
 | Component | Stack | Decision |
 |---|---|---|
@@ -38,8 +38,9 @@ Two things a newcomer gets wrong:
 | `standards/tier-map.yml` | Default tier map; consumers get a copy from bootstrap |
 | `standards/planning-agent.md` | Planning agent instructions; the cloud environment's setup script fetches them |
 | `standards/` (other files) | Build agent instructions, issue, ADR and wave plan templates, wave planning rules, and the operator's `/dispatch` skill. `standards/README.md` says who uses each and how it reaches them |
+| `deploy/broker/aws/` | Broker CloudFormation templates and `broker.sh` (run by a human with `AWS_PROFILE`), plus testbed workflows that check every role's allows and denies |
 
-The other component directories listed in the README do not exist yet.
+`orchestrator/` and `redteam/` do not exist yet.
 
 ## Conventions
 
