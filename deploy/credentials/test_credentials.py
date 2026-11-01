@@ -177,6 +177,46 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(self.levels(out), ["WARN"])
 
 
+class DailyCheck(unittest.TestCase):
+    def test_attention_is_fails_expiry_and_rotation(self):
+        expiring = c.evaluate(entry(name="a"), "v", check(expires=TODAY + dt.timedelta(days=10)), {}, "acct1", TODAY)
+        overdue = c.evaluate(entry(name="b", rotate_days=30), "v", check(),
+                             {"saw:set-at": "2026-08-01T00:00:00Z"}, "acct1", TODAY)
+        failing = c.evaluate(entry(name="c"), None, None, {}, None, TODAY)
+        unchecked = c.evaluate(entry(name="d", system="stripe"), "v", None, {}, None, TODAY)
+        undeclared = [("WARN", "/r/dev/preview/x: stored but not declared in the manifest")]
+        attention = c.needs_attention(expiring + overdue + failing + unchecked + undeclared)
+        self.assertEqual([m.split(" ")[0] for _, m in attention], ["a", "b", "c"])
+
+    def test_passing_needs_no_attention(self):
+        self.assertEqual(c.needs_attention(c.evaluate(entry(), "v", check(), {}, "acct1", TODAY)), [])
+
+    def test_sanitize_removes_accounts(self):
+        text = "tok: belongs to Someone's Account (abc123); User: arn:aws:sts::606400000000:assumed-role/x"
+        out = c.sanitize(text, {"Someone's Account", "abc123"})
+        self.assertNotIn("Someone", out)
+        self.assertNotIn("abc123", out)
+        self.assertNotIn("606400000000", out)
+        self.assertIn("[aws-account]", out)
+
+    def test_problems_key_ignores_day_counts(self):
+        day1 = [("WARN", "tok [r-dev-tok]: expires 2026-11-11, in 10 days")]
+        day2 = [("WARN", "tok [r-dev-tok]: expires 2026-11-11, in 9 days")]
+        other = [("FAIL", "tok [r-dev-tok]: missing. Run: broker.sh setup o/r")]
+        self.assertEqual(c.problems_key(day1), c.problems_key(day2))
+        self.assertNotEqual(c.problems_key(day1), c.problems_key(other))
+
+    def test_issue_body(self):
+        attention = [("FAIL", "tok [r-dev-tok]: missing. Run: broker.sh setup o/r")]
+        results = attention + [("PASS", "other [r-dev-other]: checks pass; no expiry")]
+        body = c.issue_body("o/r", results, attention, "https://example/run/1", TODAY)
+        self.assertTrue(body.startswith(c.ISSUE_MARKER))
+        self.assertIn("found 1 to fix in `o/r`", body)
+        self.assertIn("- **FAIL** tok [r-dev-tok]: missing", body)
+        self.assertIn("- PASS other [r-dev-other]", body)
+        self.assertIn(f"saw-problems: {c.problems_key(attention)}", body)
+
+
 class Paste(unittest.TestCase):
     TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789WXYZ"
 

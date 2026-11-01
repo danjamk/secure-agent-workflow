@@ -6,7 +6,7 @@ Deploys a consumer repo to Cloudflare with credentials from a GitHub OIDC broker
 | --- | --- |
 | AWS broker: OIDC provider, state bucket, preview and staging roles (`broker/aws/`) | Built (#17) |
 | Credentials: manifest, `set`, `status`, Cloudflare checker (`credentials/`) | Built (#53) |
-| Daily credential check | #55 |
+| Daily credential check (`.github/workflows/credential-check.yml`) | Built (#55) |
 | Broker action and Cloudflare deploy template | #18 |
 | OpenTofu plan and apply | #49 |
 | Prod role | #32 |
@@ -74,6 +74,17 @@ Names follow `standards/credentials.md`: `<system>-<role>-<kind>` in the manifes
 - the broker: both stacks, each role's trust subject, `AWS_ROLE_ARN` in each environment;
 - each declared credential: missing, placeholder, check failing, wrong account, expired (FAIL); expiring within 14 days, older than `rotate_days`, no checker (WARN);
 - each stored parameter the manifest doesn't declare (WARN).
+
+### Daily check
+
+`.github/workflows/credential-check.yml` runs `credentials.py check --issue` once a day in each consumer, through the caller bootstrap installs (`.github/workflows/credential-check.yml` in the consumer, 12:17 UTC, also runnable from the Actions tab).
+
+- It runs as the staging role, so it checks the dev target's credentials only. Prod credentials stay with `status` until the prod role exists (#32). It skips the broker checks, which the role can't read.
+- It opens one issue labeled `credentials` on any FAIL, or when a credential expires within 14 days or is past `rotate_days`. Later runs update the issue, comment when the problems change, and close it when everything passes. A credential with no checker or an undeclared parameter is listed but doesn't open the issue on its own.
+- Every value is masked in the log before a checker runs. Account names and IDs are replaced in the issue, which is public on a public repo.
+- The job uses the `staging` environment with `deployment: false`, so it creates no deployment record. Staging's deployment history stays a list of real deploys, which rollback reads (ADR-009).
+- A repo without `infra/credentials.yml` skips the job without touching staging or AWS.
+- The staging role needs `ssm:ListTagsForResource` for the rotation warning. Repos added before #55 get it from `broker.sh add-repo <owner>/<repo>`.
 
 ### Parameter layout
 

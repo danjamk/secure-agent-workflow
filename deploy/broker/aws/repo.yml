@@ -78,7 +78,9 @@ Resources:
                   - Bucket: !ImportValue saw-broker-state-bucket
 
   # Staging runs only from the default branch, after merge, so it reads both
-  # dev exposures and can apply infrastructure (ADR-006, ADR-007).
+  # dev exposures and can apply infrastructure (ADR-006, ADR-007). The daily
+  # credential check (#55) runs as this role and reads the parameters' tags
+  # for the rotation warning.
   StagingRole:
     Type: AWS::IAM::Role
     Properties:
@@ -107,6 +109,7 @@ Resources:
                   - ssm:GetParameter
                   - ssm:GetParameters
                   - ssm:GetParametersByPath
+                  - ssm:ListTagsForResource
                 Resource:
                   - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/preview
                   - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/dev/preview/*
