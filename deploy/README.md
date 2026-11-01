@@ -6,7 +6,7 @@ Deploys a consumer repo to Cloudflare with credentials from a GitHub OIDC broker
 | --- | --- |
 | AWS broker: OIDC provider, state bucket, preview and staging roles (`broker/aws/`) | Built (#17) |
 | Credentials: manifest, `set`, `status`, Cloudflare checker (`credentials/`) | Built (#53) |
-| Daily credential check | #55 |
+| Daily credential check (`credentials/daily-check.sh`, `bootstrap/files/credential-check.yml`) | Built (#55) |
 | Broker action and Cloudflare deploy template | #18 |
 | OpenTofu plan and apply | #49 |
 | Prod role | #32 |
@@ -74,6 +74,30 @@ Names follow `standards/credentials.md`: `<system>-<role>-<kind>` in the manifes
 - the broker: both stacks, each role's trust subject, `AWS_ROLE_ARN` in each environment;
 - each declared credential: missing, placeholder, check failing, wrong account, expired (FAIL); expiring within 14 days, older than `rotate_days`, no checker (WARN);
 - each stored parameter the manifest doesn't declare (WARN).
+
+### Daily check
+
+Bootstrap installs `.github/workflows/credential-check.yml` in each consumer. It runs once a day at 12:17 UTC, and can be run from the Actions tab. It checks out this repo at the pinned commit and runs `credentials/daily-check.sh`, which takes the staging role through OIDC and runs `credentials.py check --issue`.
+
+- It runs as the staging role, so it checks the dev target's credentials only. Prod credentials stay with `status` until the prod role exists (#32). It skips the broker checks, which the role can't read.
+- It opens one issue labeled `credentials` on any FAIL, or when a credential expires within 14 days or is past `rotate_days`. Later runs update the issue, comment when the problems change, and close it when everything passes. A credential with no checker or an undeclared parameter is listed but doesn't open the issue on its own.
+- Every value is masked in the log before a checker runs. Account names and IDs are replaced in the issue, which is public on a public repo.
+- The job uses the `staging` environment with `deployment: false`, so it creates no deployment record. Staging's deployment history stays a list of real deploys, which rollback reads (ADR-009).
+- A repo without `infra/credentials.yml` skips the job without touching staging or AWS.
+- It's a plain workflow in the consumer, not a call to a reusable workflow. The first testbed run called one: the job got staging's `AWS_REGION` variable, but its `AWS_ROLE_ARN` secret arrived empty. A called workflow gets environment secrets only when the caller passes `secrets: inherit`, which hands it every repo secret and which the gate's zizmor scan refuses. The broker action in #18 has the same constraint: the job that reads `AWS_ROLE_ARN` must be in the consumer's own workflow.
+- The staging role needs `ssm:ListTagsForResource` for the rotation warning. Repos added before #55 get it from `broker.sh add-repo <owner>/<repo>`.
+
+Tested on `danjamk/agent-testbed`, 2026-11-01, run from the Actions tab:
+
+| Run | Result |
+| --- | --- |
+| All three tokens valid | 3 pass, no issue, no staging deployment record |
+| Read token overwritten with an invalid value | Issue opened: 1 failing, account details removed |
+| Infra token set to `placeholder` | Same issue: title updated to 2 failing, one comment listing the change |
+| Rerun with nothing changed | Body updated to the new run, no comment |
+| Both restored from parameter version 1 | Issue closed with a comment |
+
+No account ID or account name appeared in the logs or the issue.
 
 ### Parameter layout
 

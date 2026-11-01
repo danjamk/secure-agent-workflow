@@ -4,6 +4,7 @@
     AWS_PROFILE=<profile> python3 deploy/credentials/credentials.py setup <owner>/<repo> [--dry-run] [--manifest FILE]
     AWS_PROFILE=<profile> python3 deploy/credentials/credentials.py set <owner>/<repo> <name> [--dry-run] [--manifest FILE]
     AWS_PROFILE=<profile> python3 deploy/credentials/credentials.py status <owner>/<repo> [--manifest FILE]
+    python3 deploy/credentials/credentials.py check <owner>/<repo> [--issue] [--manifest FILE]
 
 Usually run through `deploy/broker/aws/broker.sh setup|set|status`. Names follow
 standards/credentials.md: each credential's dashboard name is
@@ -24,6 +25,12 @@ status  One line per check: the broker stacks, the roles' trust subjects, the
         environment secrets, then every declared credential (missing,
         placeholder, failing, expiring, overdue for rotation, unchecked) and
         every stored parameter the manifest doesn't declare. Exits 1 on any FAIL.
+check   The daily job's status (#55), run by daily-check.sh
+        as the staging role: the dev target's credentials only, no broker
+        checks. Masks every value it reads. --issue opens, updates or closes one
+        issue labeled `credentials`; it opens one on any FAIL or any credential
+        expiring within 14 days or past rotate_days. In GitHub Actions it uses
+        the role's credentials from the environment instead of AWS_PROFILE.
 
 --manifest reads a local file instead of the default branch, for trying a
 manifest before it merges. Values are never printed. A human runs this, never
@@ -269,16 +276,21 @@ def tag_param(name: str, tags: dict) -> None:
         "--tags", json.dumps(pairs))
 
 
-def param_tags(name: str) -> dict:
+def param_tags(name: str, strict: bool = False) -> dict:
+    """The parameter's tags. strict raises when they can't be read, so the daily
+    check never skips the rotation warning silently."""
     try:
         tags = aws("ssm", "list-tags-for-resource", "--resource-type", "Parameter", "--resource-id", name)
     except RuntimeError:
+        if strict:
+            raise
         return {}
     return {t["Key"]: t["Value"] for t in tags.get("TagList", [])}
 
 
-def stored_names(repo_name: str) -> list:
-    out = aws("ssm", "get-parameters-by-path", "--path", f"/{repo_name}", "--recursive",
+def stored_names(path: str) -> list:
+    """Every parameter name under path, e.g. /<repo> or /<repo>/dev/preview."""
+    out = aws("ssm", "get-parameters-by-path", "--path", path, "--recursive",
               "--query", "Parameters[].Name")
     return out or []
 
@@ -590,7 +602,7 @@ def cmd_status(repo: str, manifest_file) -> int:
             emit([("FAIL", f"{e['system']}-account-id: not recorded at {id_path}. "
                            f"Store a {e['system']} credential with broker.sh set")])
 
-    for name in stored_names(repo_name):
+    for name in stored_names(f"/{repo_name}"):
         if name not in declared and name not in identities:
             emit([("WARN", f"{name}: stored but not declared in the manifest")])
 
@@ -599,15 +611,211 @@ def cmd_status(repo: str, manifest_file) -> int:
     return 1 if counts["FAIL"] else 0
 
 
+# --- Daily check (#55) ---
+
+# The daily check runs as the staging role, which reads the dev target's preview
+# and staging exposures only. Prod credentials stay with status until the prod
+# role exists (ADR-007).
+CHECK_TARGET = "dev"
+ISSUE_LABEL = "credentials"
+ISSUE_MARKER = "<!-- saw-credential-check -->"
+# WARN lines that open the issue: expiring soon or past rotate_days. Other WARNs
+# (no checker, stored but undeclared) are listed but don't open it on their own.
+ATTENTION_WARN = re.compile(r": (expires \S+, in \d+ days|set \d+ days ago; rotate every \d+)$")
+AWS_ACCOUNT = re.compile(r"\b\d{12}\b")
+
+
+def needs_attention(results: list) -> list:
+    """The FAIL lines and the expiry and rotation WARN lines. Pure, for tests."""
+    return [(lvl, msg) for lvl, msg in results
+            if lvl == "FAIL" or (lvl == "WARN" and ATTENTION_WARN.search(msg))]
+
+
+def sanitize(text: str, private: set) -> str:
+    """Remove account names and IDs before text goes into an issue, which is
+    public on a public repo. AWS account IDs too: they appear in AWS errors."""
+    for item in sorted(private, key=len, reverse=True):
+        if item:
+            text = text.replace(item, "[account]")
+    return AWS_ACCOUNT.sub("[aws-account]", text)
+
+
+def problems_key(attention: list) -> str:
+    """A fingerprint of what's wrong, ignoring day counts, so the issue gets a
+    comment when the problems change and not every day."""
+    norm = sorted(re.sub(r"\d+ days", "N days", f"{lvl} {msg}") for lvl, msg in attention)
+    return fingerprint("\n".join(norm))[:16]
+
+
+def issue_body(repo: str, results: list, attention: list, run_url: str, today: dt.date) -> str:
+    """The issue's body: what needs attention, then everything else. Pure, for tests."""
+    others = [r for r in results if r not in attention]
+    lines = [
+        ISSUE_MARKER,
+        f"The daily credential check found {len(attention)} to fix in `{repo}`. "
+        f"Last checked {today.isoformat()}" + (f" ([run]({run_url}))." if run_url else "."),
+        "",
+        "## Needs attention",
+        "",
+        *[f"- **{lvl}** {msg}" for lvl, msg in attention],
+        "",
+        "## Everything else",
+        "",
+        *([f"- {lvl} {msg}" for lvl, msg in others] or ["- Nothing else checked."]),
+        "",
+        "## How to fix",
+        "",
+        f"Run `AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh setup {repo}` from "
+        "secure-agent-workflow. It asks only for what is missing or failing, and names the "
+        "token to create in the dashboard (`standards/credentials.md`).",
+        "",
+        "This issue is updated by each daily run and closes itself when every credential passes. "
+        "Prod credentials aren't checked here; run `broker.sh status` for those.",
+        "",
+        f"<!-- saw-problems: {problems_key(attention)} -->",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def file_issue(repo: str, results: list, run_url: str, today: dt.date, private: set) -> None:
+    """Open, update or close the one open issue labeled `credentials`."""
+    attention = [(lvl, sanitize(msg, private)) for lvl, msg in needs_attention(results)]
+    clean = [(lvl, sanitize(msg, private)) for lvl, msg in results]
+    found = json.loads(gh("issue", "list", "--repo", repo, "--label", ISSUE_LABEL, "--state", "open",
+                          "--json", "number,body", "--limit", "20") or "[]")
+    found = [i for i in found if ISSUE_MARKER in (i.get("body") or "")]
+    number = found[0]["number"] if found else None
+    link = f" ({run_url})" if run_url else ""
+
+    if not attention:
+        if number:
+            gh("issue", "close", str(number), "--repo", repo,
+               "--comment", f"Every credential passes as of {today.isoformat()}{link}.")
+            print(f"Closed issue #{number}: every credential passes.")
+        else:
+            print("Every credential passes; no issue to open.")
+        return
+
+    fails = sum(1 for lvl, _ in attention if lvl == "FAIL")
+    warns = len(attention) - fails
+    title = f"Credentials: {fails} failing, {warns} expiring or due for rotation"
+    body = issue_body(repo, clean, attention, run_url, today)
+    if number is None:
+        # bootstrap creates the label; a repo bootstrapped before #55 may lack it.
+        sh(["gh", "label", "create", ISSUE_LABEL, "--repo", repo, "--color", "d93f0b",
+            "--description", "A stored credential is failing, expiring or due for rotation"])
+        proc = sh(["gh", "issue", "create", "--repo", repo, "--label", ISSUE_LABEL,
+                   "--title", title, "--body-file", "-"], stdin=body)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr.strip() or "gh issue create failed")
+        print(f"Opened {proc.stdout.strip()}")
+        return
+    old_key = re.search(r"saw-problems: (\w+)", found[0]["body"] or "")
+    proc = sh(["gh", "issue", "edit", str(number), "--repo", repo, "--title", title,
+               "--body-file", "-"], stdin=body)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "gh issue edit failed")
+    if not old_key or old_key.group(1) != problems_key(attention):
+        gh("issue", "comment", str(number), "--repo", repo,
+           "--body", f"The problems changed{link}:\n\n" + "\n".join(f"- **{l}** {m}" for l, m in attention))
+        print(f"Updated issue #{number}: the problems changed.")
+    else:
+        print(f"Updated issue #{number}: same problems.")
+
+
+def mask(value) -> None:
+    """Hide a value from the GitHub Actions log, one line at a time."""
+    if value and os.environ.get("GITHUB_ACTIONS") == "true":
+        for line in str(value).splitlines():
+            if line.strip():
+                print(f"::add-mask::{line}")
+
+
+def cmd_check(repo: str, manifest_file, issue: bool) -> int:
+    """status for the daily job: the dev target's credentials only, no broker
+    checks (the staging role can't read them), and the result filed as an issue."""
+    repo_name = repo.split("/", 1)[1]
+    today = dt.datetime.now(dt.timezone.utc).date()
+    results, private = [], set()
+
+    def emit(items):
+        for level, msg in items:
+            print(f"{level:<5} {msg}")
+        results.extend(items)
+
+    try:
+        mask(aws("sts", "get-caller-identity")["Account"])
+        entries = load_manifest(repo, manifest_file)
+    except (RuntimeError, ValueError) as err:
+        entries = None
+        emit([("FAIL", f"manifest or AWS: {err}")])
+
+    skipped = [e["name"] for e in entries or [] if e["target"] != CHECK_TARGET]
+    if skipped:
+        print(f"INFO  not checked here (prod target): {', '.join(skipped)}")
+    declared, identities = set(), {}
+    for e in entries or []:
+        if e["target"] != CHECK_TARGET:
+            continue
+        path = param_path(repo_name, e)
+        declared.add(path)
+        id_path = identity_path(repo_name, e["system"], e["target"])
+        try:
+            if id_path not in identities:
+                identities[id_path] = get_param(id_path, decrypt=False)
+                mask(identities[id_path])
+                private.add(identities[id_path] or "")
+            value = get_param(path, decrypt=True)
+            mask(value)
+            check = None
+            if value not in (None, PLACEHOLDER):
+                check = run_checker(e["system"], e["check"], value)
+            if check and check["identity"]:
+                mask(check["identity"][0])
+                mask(check["identity"][1])
+                private.update(check["identity"])
+            stored_identity = identities[id_path]
+            if stored_identity == PLACEHOLDER:
+                stored_identity = None
+            tags = param_tags(path, strict=True) if value is not None else {}
+            emit(evaluate(e, value, check, tags, stored_identity, today, repo))
+        except RuntimeError as err:
+            emit([("FAIL", f"{e['name']}: can't read it as the staging role: {err}")])
+
+    if entries is not None:
+        for exposure in EXPOSURES[CHECK_TARGET]:
+            try:
+                names = stored_names(f"/{repo_name}/{CHECK_TARGET}/{exposure}")
+            except RuntimeError as err:
+                emit([("FAIL", f"can't list /{repo_name}/{CHECK_TARGET}/{exposure}: {err}")])
+                continue
+            for name in names:
+                if name not in declared and name not in identities:
+                    emit([("WARN", f"{name}: stored but not declared in the manifest")])
+
+    counts = {lvl: sum(1 for level, _ in results if level == lvl) for lvl in ("PASS", "WARN", "FAIL")}
+    print(f"\n{counts['PASS']} pass, {counts['WARN']} warn, {counts['FAIL']} fail")
+    if not issue:
+        return 1 if counts["FAIL"] else 0
+    server, run_id = os.environ.get("GITHUB_SERVER_URL"), os.environ.get("GITHUB_RUN_ID")
+    run_url = f"{server}/{os.environ.get('GITHUB_REPOSITORY', repo)}/actions/runs/{run_id}" if run_id else ""
+    file_issue(repo, results, run_url, today, private)
+    # The issue is the signal. The job fails only if the issue couldn't be filed.
+    return 0
+
+
 def main(argv: list) -> int:
     usage = ("usage: credentials.py setup <owner>/<repo> [--dry-run] [--manifest FILE]\n"
              "       credentials.py set <owner>/<repo> <name> [--dry-run] [--manifest FILE]\n"
-             "       credentials.py status <owner>/<repo> [--manifest FILE]")
-    args, dry_run, manifest = [], False, None
+             "       credentials.py status <owner>/<repo> [--manifest FILE]\n"
+             "       credentials.py check <owner>/<repo> [--issue] [--manifest FILE]")
+    args, dry_run, manifest, issue = [], False, None, False
     it = iter(argv)
     for arg in it:
         if arg == "--dry-run":
             dry_run = True
+        elif arg == "--issue":
+            issue = True
         elif arg == "--manifest":
             manifest = next(it, None)
         elif arg.startswith("-"):
@@ -615,15 +823,24 @@ def main(argv: list) -> int:
             return 1
         else:
             args.append(arg)
-    if not args or args[0] not in ("setup", "set", "status") or len(args) < 2 \
+    if not args or args[0] not in ("setup", "set", "status", "check") or len(args) < 2 \
             or not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+", args[1]):
         print(usage)
         return 1
+    if args[0] == "check" and os.environ.get("GITHUB_ACTIONS") == "true":
+        # The daily job: credentials come from the staging role, set in the environment.
+        try:
+            return cmd_check(args[1], manifest, issue)
+        except RuntimeError as err:
+            print(f"FAIL  {sanitize(str(err), set())}")
+            return 1
     if not os.environ.get("AWS_PROFILE"):
         print("Set AWS_PROFILE. This never uses default credentials.")
         return 1
     try:
         print(f"AWS: {aws('sts', 'get-caller-identity')['Arn']}, {REGION} (profile {os.environ['AWS_PROFILE']})")
+        if args[0] == "check":
+            return cmd_check(args[1], manifest, issue)
         if args[0] == "set":
             if len(args) != 3:
                 print(usage)
