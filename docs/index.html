@@ -200,7 +200,7 @@ svg text { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
   background: var(--surface); border: 1px solid var(--hair-soft); border-radius: 10px;
   padding: 16px; position: relative; display: flex; flex-direction: column; gap: 6px;
 }
-.step:not(:last-child)::after {
+.step:not(.later)::after {
   content: ""; position: absolute; right: -11px; top: 32px; width: 10px; height: 10px;
   border-top: 1.5px solid var(--text-3); border-right: 1.5px solid var(--text-3);
   transform: rotate(45deg); background: transparent;
@@ -234,6 +234,66 @@ svg text { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
 .int { border-left: 2px solid var(--hair); padding: 2px 0 2px 16px; }
 .int h4 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
 .int p { margin: 0; font-size: 14px; color: var(--text-2); }
+
+
+/* Workflow player */
+.player-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; }
+.pbtns, .seg { display: flex; gap: 8px; flex-wrap: wrap; }
+.pbtn, .seg-b {
+  font: inherit; font-size: 14px; font-weight: 500; color: var(--ink); cursor: pointer;
+  background: var(--surface); border: 1px solid var(--hair); border-radius: 8px; padding: 8px 14px; min-height: 40px;
+}
+.pbtn:hover, .seg-b:hover { border-color: var(--text-3); }
+.pbtn:focus-visible, .seg-b:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.pbtn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); min-width: 92px; }
+.seg { gap: 0; }
+.seg-b { border-radius: 0; }
+.seg-b:first-child { border-radius: 8px 0 0 8px; }
+.seg-b:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+.seg-b[aria-pressed="true"] { background: var(--blue-fill); color: var(--blue); border-color: var(--blue); }
+.seg-b:last-child[aria-pressed="true"] { border-left: 1px solid var(--blue); }
+.progress { height: 3px; background: var(--hair-soft); border-radius: 2px; margin: 0 0 18px; overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--terra); transition: width 0.5s ease; }
+
+.runner {
+  position: absolute; left: 0; top: 0; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--terra); box-shadow: 0 0 0 4px rgba(160, 73, 46, 0.18);
+  opacity: 0; pointer-events: none; z-index: 2;
+  transition: transform 0.7s cubic-bezier(.6,.05,.3,1), opacity 0.3s;
+}
+.step { transition: transform 0.35s ease, opacity 0.35s ease, border-color 0.35s, box-shadow 0.35s; }
+.flowline.is-running .step { opacity: 0.5; }
+.flowline.is-running .step.is-done, .flowline.is-running .step.is-active { opacity: 1; }
+.step.is-active { border-color: var(--terra); transform: translateY(-4px); box-shadow: 0 10px 28px rgba(30, 22, 16, 0.10); }
+.step.is-done .step-n { color: var(--success); }
+.step.is-done .step-n::after { content: " ✓"; font-family: 'Space Grotesk', sans-serif; font-size: 15px; vertical-align: middle; }
+.who.is-waiting { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 5px rgba(160, 73, 46, 0.22); } }
+
+.now { display: grid; grid-template-columns: 1fr minmax(280px, 380px); gap: 16px; margin-top: 18px; align-items: start; }
+.now-cap { margin: 0; padding: 16px 18px; border-radius: 10px; background: var(--surface-2); font-size: 15.5px; color: var(--ink); min-height: 76px; }
+.now-cap b { color: var(--terra); font-weight: 600; }
+.pr { background: var(--surface); border: 1px solid var(--hair-soft); border-radius: 10px; padding: 14px 16px; }
+.pr-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.pr-branch { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
+.pr-state { font-size: 10.5px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; padding: 4px 8px; border-radius: 3px; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.pr-state.merged { background: var(--success-fill); color: var(--success); }
+.pr-state.waiting { background: rgba(160, 73, 46, 0.10); color: var(--terra); }
+.pr-checks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.pr-checks li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.pr-checks li::before {
+  content: ""; width: 10px; height: 10px; border-radius: 50%; flex: none;
+  border: 1.5px solid var(--text-3); transition: background 0.25s, border-color 0.25s;
+}
+.pr-checks li.pass::before { background: var(--success); border-color: var(--success); }
+.pr-checks li.wait::before { background: var(--terra); border-color: var(--terra); }
+.pr-checks li.wait { color: var(--terra); }
+
+@media (prefers-reduced-motion: reduce) {
+  .runner, .step, .progress i, .pr-checks li::before { transition: none; }
+  .who.is-waiting { animation: none; }
+  .step.is-active { transform: none; }
+}
 
 /* Adopt */
 .adopt { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: start; }
@@ -284,6 +344,12 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
   .view-head { grid-template-columns: 1fr; gap: 8px; }
   .view-num { font-size: 44px; }
   .flowline { grid-template-columns: 1fr; }
+  .now { grid-template-columns: 1fr; margin-top: 0; }
+  .flowline .now { margin: -4px 0 4px; }
+  .pbtn, .seg-b { padding: 8px 12px; }
+  .player { position: sticky; top: 0; z-index: 4; background: var(--bg); padding-top: 10px; }
+  .player .progress { margin-bottom: 10px; }
+  .step { scroll-margin-top: 150px; }
   .step::after { display: none; }
   .panel { padding: 16px; }
   section.view { padding-top: 64px; }
@@ -342,7 +408,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       <div class="diagram-wrap">
         <svg viewBox="0 0 1280 690" role="img" aria-labelledby="topo-title topo-desc">
           <title id="topo-title">Topology of secure-agent-workflow</title>
-          <desc id="topo-desc">A Cloudflare orchestrator starts a credential-free sandbox per issue. Its traffic leaves through an outbound handler that injects tokens and allows only listed hosts. The agent pushes branches and opens pull requests on GitHub, where a merge gate decides what reaches main. Merges to main deploy to staging in the dev account; production deploys only from the production branch. Each deploy job gets a short-lived token from an AWS role that trusts only its environment's OIDC token.</desc>
+          <desc id="topo-desc">A Cloudflare orchestrator, in its own tooling account, starts a credential-free sandbox per issue. Its traffic leaves through an outbound handler that injects tokens and allows only listed hosts. The agent pushes branches and opens pull requests on GitHub, where a merge gate decides what reaches main. Merges to main deploy to staging in the dev account; production deploys only from the production branch. Each deploy job gets a short-lived token from an AWS role that trusts only its environment's OIDC token. Infrastructure is OpenTofu, planned on the PR and applied only after merge, with its state in AWS.</desc>
           <defs>
             <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,0 L10,5 L0,10 z" class="head"/>
@@ -361,7 +427,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
 
           <!-- Cloudflare orchestrator zone -->
           <rect class="z" x="210" y="20" width="430" height="410" rx="10"/>
-          <text class="zt" x="226" y="42">CLOUDFLARE · ORCHESTRATOR</text>
+          <text class="zt" x="226" y="42">CLOUDFLARE · TOOLING ACCOUNT</text>
 
           <rect class="b" x="230" y="56" width="390" height="96" rx="6"/>
           <text class="bt" x="246" y="80">Orchestrator Worker + coordinator</text>
@@ -449,7 +515,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
           <text class="bt" x="246" y="534">Dev account</text>
           <text class="bd" x="246" y="554">Previews from branches</text>
           <text class="bd" x="246" y="571">Staging from main</text>
-          <text class="bd" x="246" y="588">Developers manage it</text>
+          <text class="bd" x="246" y="588">Infra applied by CI only</text>
           <rect class="b" x="435" y="510" width="185" height="96" rx="6"/>
           <text class="bt" x="451" y="534">Prod account</text>
           <text class="bd" x="451" y="554">Deployed only from</text>
@@ -471,7 +537,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
           <text class="bd" x="730" y="628">Cloudflare dev token</text>
           <use href="#key" class="key" x="901" y="617" width="18" height="12"/>
           <text class="bd" x="925" y="628">Cloudflare prod token</text>
-          <text class="bd" x="706" y="646">One AWS account or two; the roles stay separate</text>
+          <text class="bd" x="706" y="646">OpenTofu state · one AWS account or two</text>
 
           <!-- Deploy flows -->
           <path class="flow" d="M782 420 V504" marker-end="url(#arr)"/>
@@ -499,6 +565,9 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
         <div class="stop"><p class="try">calls an unknown host…</p><p class="by">The outbound handler allows listed hosts only.</p></div>
         <div class="stop"><p class="try">changes a dependency or auth code…</p><p class="by">The tier check fails until you approve the latest commit.</p></div>
         <div class="stop"><p class="try">rewrites the tier map or CODEOWNERS…</p><p class="by">Tier 3. An agent-authored PR there always fails.</p></div>
+        <div class="stop"><p class="try">tries to change infrastructure…</p><p class="by">It can only write OpenTofu. The plan is posted on the PR, it waits for you, and only the pipeline applies it.</p></div>
+        <div class="stop"><p class="try">deletes a database or bucket…</p><p class="by">A plan that deletes or replaces stored data fails the gate unless you wrote the PR.</p></div>
+        <div class="stop"><p class="try">hides a command in a build script…</p><p class="by">Previews get a Workers-only token. Only staging, after merge, holds the token that changes infrastructure.</p></div>
       </div>
     </div>
   </section>
@@ -511,6 +580,21 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
         <h2>From an approved issue to production</h2>
         <p>You plan and dispatch work. Agents build it. The merge gate decides what needs you. A tier 1 change can go from label to staging without anyone touching it. Production is a release you cut.</p>
       </div>
+    </div>
+
+    <div class="player" aria-label="Workflow animation">
+      <div class="player-bar">
+        <div class="pbtns">
+          <button type="button" class="pbtn primary" id="p-play" aria-pressed="false">▶ Play</button>
+          <button type="button" class="pbtn" id="p-step">Step</button>
+          <button type="button" class="pbtn" id="p-reset">Reset</button>
+        </div>
+        <div class="seg" role="group" aria-label="Which change to follow">
+          <button type="button" class="seg-b" data-tier="1" aria-pressed="true">Tier 1 change</button>
+          <button type="button" class="seg-b" data-tier="2" aria-pressed="false">Tier 2 change</button>
+        </div>
+      </div>
+      <div class="progress"><i id="p-bar"></i></div>
     </div>
 
     <div class="flowline">
@@ -536,20 +620,20 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
         <span class="step-n">4</span>
         <span class="who agent">Build agent</span>
         <h4>Build</h4>
-        <p>Works in a fresh sandbox on its own branch. Opens a draft PR and gets a preview deploy.</p>
+        <p>Works in a fresh sandbox on its own branch, writing code and infrastructure alike. Opens a draft PR and gets a preview deploy.</p>
       </div>
       <div class="step gate">
         <span class="step-n">5</span>
         <span class="who agent">Merge gate</span>
         <span class="who you">You, tier 2–3</span>
         <h4>Check</h4>
-        <p>Tests, scanners, tier check, and an LLM audit that can reject but never approve. You approve what needs you, in GitHub.</p>
+        <p>Tests, scanners, tier check, an infrastructure plan, and an LLM audit that can reject but never approve. You approve what needs you, in GitHub.</p>
       </div>
       <div class="step">
         <span class="step-n">6</span>
         <span class="who">GitHub Actions</span>
         <h4>Stage</h4>
-        <p>Every merge to main deploys to staging, in the dev account.</p>
+        <p>Every merge to main applies infrastructure, then deploys to staging, in the dev account.</p>
       </div>
       <div class="step later">
         <span class="step-n">7</span>
@@ -560,15 +644,23 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       </div>
     </div>
 
+    <div class="now">
+      <p class="now-cap" id="p-cap" aria-live="polite">Press play to follow one issue from plan to production. Switch to a tier 2 change to see where you come in.</p>
+      <div class="pr" id="p-pr" hidden>
+        <div class="pr-top"><span class="pr-branch" id="p-branch"></span><span class="pr-state" id="p-state">Draft</span></div>
+        <ul class="pr-checks" id="p-checks"></ul>
+      </div>
+    </div>
+
     <div class="tiers">
       <div class="tier">
         <div class="tier-top"><span class="tier-name">Tier 1</span><span class="outcome o-auto">Merges itself</span></div>
-        <p class="paths">App source, tests, docs</p>
+        <p class="paths">App source, tests, general docs</p>
         <p class="rule">All checks green and no blocking audit finding. Zero touches from you.</p>
       </div>
       <div class="tier">
         <div class="tier-top"><span class="tier-name">Tier 2</span><span class="outcome o-you">Waits for you</span></div>
-        <p class="paths">Dependencies and lockfiles, auth and permission code, migrations, deploy config, and anything the map doesn't name</p>
+        <p class="paths">Dependencies, auth code, migrations, infrastructure, specs, ADRs and agent instructions, and anything the map doesn't name</p>
         <p class="rule">Your approval on the PR's latest commit. A new push needs a new approval.</p>
       </div>
       <div class="tier">
@@ -621,6 +713,10 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
           <p>It runs the gate on itself first. From then on, every PR into main passes the same checks.</p>
         </li>
         <li>
+          <h4>Connect deploy credentials <span class="when">one command</span></h4>
+          <p><code>broker.sh add-repo owner/repo</code> creates the repo's preview and staging roles. You put each environment's tokens in Parameter Store; no deploy secret is stored in GitHub.</p>
+        </li>
+        <li>
           <h4>Plan in waves</h4>
           <p>Spec, plan and ADRs, broken into issues sized for one agent run and grouped into waves, with their dependencies marked.</p>
         </li>
@@ -642,6 +738,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
             <tr><td>Sandbox</td><td>E2B, Docker Sandboxes, gVisor or Kata containers</td></tr>
             <tr><td>Egress proxy</td><td>Envoy or Squid with an allowlist</td></tr>
             <tr><td>Credential broker</td><td>Vault or OpenBao, GCP or Azure federated credentials</td></tr>
+            <tr><td>Infrastructure</td><td>Terraform, Pulumi</td></tr>
             <tr><td>Scanners</td><td>GitHub Advanced Security, a commercial scanner</td></tr>
             <tr><td>Agent CLI</td><td>Any CLI that runs headless</td></tr>
           </table>
@@ -657,7 +754,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       <div class="view-num">—</div>
       <div>
         <h2>Where it stands</h2>
-        <p>The agent's identity, bootstrap and the merge gate are built and tested end to end on a testbed. Next is everything up to staging. Production releases are designed and wait until that works.</p>
+        <p>The agent's identity, bootstrap, the merge gate and the planning standards are built and tested on testbeds. The AWS credential broker is written and being deployed. Next is everything up to staging. Production releases are designed and wait until that works.</p>
       </div>
     </div>
     <div class="status">
@@ -669,18 +766,21 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
           <li><i class="dot done"></i>Merge gate: checks and scanners, pinned tools</li>
           <li><i class="dot done"></i>Tier check, re-run on every review</li>
           <li><i class="dot done"></i>Gate wiring installed and updated by bootstrap</li>
+          <li><i class="dot done"></i>Specs, ADRs and agent instructions are tier 2</li>
+          <li><i class="dot done"></i>Templates, wave planning standard and <code>/dispatch</code></li>
         </ul>
       </div>
       <div>
         <p class="sub-h">Next</p>
         <ul>
           <li><i class="dot next"></i>Orchestrator, sandbox, outbound handler and budgets</li>
-          <li><i class="dot next"></i>Wave planning standard and <code>/dispatch</code></li>
+          <li><i class="dot next"></i>AWS credential broker: preview and staging roles, state bucket</li>
           <li><i class="dot next"></i>Preview and staging deploys through the dev roles</li>
+          <li><i class="dot next"></i>Infrastructure as OpenTofu: plan on the PR, apply after merge, drift checks</li>
           <li><i class="dot next"></i>Red-team runs, with results published</li>
           <li><i class="dot next"></i>PR audit: LLM reviewers and an approver summary</li>
           <li><i class="dot next"></i>Production releases: versioned, batch-reviewed</li>
-          <li><i class="dot next"></i>Operator console, and a separate identity for the planning agent</li>
+          <li><i class="dot next"></i>Operator console that works on a phone, and a separate identity for the planning agent</li>
         </ul>
       </div>
     </div>
@@ -695,6 +795,153 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
     <span><a href="https://github.com/danjamk/secure-agent-workflow">Repo</a> · <a href="https://github.com/danjamk/secure-agent-workflow/blob/main/docs/specs/0001-secure-build-agent-workflow.md">Spec 0001</a></span>
   </div>
 </footer>
+
+
+<script>
+(() => {
+  const flow = document.querySelector('.flowline');
+  if (!flow) return;
+  const steps = [...flow.querySelectorAll('.step')];
+  const youChip = flow.querySelector('.step.gate .who.you');
+  const runner = document.createElement('i');
+  runner.className = 'runner';
+  runner.setAttribute('aria-hidden', 'true');
+  flow.appendChild(runner);
+  const $ = id => document.getElementById(id);
+  const playBtn = $('p-play'), cap = $('p-cap'), bar = $('p-bar');
+  const pr = $('p-pr'), branch = $('p-branch'), state = $('p-state'), checks = $('p-checks');
+  const segs = [...document.querySelectorAll('.seg-b')];
+  const intro = cap.innerHTML;
+  const now = document.querySelector('.now');
+  const narrow = matchMedia('(max-width: 720px)');
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+
+  const CHECKS = ['Tests', 'Dependency scan', 'Secret scan', 'Code scan', 'Workflow lint', 'Infra plan', 'PR audit', 'Tier check'];
+  const T = {
+    1: { issue: '#12', branch: 'agent/12-search-filter', plan: 'Infra plan: no changes' },
+    2: { issue: '#9', branch: 'agent/9-add-upload-bucket', plan: 'Infra plan: +1 bucket' },
+  };
+
+  function scenes(t) {
+    const x = T[t];
+    const head = [
+      { step: 0, ms: 2600, cap: '<b>Plan.</b> You and the planning agent turn a spec into a plan, then into issues with their dependencies marked.' },
+      { step: 1, ms: 2600, cap: '<b>Dispatch.</b> <code>/dispatch</code> labels the wave\'s issues <code>agent:ready</code>. That label is the only start button.' },
+      { step: 2, ms: 2600, cap: `<b>Queue.</b> The coordinator holds issue ${x.issue} until the issue it depends on merges, then starts it when a slot and budget are free.` },
+      { step: 3, ms: 2800, pr: 'Draft', cap: `<b>Build.</b> A fresh sandbox with no credentials. The agent pushes <code>${x.branch}</code>, opens a draft PR, and a preview deploys.` },
+      { step: 4, ms: 3400, pr: 'Checking', checks: 'run', cap: '<b>Check.</b> The gate runs on the PR: tests, scanners, the infrastructure plan, the PR audit, and the tier check.' },
+    ];
+    const tail = t === 1 ? [
+      { step: 4, ms: 3000, pr: 'Merged', checks: 'pass', cap: '<b>Tier 1.</b> Every path is app code or tests. All checks pass and auto-merge squashes it into main. Nobody touched it.' },
+      { step: 5, ms: 2600, pr: 'Merged', checks: 'pass', cap: '<b>Stage.</b> The merge deploys the build to staging in the dev account, and checks it reports the right build id.' },
+    ] : [
+      { step: 4, ms: 3400, pr: 'Waiting', checks: 'wait', you: true, cap: '<b>Tier 2.</b> The PR adds a storage bucket. The plan is on the PR, and the tier check fails until you approve its latest commit.' },
+      { step: 4, ms: 2800, pr: 'Merged', checks: 'pass', cap: '<b>You approve in GitHub,</b> on the web or your phone. The tier check re-runs, passes, and auto-merge squashes the PR into main.' },
+      { step: 5, ms: 2800, pr: 'Merged', checks: 'pass', cap: '<b>Stage.</b> The staging job applies the bucket with the staging role, runs migrations, then deploys the Worker.' },
+    ];
+    return head.concat(tail, [
+      { step: 6, ms: 3000, pr: 'Merged', checks: 'pass', cap: '<b>Release, later phase.</b> A batch of merged PRs becomes one versioned PR into production. Only you approve it.' },
+      { step: -1, ms: 0, done: true, pr: 'Merged', checks: 'pass', cap: 'That\'s the path. Press reset to run it again, or switch tiers to compare.' },
+    ]);
+  }
+
+  let tier = 1, list = scenes(1), i = -1, playing = false, timer = null, subs = [];
+
+  function clearSubs() { subs.forEach(clearTimeout); subs = []; }
+
+  function drawChecks(mode) {
+    const x = T[tier];
+    checks.innerHTML = CHECKS.map((c, k) => `<li data-k="${k}">${c === 'Infra plan' ? x.plan : c}</li>`).join('');
+    const li = [...checks.children];
+    const last = li.length - 1;
+    if (mode === 'run') {
+      li.slice(0, last).forEach((el, k) => subs.push(setTimeout(() => el.classList.add('pass'), 300 + k * 340)));
+    } else if (mode === 'pass') {
+      li.forEach(el => el.classList.add('pass'));
+    } else if (mode === 'wait') {
+      li.slice(0, last).forEach(el => el.classList.add('pass'));
+      li[last].classList.add('wait');
+      li[last].textContent = 'Tier check: needs you';
+    }
+  }
+
+  function placeRunner(sc) {
+    if (!sc || sc.step < 0) { runner.style.opacity = 0; return; }
+    const el = steps[sc.step];
+    runner.style.opacity = 1;
+    runner.style.transform = `translate(${el.offsetLeft + el.offsetWidth / 2 - 7}px, ${el.offsetTop - 7}px)`;
+  }
+
+  // On a phone the steps stack, so the caption and PR card follow the active
+  // step instead of sitting below all seven, and the step scrolls into view.
+  function placeNow(sc, scroll) {
+    if (narrow.matches && sc && sc.step >= 0) {
+      steps[sc.step].after(now);
+      if (scroll) steps[sc.step].scrollIntoView({ block: 'start', behavior: calm.matches ? 'auto' : 'smooth' });
+    } else if (now.parentNode !== flow.parentNode || now.previousElementSibling !== flow) {
+      flow.after(now);
+    }
+  }
+
+  function render() {
+    clearSubs();
+    const sc = list[i];
+    flow.classList.toggle('is-running', i >= 0);
+    steps.forEach((el, k) => {
+      el.classList.toggle('is-active', !!sc && k === sc.step);
+      el.classList.toggle('is-done', !!sc && (sc.done || k < sc.step));
+    });
+    youChip.classList.toggle('is-waiting', !!(sc && sc.you));
+    placeNow(sc, true);
+    placeRunner(sc);
+    bar.style.width = `${((i + 1) / list.length) * 100}%`;
+    cap.innerHTML = sc ? sc.cap : intro;
+    if (sc && sc.pr) {
+      pr.hidden = false;
+      branch.textContent = T[tier].branch;
+      state.textContent = sc.pr;
+      state.className = 'pr-state' + (sc.pr === 'Merged' ? ' merged' : sc.pr === 'Waiting' ? ' waiting' : '');
+      drawChecks(sc.checks);
+    } else {
+      pr.hidden = true;
+    }
+  }
+
+  function setPlaying(p) {
+    playing = p;
+    playBtn.textContent = p ? '❚❚ Pause' : '▶ Play';
+    playBtn.setAttribute('aria-pressed', String(p));
+    clearTimeout(timer);
+    if (p) tick();
+  }
+
+  function tick() {
+    if (!playing) return;
+    if (i >= list.length - 1) { setPlaying(false); return; }
+    i += 1;
+    render();
+    timer = setTimeout(tick, list[i].ms || 0);
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (playing) return setPlaying(false);
+    if (i >= list.length - 1) i = -1;
+    setPlaying(true);
+  });
+  $('p-step').addEventListener('click', () => {
+    setPlaying(false);
+    if (i < list.length - 1) { i += 1; render(); }
+  });
+  $('p-reset').addEventListener('click', () => { setPlaying(false); i = -1; render(); });
+  segs.forEach(b => b.addEventListener('click', () => {
+    tier = Number(b.dataset.tier);
+    segs.forEach(s => s.setAttribute('aria-pressed', String(s === b)));
+    list = scenes(tier);
+    setPlaying(false); i = -1; render();
+  }));
+  window.addEventListener('resize', () => { placeNow(list[i], false); placeRunner(list[i]); });
+})();
+</script>
 
 </body>
 </html>
