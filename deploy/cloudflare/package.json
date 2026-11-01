@@ -1,0 +1,8 @@
+{
+  "name": "saw-cloudflare-deploy",
+  "private": true,
+  "description": "The wrangler version the deploy job runs, locked with its dependencies. Installed with npm ci --ignore-scripts.",
+  "dependencies": {
+    "wrangler": "4.151.1"
+  }
+}
