@@ -48,6 +48,13 @@ if ! curl -fsSL https://raw.githubusercontent.com/danjamk/secure-agent-workflow/
   echo "The planning instructions failed to load. Stop and tell the operator." > ~/.claude/planning-agent.md
 fi
 
+# Planning skills: /groom, /retro, /release-prep. Never /dispatch.
+for skill in groom retro release-prep; do
+  mkdir -p ~/.claude/skills/"$skill"
+  curl -fsSL "https://raw.githubusercontent.com/danjamk/secure-agent-workflow/main/standards/skills/$skill/SKILL.md" \
+    -o ~/.claude/skills/"$skill"/SKILL.md || rm -rf ~/.claude/skills/"$skill"
+done
+
 cat > ~/.claude/CLAUDE.md <<'EOF'
 @~/.claude/planning-agent.md
 

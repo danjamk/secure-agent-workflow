@@ -11,7 +11,11 @@ Templates and instructions that agents, reviewers and the operator rely on (spec
 | `issue-template.md` | The planning agent, writing issues | Read from this repo; the planning agent reads it through its read-only connector |
 | `adr-template.md` | The planning agent and the operator, writing ADRs | Same |
 | `wave-planning.md`, `wave-plan-template.md` | The planning agent, writing plans | Same |
+| `definition-of-ready.md` | The planning agent, `/groom`, `/dispatch` and the PR audit's readiness review | Same; the PR audit reads it from this repo |
+| `data-change-patterns.md` | The planning agent designing data changes; build agents changing persisted data | Same; build agents get it in the sandbox with their instructions |
+| `retro-template.md`, `release-template.md` | `/retro` and `/release-prep` | Same |
 | `skills/dispatch/` | The operator, dispatching a wave | Linked once into `~/.claude/skills` on the operator's machine (below) |
+| `skills/groom/`, `skills/retro/`, `skills/release-prep/` | The planning agent | The cloud environment's setup script fetches them into `~/.claude/skills` (`docs/guides/planning-agent.md`) |
 
 ## Installing `/dispatch`
 
@@ -26,7 +30,9 @@ Don't commit it into a consuming repo's `.claude/skills/`: cloud sessions load a
 ## Contract
 
 - **The issue template's shape is what the coordinator and the build agent expect.** "Blocked by" relationships and one `area:*` label feed the coordinator's queue (ADR-005). The acceptance commands are what the build agent runs before marking a PR ready.
-- **The agent instructions name the labels, branch pattern and PR format** that the orchestrator, the outbound handler and the gate rely on: `agent/*` branches, `agent:blocked`, and the tier line at the top of the PR.
+- **The agent instructions name the labels, branch pattern and PR format** that the orchestrator, the outbound handler and the gate rely on: `agent/*` branches, `agent:blocked`, the tier line at the top of the PR, and the `## Run notes` section `/retro` reads.
+- **The `run:<class>-<effort>` labels** are what the coordinator snapshots and the orchestrator maps to a model (ADR-008).
+- **The issue's `Data change` line** is what the PR audit checks against the diff and `/release-prep` reads (ADR-009).
 - Changing any of those names means changing those components too.
 
 ## Other options for a fork

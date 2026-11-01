@@ -10,7 +10,7 @@ Agents will need infrastructure beyond Worker code: DNS records, Access applicat
 
 The reference build targets Cloudflare. Forks will target AWS, GCP or Azure.
 
-Preview jobs run a PR's build scripts with dev credentials (spec 0001, Branches and environments). Whatever the preview credential can do, an agent's PR can do in the dev account.
+Preview jobs run a PR's build scripts with dev credentials (spec 0001, Branches and environments). Whatever the preview credential can do, an agent's PR can do in the dev target.
 
 ## Decision
 

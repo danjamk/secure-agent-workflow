@@ -27,3 +27,32 @@ The operator's work per wave is the number of tier 2 and 3 PRs, not the number o
 - **Each issue has exactly one `area:<name>` label.** Two issues in the same area never run at the same time (ADR-005), so parallelism only happens across areas.
 - **Mark only real dependencies as "blocked by".** A false dependency serializes the wave for nothing. When later issues need something from a foundation issue, have the foundation issue define the interface (types, stubs, a schema) so the rest can proceed against it.
 - **Recommend a concurrency cap per wave**, with the reason. Start at 1 until the merge record shows the agents' PRs are reliable. The operator sets the cap; the plan only recommends it.
+
+## Ready before it's planned
+
+- **Every issue passes `definition-of-ready.md`** before the plan PR opens. The judgment checks matter most: an issue that leaves the agent one design decision to make will come back as a blocked run.
+- **Name the likely wrong turn.** If there's an obvious mistake an agent would make, say so in Background.
+
+## Choosing a run profile
+
+Give each issue the smallest profile you expect to pass on the first run (ADR-008). A miss costs more than it saves: a failed run, an escalation, and often an approver send-back. When unsure between two, pick the larger.
+
+| Profile | Use for |
+| --- | --- |
+| `small-low` | Docs, renames, mechanical edits, config values, dependency bumps with good tests |
+| `small-medium` | Small, well-specified changes in one file with clear tests |
+| `standard-medium` | The default: a tier 1 feature or bug fix with clear acceptance |
+| `standard-high` | Tricky logic in one area: parsers, state machines, non-trivial queries |
+| `frontier-medium` | Changes that span several modules in one area, or unfamiliar code |
+| `frontier-high` | Foundation issues: interfaces others build on, auth and permissions, concurrency, migrations, security-sensitive code |
+
+This table is a starting point. `/retro` proposes changes from the run metrics; change it only through a PR.
+
+## Data changes
+
+Design them first, then split them (`data-change-patterns.md`, ADR-009).
+
+- **Every issue that touches persisted data declares its step** (`expand`, `migrate`, `switch`, `contract`) and direction in its **Data change** line.
+- **Expand and migrate go in foundation issues**, since migrations are tier 2 anyway.
+- **Contract goes in a later wave, after a release.** A wave that must contract in the same release is one-way; say so in the plan and get the operator's agreement before the plan merges.
+- **Backfills are their own issue**, not a task inside a migration issue.

@@ -29,6 +29,8 @@ Two things a newcomer gets wrong:
 | `docs/specs/` | Numbered specs. `0001` is the system spec. |
 | `docs/adr/` | `ADR-NNN-*.md` decision records |
 | `docs/research/` | Research the ADRs cite |
+| `docs/plans/` | Implementation plans, and `backlog.md` from `/groom` |
+| `docs/retros/` | Wave retrospectives from `/retro` |
 | `docs/guides/` | Operator guides, such as setting up the planning agent |
 | `docs/index.html` | The overview page, published with GitHub Pages |
 | `bootstrap/` | `bootstrap.sh`: applies repo controls to one repo, idempotent, verified by read-back |
