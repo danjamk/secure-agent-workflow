@@ -5,7 +5,7 @@ while nothing reaches production unchecked.
 
 ## Stack
 
-`bootstrap/` and `gate/` are built, and `deploy/` has the AWS broker and the credential tool; the rest is designed but not built. Stack:
+`bootstrap/` and `gate/` are built, and `deploy/` has the AWS broker, the credential tool and Cloudflare previews and staging; the rest is designed but not built. Stack:
 
 | Component | Stack | Decision |
 |---|---|---|
@@ -41,7 +41,8 @@ Two things a newcomer gets wrong:
 | `standards/planning-agent.md` | Planning agent instructions; the cloud environment's setup script fetches them |
 | `standards/credentials.md` | Credential naming: manifest names, dashboard names, parameter paths. Applies here and in every consumer project |
 | `standards/` (other files) | Build agent instructions, issue, ADR and wave plan templates, wave planning rules, and the operator's `/dispatch` skill. `standards/README.md` says who uses each and how it reaches them |
-| `deploy/broker/aws/` | Broker CloudFormation templates and `broker.sh` (run by a human with `AWS_PROFILE`), plus testbed workflows that check every role's allows and denies |
+| `deploy/broker/aws/` | Broker CloudFormation templates and `broker.sh` (run by a human with `AWS_PROFILE`), the broker action deploy jobs run (`action.yml`), plus testbed workflows that check every role's allows and denies |
+| `deploy/cloudflare/` | What the deploy jobs run: `prepare.py` (checks and unpacks the bundle, sanitizes the wrangler config), `deploy.sh`, and the locked wrangler. The consumer's workflow is `bootstrap/files/deploy.yml`. Tests: `python3 -m unittest discover -s deploy/cloudflare` |
 | `deploy/credentials/` | `credentials.py` (`broker.sh setup`, `set` and `status`, and `check` for the daily job), one checker per system in `checks/`, and the example `infra/credentials.yml`. Tests: `python3 -m unittest discover -s deploy/credentials` |
 
 `orchestrator/` and `redteam/` do not exist yet.

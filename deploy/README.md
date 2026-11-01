@@ -7,7 +7,7 @@ Deploys a consumer repo to Cloudflare with credentials from a GitHub OIDC broker
 | AWS broker: OIDC provider, state bucket, preview and staging roles (`broker/aws/`) | Built (#17) |
 | Credentials: manifest, `set`, `status`, Cloudflare checker (`credentials/`) | Built (#53) |
 | Daily credential check (`credentials/daily-check.sh`, `bootstrap/files/credential-check.yml`) | Built (#55) |
-| Broker action and Cloudflare deploy template | #18 |
+| Broker action and Cloudflare previews and staging (`broker/aws/action.yml`, `cloudflare/`, `bootstrap/files/deploy.yml`) | Built (#18) |
 | OpenTofu plan and apply | #49 |
 | Prod role | #32 |
 
@@ -39,6 +39,27 @@ AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh add-repo <owner>/<repo>
 - **The subject uses GitHub's immutable IDs.** A repo deleted and recreated under the same name gets a new ID, so it can't assume the old repo's roles. `add-repo` looks the IDs up, warns about a repo created before 2026-07-15 (those need opting in to the ID format), and stops if the repo has a custom OIDC subject template.
 - **Decryption only through SSM.** `kms:Decrypt` is allowed only with `kms:ViaService` set to SSM, so the roles can't decrypt anything else with the key.
 - **The ARN is stored as a secret only for masking.** It isn't sensitive, but it contains the account ID, and public repos' logs are public.
+
+### Broker action
+
+Deploy jobs get credentials through one composite action, `broker/aws/action.yml`. Its contract: parameter names in, masked values out.
+
+```yaml
+- uses: ./.saw/deploy/broker/aws        # this repo, checked out at the pinned commit
+  with:
+    role-arn: ${{ secrets.AWS_ROLE_ARN }}
+    aws-region: ${{ vars.AWS_REGION }}
+    parameters: |
+      dev/preview/cloudflare-deploy-token
+      dev/preview/cloudflare-account-id
+```
+
+- Each name is `<target>/<exposure>/<name>`, read from `/<repo>/<target>/<exposure>/<name>`. Each value is masked in the log, then set for the job's later steps as `<NAME>`, upper case with dashes as underscores: `CLOUDFLARE_DEPLOY_TOKEN`.
+- The role's AWS credentials stay inside the action's step. Only the named values leave it.
+- A parameter the role can't read fails the step and names the path.
+- The action runs from the checkout rather than as `owner/repo/path@sha`, so bootstrap's allowed-actions policy needs no entry for it. GitHub allowed `./.saw/deploy/broker/aws` under "selected actions only" on the testbed.
+- `assume-role.sh` holds the OIDC exchange. The daily credential check uses it too, because it needs AWS credentials rather than parameter values.
+- The job that runs the action must declare the environment itself. A reusable workflow gets an environment's secrets empty, which #55 found.
 
 ## Credentials
 
@@ -136,11 +157,59 @@ The checker confirms each token is active and reaches exactly one account. Unles
 
 `broker/aws/test/broker-test.yml` and `cross-repo-test.yml` are copied into two testbeds' `.github/workflows/`. They assume each role from each environment and check every allow and deny above. A refusal passes only on `AccessDenied`, so an empty secret can't pass as a refusal.
 
+## Cloudflare deploys
+
+Bootstrap installs `.github/workflows/deploy.yml` (template: `bootstrap/files/deploy.yml`). A repo with a wrangler config gets:
+
+| Event | Job | Result |
+| --- | --- | --- |
+| Any PR from the repo itself | `deploy-preview`, environment `preview` | A version of `<worker>-preview` with the alias `pr-<N>`, and its URL in one PR comment, edited on each push |
+| Push to the default branch | `deploy-staging`, environment `staging` | `<worker>-staging` deployed, then `/health` must return this build's id |
+
+PRs from forks get no preview. The first preview deploys `<worker>-preview` once, because Cloudflare only adds versions to a Worker that exists.
+
+### What the consumer repo provides
+
+- A `wrangler.jsonc`, `wrangler.json` or `wrangler.toml` with a `name` and `env.preview` and `env.staging` sections. Each env holds that Worker's own bindings, so preview code can't reach staging data through a binding.
+- A `make build` target that writes the bundled Worker to `dist/index.js`, with no credentials. `wrangler deploy --dry-run --outdir dist --env=""` does it.
+- A `/health` route returning JSON with `build` set from `env.BUILD_ID`. The deploy job sets `BUILD_ID` to `<package.json version>+<short sha>`, or `0.0.0+<short sha>` without a package.json.
+- `cloudflare-deploy-token` declared in `infra/credentials.yml` and stored with `broker.sh setup`. Storing it also records `cloudflare-account-id`, which the deploy job reads too.
+
+### Build and deploy are separate jobs
+
+`deploy-build` runs the PR's code: `make build` and whatever it installs. It has `contents: read` and nothing else: no environment, no secrets, no OIDC token. It uploads `dist/`, the config and `package.json` as one bundle, and outputs its sha256.
+
+The deploy jobs hold the token and run only this repo's code at the pinned commit:
+
+1. `cloudflare/prepare.py` checks the bundle against the build job's sha256 and unpacks only regular files under `dist/`, plus the config and `package.json`. A link, an absolute path or `..` fails the job. A symlink at `dist/index.js` pointing at a runner file would otherwise upload that file as Worker code.
+2. It writes a sanitized `wrangler.json`. It removes `[build]` because wrangler runs `build.command` even with `--no-bundle` (checked with wrangler 4.151.1), and `account_id` because the broker decides the account. It refuses `containers`, `site` and `assets`, which need files or tools from outside the bundle. Static assets aren't supported yet.
+3. wrangler comes from `cloudflare/package-lock.json`, installed with `npm ci --ignore-scripts`. It uploads `dist/index.js` with `--no-bundle`. Framework autoconfig is off.
+
+The deploy token can still change any Worker in the dev target account, because Cloudflare tokens can't be scoped to one Worker. Preview code runs on the dev target. Both are accepted dev-target risk (spec 0001): keep valuable data out of the dev target.
+
+Not covered yet:
+
+- A PR that changes infrastructure or migrations still gets a preview. ADR-006 says it should get a plan and no preview; that comes with #49 (OpenTofu plan and apply).
+- Artifact attestation comes with production releases (#34).
+
+### Results
+
+`danjamk/agent-testbed` PR #26, 2026-11-01:
+
+| Run | Result |
+| --- | --- |
+| First push | `deploy-build` passed with no OIDC token available (the testbed's `make build` fails if one is). `deploy-preview` created `agent-testbed-preview`, uploaded a version with alias `pr-26`, and posted the URL. `/health` returned `0.1.0+1a30ebb` |
+| Second push | Version upload only; the same comment edited, not a second one. `/health` returned the new build |
+| Broker | The local action passed "selected actions only". Both values masked; no account ID in the log |
+| Preview reading the infrastructure token | Refused: the testbed's `broker-test.yml` preview job passed on the same PR |
+| Staging | Pending the merge of PR #26 |
+
 ## Other options for a fork
 
 | Option | What changes |
 | --- | --- |
 | Two AWS accounts, dev and prod | Run `account` and `add-repo` in each, with each account's profile. The templates don't change |
-| Vault or OpenBao | Replace `broker/aws/` with JWT auth roles bound to the same subjects. The broker action in #18 is the only caller |
+| Vault or OpenBao | Replace `broker/aws/` with JWT auth roles bound to the same subjects, and an `action.yml` with the same inputs that sets the same variables |
 | GCP Workload Identity or Azure federated credentials | Same: one folder replaces `broker/aws/` |
+| Another deploy target | Replace `cloudflare/` and the deploy steps in `bootstrap/files/deploy.yml`. Keep the split: build without credentials, deploy from a job that runs no repo code |
 | GitHub environment secrets | No broker at all. Simplest, but the tokens are long-lived and stored in GitHub (ADR-002) |

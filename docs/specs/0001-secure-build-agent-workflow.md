@@ -80,7 +80,8 @@ Work reaches a build agent only through a merged plan. Grooming is how loose wor
 - The orchestrator and the operator console run in their own Cloudflare account, the factory account, which is never a deploy target. A Cloudflare token that can deploy Workers can change every Worker in its account, so no deploy token may reach the account that holds the App private key and model keys.
 - The agent triggers previews by pushing. It never holds a deploy credential; the preview job gets one from the preview role.
 - Previews never apply infrastructure changes or migrations. A PR that changes either gets a plan and no preview (ADR-006).
-- The preview job runs the PR's build scripts with dev credentials. That is accepted: dev is not production, and the agent can't edit the workflow.
+- The PR's build scripts run in a build job with no credentials and no OIDC token. A separate deploy job holds the dev deploy token and runs only secure-agent-workflow's code: it checks the bundle's digest and uploads it as built (#18).
+- The preview code itself runs on the dev target with the preview Worker's bindings, and the deploy token can change any Worker in the dev target account. That is accepted: dev is not production, and the agent can't edit the workflow. Keep valuable data out of the dev target.
 
 ## Components
 

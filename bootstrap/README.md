@@ -18,7 +18,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | `bootstrap.sh` | Reads, compares, applies, verifies |
 | `diff.py` | Compares desired settings with GitHub's response; desired is a subset |
 | `allowed-actions.txt` | Third-party actions allowed beyond GitHub-owned ones |
-| `files/` | Templates for files bootstrap writes into the repo. `{{OWNER}}` becomes the repo owner |
+| `files/` | Templates for files bootstrap writes into the repo. `{{OWNER}}` becomes the repo owner, `{{DEFAULT_BRANCH}}` its default branch, and `{{GATE_REPO}}` and `{{GATE_SHA}}` the gate pin |
 | `github-app/` | The agent's GitHub App: manifest, creation, token minting, verification |
 
 ## What it sets
@@ -40,6 +40,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | Files | `.github/CODEOWNERS`: tier 3 paths to the repo owner | Routes tier 3 review requests. The tier check is the control |
 | | `.github/workflows/gate.yml` and `tier-check.yml`: the gate callers, pinned to a commit of `GATE_REPO` | The merge gate (`gate/README.md`). Two files because the tier check re-runs on every review and the scanners don't need to |
 | | `.github/workflows/credential-check.yml`: the daily credential check, running `deploy/credentials/daily-check.sh` from the same pin | Opens an issue when a stored credential fails, expires or is due for rotation (`deploy/README.md`). Skipped with a note when the pin predates it; `--update-gate` adds it |
+| | `.github/workflows/deploy.yml`: Cloudflare previews on PRs and staging on the default branch, running `deploy/cloudflare/` from the same pin | `deploy/README.md`, Cloudflare deploys. Does nothing in a repo without a wrangler config. Skipped with a note when the pin predates it |
 | | `standards/tier-map.yml`, copied once if the repo has none | The repo's own tier map. No marker: the repo owns it and bootstrap never updates it |
 
 The gate's checks are always required. `--checks` sets the extra checks on top of them. Without it, bootstrap keeps the extras the ruleset already requires; `--checks ""` removes them. No flag drops the gate.
