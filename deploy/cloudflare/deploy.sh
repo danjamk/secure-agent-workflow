@@ -26,12 +26,13 @@ export CLOUDFLARE_API_TOKEN=$CLOUDFLARE_DEPLOY_TOKEN CLOUDFLARE_ACCOUNT_ID
 unset CLOUDFLARE_DEPLOY_TOKEN
 export WRANGLER_SEND_METRICS=false CI=true
 
+output() { [ -n "${GITHUB_OUTPUT:-}" ] && echo "$1" >>"$GITHUB_OUTPUT"; return 0; }
+
 build_id=$(cat "$dir/build-id")
+output "build-id=$build_id"
 cd "$dir"
 common=(dist/index.js --no-bundle --config wrangler.json --env "$mode"
         --var "BUILD_ID:$build_id" --message "$build_id from ${GITHUB_REPOSITORY:-local}")
-
-output() { [ -n "${GITHUB_OUTPUT:-}" ] && echo "$1" >>"$GITHUB_OUTPUT"; return 0; }
 
 case $mode in
 preview)

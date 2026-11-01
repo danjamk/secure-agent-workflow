@@ -150,7 +150,8 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           URL: ${{ steps.deploy.outputs.url }}
-          SHA: ${{ github.event.pull_request.head.sha }}
+          BUILD_ID: ${{ steps.deploy.outputs.build-id }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bash .saw/deploy/cloudflare/comment.sh
 
   staging:
