@@ -95,7 +95,7 @@ Create each one in the dev target's Cloudflare account, under My Profile > API T
 | `cloudflare-read-token` | preview | Account: Workers Scripts Read, Workers KV Storage Read, D1 Read, Account Settings Read. Add R2 and Queues Read if the app uses them | `workers kv d1` |
 | `cloudflare-infra-token` | staging | Account: Workers KV Storage Edit, D1 Edit, Account Settings Read. Add R2 and Queues Edit if the app uses them | `kv d1` |
 
-The checker confirms each token is active and reaches exactly one account. It confirms the token reaches no zones, unless `check` includes `zones`. It also confirms the token can list each resource named in `check`. It can't confirm a token lacks extra permissions: reading a token's permissions needs a broader token. The table above is the checklist for that. Account-owned tokens aren't supported yet.
+The checker confirms each token is active and reaches exactly one account. Unless `check` includes `zones`, it confirms the token can't read any zone's DNS records or settings. A token with Workers Scripts permission can list the account's zone names, so listing alone is reported as INFO. It also confirms the token can list each resource named in `check`. It can't confirm a token lacks extra permissions: reading a token's permissions needs a broader token. The table above is the checklist for that. Account-owned tokens aren't supported yet.
 
 ### Adding a system
 

@@ -177,6 +177,28 @@ class Evaluate(unittest.TestCase):
         self.assertEqual(self.levels(out), ["WARN"])
 
 
+class Confirm(unittest.TestCase):
+    """confirm() on a real pseudo-terminal. It once opened the tty "r+", which
+    raises on a terminal, so every first credential was refused without a prompt."""
+
+    def answer(self, typed: str) -> bool:
+        import os
+        import pty
+        master, slave = pty.openpty()
+        try:
+            os.write(master, typed.encode())
+            return c.confirm("Type yes: ", tty=os.ttyname(slave))
+        finally:
+            os.close(master)
+            os.close(slave)
+
+    def test_yes(self):
+        self.assertTrue(self.answer("yes\n"))
+
+    def test_anything_else(self):
+        self.assertFalse(self.answer("y\n"))
+
+
 class Cloudflare(unittest.TestCase):
     def fake(self, responses):
         """responses: path prefix -> (ok, body). Unlisted paths succeed with an empty list."""
@@ -193,8 +215,9 @@ class Cloudflare(unittest.TestCase):
     BASE = {
         "user/tokens/verify": (True, {"success": True, "result": {"status": "active", "expires_on": "2027-02-01T00:00:00Z"}}),
         "accounts?": (True, {"success": True, "result": [{"id": "acct1", "name": "Dev"}]}),
-        "zones": (True, {"success": True, "result": [], "result_info": {"total_count": 0}}),
+        "zones?": (True, {"success": True, "result": [], "result_info": {"total_count": 0}}),
     }
+    DENIED = (False, {"success": False, "errors": [{"code": 10000, "message": "Authentication error"}]})
 
     def test_good_token(self):
         call, calls = self.fake(dict(self.BASE))
@@ -218,11 +241,23 @@ class Cloudflare(unittest.TestCase):
         out = cf.run("t", [], call=self.fake(r)[0])
         self.assertTrue(out[-1].startswith("FAIL token reaches 2 accounts"))
 
-    def test_zones_fail_unless_allowed(self):
-        r = dict(self.BASE)
-        r["zones"] = (True, {"success": True, "result": [{}], "result_info": {"total_count": 3}})
-        self.assertIn("FAIL reaches 3 zone(s); this token should reach none", cf.run("t", [], call=self.fake(r)[0]))
-        self.assertIn("INFO reaches 3 zone(s)", cf.run("t", ["zones"], call=self.fake(r)[0]))
+    ZONE = (True, {"success": True, "result": [{"id": "z1", "name": "example.com"}], "result_info": {"total_count": 1}})
+
+    def test_zone_listed_but_not_readable_passes(self):
+        # Seen live: Workers Scripts lets a token list zone names, nothing more.
+        r = dict(self.BASE, **{"zones?": self.ZONE, "zones/z1/": self.DENIED})
+        out = cf.run("t", [], call=self.fake(r)[0])
+        self.assertFalse([l for l in out if l.startswith("FAIL")], out)
+        self.assertIn("INFO lists 1 zone(s) (example.com) but can't read their DNS records or settings", out)
+
+    def test_zone_dns_readable_fails(self):
+        r = dict(self.BASE, **{"zones?": self.ZONE, "zones/z1/settings": self.DENIED})
+        out = cf.run("t", [], call=self.fake(r)[0])
+        self.assertIn("FAIL can read DNS records of example.com; this token should have no zone permissions", out)
+
+    def test_zones_allowed(self):
+        r = dict(self.BASE, **{"zones?": self.ZONE})
+        self.assertIn("INFO reaches 1 zone(s)", cf.run("t", ["zones"], call=self.fake(r)[0]))
 
     def test_missing_permission(self):
         r = dict(self.BASE)

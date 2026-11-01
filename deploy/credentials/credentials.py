@@ -309,14 +309,16 @@ def factory_identities() -> dict:
     return values
 
 
-def confirm(prompt: str) -> bool:
-    """Ask on the terminal, even when the value came in on stdin."""
+def confirm(prompt: str, tty: str = "/dev/tty") -> bool:
+    """Ask on the terminal, even when the value came in on stdin.
+    Separate read and write handles: a terminal isn't seekable, so "r+" fails."""
     try:
-        with open("/dev/tty", "r+") as tty:
-            tty.write(prompt)
-            tty.flush()
-            return tty.readline().strip() == "yes"
-    except OSError:
+        with open(tty, "w") as out, open(tty) as inp:
+            out.write(prompt)
+            out.flush()
+            return inp.readline().strip() == "yes"
+    except OSError as err:
+        print(f"Can't ask on the terminal ({err}); taking that as no.")
         return False
 
 
@@ -372,6 +374,10 @@ def store(repo: str, e: dict, dry_run: bool, allow_skip: bool = False) -> int:
         if check["expires"]:
             print(f"INFO  expires {check['expires']}")
         if check["fails"]:
+            shown = {text for kind, text in check["lines"] if kind == "FAIL"}
+            for reason in check["fails"]:
+                if reason not in shown:
+                    print(f"FAIL  {reason}")
             print("Nothing stored.")
             return FAILED
 
