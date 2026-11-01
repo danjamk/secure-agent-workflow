@@ -227,7 +227,7 @@ Public repos only: fork PRs require approval before workflows run, and AI review
 Deploys use one trust anchor, GitHub OIDC, and a broker issues each platform's credentials (ADR-002). There are two stores, dev and prod, each behind its own role.
 
 1. The deploy job requests a GitHub OIDC token whose subject names its environment, such as `repo:danjamk@<owner-id>/<repo>@<repo-id>:environment:staging`. The numeric IDs are GitHub's immutable subject format (ADR-002).
-2. The preview role trusts only `environment:preview`, the staging role only `environment:staging`, and the prod role only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store. Only the staging and prod roles read the token that changes infrastructure (ADR-006).
+2. The preview role trusts only `environment:preview`, the staging role only `environment:staging`, and the prod role only `environment:production`. Secrets sit in SSM Parameter Store standard parameters, under a separate path per store. Only the staging and prod roles read the token that changes infrastructure (ADR-006). Each repo declares the credentials it needs in `infra/credentials.yml`. The operator stores each one with `broker.sh set`, which checks it first. `broker.sh status` and a daily check report anything missing, failing or expiring (ADR-007).
 3. The role reads that environment's Cloudflare token and third-party keys. Later, the job mints a short-lived Cloudflare token per deploy.
 4. The broker sits behind one small interface in `deploy/`, so Vault, OpenBao or another cloud's store can replace AWS.
 
@@ -290,6 +290,7 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [ADR-004](../adr/ADR-004-cloudflare-sandbox.md): Build agents run in the Cloudflare Sandbox SDK.
 - [ADR-005](../adr/ADR-005-coordinator.md): One Durable Object coordinates runs, with GitHub as the source of truth (proposed).
 - [ADR-006](../adr/ADR-006-infrastructure-as-code.md): Project infrastructure is OpenTofu applied by the pipeline, and Workers stay in wrangler (proposed).
+- [ADR-007](../adr/ADR-007-operator-credentials.md): Every credential is declared in the repo, checked before it is stored, and reported on (proposed).
 
 ## Open decisions
 
