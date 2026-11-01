@@ -1,0 +1,36 @@
+# The broker's contract with deploy jobs (#18, ADR-002): parameter names in,
+# masked values out as environment variables for the job's later steps.
+#
+# Deploy workflows run it from a checkout of secure-agent-workflow at the
+# pinned commit (`uses: ./.saw/deploy/broker/aws`), so bootstrap's allowed
+# actions policy needs no entry for it. A fork that keeps credentials in Vault,
+# OpenBao or another cloud replaces this folder with an action that has the
+# same inputs and sets the same variables.
+
+name: secure-agent-workflow broker (AWS)
+description: Read named parameters through the job's OIDC role and export them, masked.
+
+inputs:
+  role-arn:
+    description: The environment's AWS_ROLE_ARN secret
+    required: true
+  aws-region:
+    description: The environment's AWS_REGION variable
+    required: true
+  parameters:
+    description: >-
+      <target>/<exposure>/<name>, one per line, such as
+      dev/preview/cloudflare-deploy-token. Each becomes the variable <NAME>
+      (upper case, dashes as underscores).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Read credentials from the broker
+      shell: bash
+      env:
+        ROLE: ${{ inputs.role-arn }}
+        AWS_REGION: ${{ inputs.aws-region }}
+        PARAMETERS: ${{ inputs.parameters }}
+      run: bash "$GITHUB_ACTION_PATH/read-params.sh"

@@ -24,8 +24,8 @@
 #   envs      preview from PR runs, staging from the default branch, production
 #             from the production branch; the old dev environment is retired
 #   labels    agent:ready, agent:stop, agent:blocked, credentials
-#   files     files/ templates (CODEOWNERS, the gate callers and the daily
-#             credential check, pinned to a
+#   files     files/ templates (CODEOWNERS, the gate callers, the daily
+#             credential check and the Cloudflare deploy, pinned to a
 #             commit of GATE_REPO), written through one PR from the
 #             bootstrap/managed-files branch, because the default branch needs
 #             a PR. A file without the bootstrap marker is never overwritten.
@@ -381,6 +381,7 @@ managed_file() {
     local path=$1 template=$2 rendered="$WORK/files/$1"
     mkdir -p "$(dirname "$rendered")"
     sed -e "s/{{OWNER}}/$OWNER/g" -e "s|{{GATE_REPO}}|$GATE_REPO|g" -e "s/{{GATE_SHA}}/$GATE_SHA/g" \
+        -e "s|{{DEFAULT_BRANCH}}|$DEFAULT_BRANCH|g" \
         "$HERE/files/$template" > "$rendered"
 
     if fetch_file "$path" "$DEFAULT_BRANCH" > "$WORK/default-file"; then
@@ -481,6 +482,12 @@ files() {
         managed_file .github/workflows/credential-check.yml credential-check.yml
     else
         printf '  !  file .github/workflows/credential-check.yml: the pinned gate commit predates it. Run with --update-gate <sha>\n'
+    fi
+    if $GH api "repos/$GATE_REPO/contents/deploy/cloudflare/deploy.sh?ref=$GATE_SHA" \
+            --silent >/dev/null 2>&1; then
+        managed_file .github/workflows/deploy.yml deploy.yml
+    else
+        printf '  !  file .github/workflows/deploy.yml: the pinned gate commit predates it. Run with --update-gate <sha>\n'
     fi
     seed_file standards/tier-map.yml "$HERE/../standards/tier-map.yml"
 }

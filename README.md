@@ -37,7 +37,7 @@ A Cloudflare token that can deploy Workers can change every Worker in its accoun
 | `gate/` and `.github/workflows/` | Reusable merge-gate workflows: checks, scanners, tier check, PR audit | Built, except the PR audit |
 | `standards/` | ADR template, agent instructions, issue template, planning agent instructions, tier map | Built |
 | `orchestrator/` | Cloudflare Worker that runs agents in sandboxes, with credentials kept outside | Not started |
-| `deploy/` | Deploy template with a GitHub OIDC credential broker | AWS broker and credential checks built; deploy template not started |
+| `deploy/` | Deploy template with a GitHub OIDC credential broker | AWS broker, credential checks, and Cloudflare previews and staging built; OpenTofu and production not started |
 | `redteam/` | Attacks the controls must stop | Not started |
 
 ## Adapting it

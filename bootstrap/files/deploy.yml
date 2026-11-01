@@ -1,0 +1,211 @@
+# Managed by secure-agent-workflow bootstrap. Change the template in
+# secure-agent-workflow/bootstrap/files/deploy.yml and re-run bootstrap, not
+# this copy. `bootstrap.sh <repo> --update-gate <sha>` moves the pin.
+#
+# Cloudflare deploys to the dev target (#18, ADR-002, spec 0001 Branches and
+# environments). A PR uploads a version of <worker>-preview with the alias
+# pr-<N> and posts its URL on the PR. A push to the default branch deploys
+# <worker>-staging and checks that /health returns this build's id. Does
+# nothing in a repo without wrangler.jsonc, wrangler.json or wrangler.toml.
+#
+# Build and deploy are separate jobs. deploy-build runs this repo's
+# `make build` with no credentials, and must write the Worker to
+# dist/index.js. The deploy jobs run only secure-agent-workflow's code at the
+# pinned commit: they check the bundle's digest, drop the config's [build]
+# and account_id, and upload the bundle as built.
+#
+# Not a reusable workflow: a called workflow gets an environment's secrets
+# empty unless the caller passes `secrets: inherit` (found in #55).
+
+name: deploy
+
+on:
+  pull_request:
+  push:
+    branches: [{{DEFAULT_BRANCH}}]
+
+permissions: {}
+
+jobs:
+  build:
+    name: deploy-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      config: ${{ steps.find.outputs.config }}
+      digest: ${{ steps.pack.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Find the wrangler config
+        id: find
+        run: |
+          for f in wrangler.jsonc wrangler.json wrangler.toml; do
+            if [ -f "$f" ]; then
+              echo "config=$f" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "No wrangler config; nothing to deploy."
+
+      - name: make build
+        if: steps.find.outputs.config != ''
+        run: make build
+
+      - name: Pack the bundle
+        id: pack
+        if: steps.find.outputs.config != ''
+        env:
+          CONFIG: ${{ steps.find.outputs.config }}
+        run: |
+          set -euo pipefail
+          if [ ! -f dist/index.js ]; then
+            echo "make build must write the Worker's entry to dist/index.js"
+            exit 1
+          fi
+          files=(dist "$CONFIG")
+          if [ -f package.json ]; then files+=(package.json); fi
+          tar -czf "$RUNNER_TEMP/bundle.tgz" "${files[@]}"
+          echo "digest=$(sha256sum "$RUNNER_TEMP/bundle.tgz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the bundle
+        if: steps.find.outputs.config != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bundle
+          path: ${{ runner.temp }}/bundle.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  preview:
+    name: deploy-preview
+    needs: build
+    # Fork PRs get no preview: the preview environment's secrets aren't
+    # available to them, and their code isn't the agent's.
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.build.outputs.config != '' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - name: Check out the deploy scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: {{GATE_REPO}}
+          ref: {{GATE_SHA}}
+          path: .saw
+          persist-credentials: false
+
+      - name: Download the bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+          path: .bundle
+
+      - name: Check and unpack the bundle
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+          CONFIG: ${{ needs.build.outputs.config }}
+          SHA: ${{ github.sha }}
+        run: |
+          python3 .saw/deploy/cloudflare/prepare.py --bundle .bundle/bundle.tgz \
+            --digest "$DIGEST" --config "$CONFIG" --env preview --sha "$SHA" --out .deploy
+
+      - name: Install wrangler
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix .saw/deploy/cloudflare
+
+      - name: Read the deploy token
+        uses: ./.saw/deploy/broker/aws
+        with:
+          role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          parameters: |
+            dev/preview/cloudflare-deploy-token
+            dev/preview/cloudflare-account-id
+
+      - name: Upload the preview version
+        id: deploy
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bash .saw/deploy/cloudflare/deploy.sh preview .deploy
+
+      - name: Post the preview URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          URL: ${{ steps.deploy.outputs.url }}
+          BUILD_ID: ${{ steps.deploy.outputs.build-id }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .saw/deploy/cloudflare/comment.sh
+
+  staging:
+    name: deploy-staging
+    needs: build
+    if: github.event_name == 'push' && needs.build.outputs.config != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One staging deploy at a time, in merge order; none is cancelled.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the deploy scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: {{GATE_REPO}}
+          ref: {{GATE_SHA}}
+          path: .saw
+          persist-credentials: false
+
+      - name: Download the bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bundle
+          path: .bundle
+
+      - name: Check and unpack the bundle
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+          CONFIG: ${{ needs.build.outputs.config }}
+          SHA: ${{ github.sha }}
+        run: |
+          python3 .saw/deploy/cloudflare/prepare.py --bundle .bundle/bundle.tgz \
+            --digest "$DIGEST" --config "$CONFIG" --env staging --sha "$SHA" --out .deploy
+
+      - name: Install wrangler
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix .saw/deploy/cloudflare
+
+      - name: Read the deploy token
+        uses: ./.saw/deploy/broker/aws
+        with:
+          role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          parameters: |
+            dev/preview/cloudflare-deploy-token
+            dev/preview/cloudflare-account-id
+
+      - name: Deploy to staging and check /health
+        id: deploy
+        run: bash .saw/deploy/cloudflare/deploy.sh staging .deploy
