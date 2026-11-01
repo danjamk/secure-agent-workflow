@@ -1,5 +1,9 @@
-# This repo runs its own gate on its PRs. It calls the local copy, so a PR that
-# changes the gate is checked by its own version of it.
+# The PR's own copy of the gate, run as advisory "candidate" checks (#60). A PR
+# that changes the gate is exercised by its new version here, but these checks
+# aren't required: a PR can't judge itself.
+#
+# The required checks come from self-gate.yml and self-tier-check.yml, which
+# bootstrap installs pinned to a commit already on the default branch.
 
 name: gate
 
@@ -9,7 +13,7 @@ on:
 permissions: {}
 
 jobs:
-  checks:
+  candidate:
     uses: ./.github/workflows/gate-checks.yml
     permissions:
       contents: read
