@@ -25,6 +25,17 @@ tiers:
     - CODEOWNERS
     - docs/CODEOWNERS
     - standards/tier-map.yml
+    # Scanner config and ignore files. The gate reads them from the base
+    # commit (gate/scanner_config.py), so a change applies from the next PR on;
+    # an allowance for a false positive needs the owner.
+    - "**/.gitleaks.*"
+    - "**/.gitleaksignore"
+    - "**/.semgrepignore"
+    - "**/osv-scanner.toml"
+    - "**/.osv-scanner.toml"
+    - "**/.trivyignore"
+    - "**/.trivyignore.yaml"
+    - "**/trivy.yaml"
   2:
     # Dependency manifests and lockfiles
     - "**/package.json"
@@ -45,6 +56,12 @@ tiers:
     - "**/migrations/**"
     # Cloudflare config
     - "**/wrangler.*"
+    # Infrastructure (ADR-006). Listed here so it outranks src/** and the
+    # Markdown rule wherever it lives.
+    - infra/**
+    - "**/*.tf"
+    - "**/*.tofu"
+    - "**/.terraform.lock.hcl"
     # What agents work from: specs, decisions and plans direct what gets
     # built, and instruction files direct how. An agent's change to them waits
     # for the approver even though other docs are tier 1.
