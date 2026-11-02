@@ -96,6 +96,44 @@ class ClassifyTest(unittest.TestCase):
     def test_no_files_is_tier_1(self):
         self.assertEqual(self.tier(), 1)
 
+    def test_infrastructure_outranks_src_and_markdown(self):
+        # #61: these were tier 1 through src/** and **/*.md.
+        for path in ("src/infra/main.tf", "src/infra/.terraform.lock.hcl",
+                     "infra/modules/README.md", "infra/dev/main.tofu", "docs/infra/x.tf"):
+            self.assertEqual(self.tier(path), 2, path)
+
+    def test_scanner_config_is_tier_3(self):
+        for path in (".gitleaks.toml", ".gitleaks.json", ".gitleaksignore",
+                     "src/.semgrepignore", ".semgrepignore", "api/osv-scanner.toml",
+                     ".osv-scanner.toml", ".trivyignore", "docs/.trivyignore.yaml",
+                     "trivy.yaml"):
+            self.assertEqual(self.tier(path), 3, path)
+        self.assertEqual(self.tier("docs/gitleaks.md"), 1)
+
+
+SELF_MAP = tier_check.parse_tier_map(
+    open(os.path.join(HERE, "..", ".github", "self-tier-map.yml")).read())
+
+
+class SelfMapTest(unittest.TestCase):
+    """This repo's own map (.github/self-tier-map.yml, #60)."""
+
+    def tier(self, *paths):
+        return tier_check.classify(paths, SELF_MAP)[0]
+
+    def test_control_code_is_tier_3(self):
+        for path in ("gate/tier_check.py", "gate/README.md", "deploy/cloudflare/prepare.py",
+                     "bootstrap/bootstrap.sh", "standards/tier-map.yml", "Makefile",
+                     ".github/self-tier-map.yml", ".gitleaksignore", "gate/.semgrepignore"):
+            self.assertEqual(self.tier(path), 3, path)
+
+    def test_docs(self):
+        self.assertEqual(self.tier("CLAUDE.md"), 2)
+        self.assertEqual(self.tier("docs/adr/ADR-008.md"), 2)
+        self.assertEqual(self.tier("infra/README.md"), 2)
+        self.assertEqual(self.tier("docs/research/x.md"), 1)
+        self.assertEqual(self.tier("README.md"), 1)
+
 
 class DecideTest(unittest.TestCase):
     def decide(self, tier, reviews=(), author="danjamk-build-agent[bot]", author_type="Bot"):

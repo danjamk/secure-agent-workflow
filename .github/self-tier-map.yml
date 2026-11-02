@@ -18,6 +18,15 @@ tiers:
     - standards/**
     - Makefile
     - LICENSE
+    # Scanner config and ignore files, read from the base commit (#61).
+    - "**/.gitleaks.*"
+    - "**/.gitleaksignore"
+    - "**/.semgrepignore"
+    - "**/osv-scanner.toml"
+    - "**/.osv-scanner.toml"
+    - "**/.trivyignore"
+    - "**/.trivyignore.yaml"
+    - "**/trivy.yaml"
   2:
     # Agent instructions for this repo. Not a control, but it steers agents.
     - CLAUDE.md
@@ -25,6 +34,11 @@ tiers:
     - docs/adr/**
     - docs/specs/**
     - docs/plans/**
+    # Infrastructure, if this repo ever has any (ADR-006).
+    - infra/**
+    - "**/*.tf"
+    - "**/*.tofu"
+    - "**/.terraform.lock.hcl"
   1:
     - docs/**
     - "**/*.md"

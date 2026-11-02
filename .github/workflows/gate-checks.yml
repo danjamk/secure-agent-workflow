@@ -98,6 +98,13 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: gate-tools
           persist-credentials: false
+      - name: Scanner config from the base commit
+        if: ${{ github.event.repository.private }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 gate-tools/gate/scanner_config.py repo
       - name: osv-scanner
         if: ${{ github.event.repository.private }}
         working-directory: repo
@@ -132,6 +139,12 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: gate-tools
           persist-credentials: false
+      - name: Scanner config from the base commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 gate-tools/gate/scanner_config.py repo
       # Runs on public repos too: GitHub's push protection only knows
       # provider-specific token formats, gitleaks also catches generic ones.
       - name: gitleaks on the PR's commits
@@ -142,7 +155,7 @@ jobs:
         run: |
           bash ../gate-tools/gate/install-tool.sh gitleaks "$RUNNER_TEMP/bin"
           "$RUNNER_TEMP/bin/gitleaks" git --log-opts="$BASE_SHA..$HEAD_SHA" \
-            --redact --no-banner --exit-code 1 .
+            --redact --no-banner --exit-code 1 --ignore-gitleaks-allow .
 
   code-scan:
     name: code-scan
@@ -165,6 +178,12 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: gate-tools
           persist-credentials: false
+      - name: Scanner config from the base commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 gate-tools/gate/scanner_config.py repo
 
       # Public: CodeQL, for the languages it scans without a build.
       - name: Pick CodeQL languages
@@ -191,10 +210,14 @@ jobs:
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           output: ${{ runner.temp }}/codeql
-      # CodeQL reports findings but never fails the job; this does.
-      - name: Fail on high-severity CodeQL findings
-        if: ${{ !github.event.repository.private && steps.languages.outputs.languages != '' }}
-        run: python3 gate-tools/gate/sarif_gate.py "$RUNNER_TEMP/codeql"
+      # CodeQL reports findings but never fails the job; this does. It also
+      # fails when a language scanned produced no usable SARIF, and says so
+      # when the repo has no language CodeQL scans.
+      - name: Fail on high-severity CodeQL findings or missing results
+        if: ${{ !github.event.repository.private }}
+        env:
+          LANGUAGES: ${{ steps.languages.outputs.languages }}
+        run: python3 gate-tools/gate/sarif_gate.py "$RUNNER_TEMP/codeql" --languages "$LANGUAGES"
 
       # Private: Semgrep CE, from its image pinned by digest.
       - name: Semgrep
@@ -203,7 +226,7 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE/repo:/src" -w /src \
             semgrep/semgrep@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0 \
             semgrep scan --config p/default --error --severity ERROR \
-              --metrics off --disable-version-check
+              --disable-nosem --metrics off --disable-version-check
 
   misconfig-scan:
     name: misconfig-scan
@@ -225,11 +248,25 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: gate-tools
           persist-credentials: false
+      - name: Scanner config from the base commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 gate-tools/gate/scanner_config.py repo
       - name: trivy
         run: |
           bash gate-tools/gate/install-tool.sh trivy "$RUNNER_TEMP/bin"
+          # The ignore file is the base commit's (previous step). trivy runs
+          # from the workspace, so it reads no trivy.yaml from the PR.
+          ignore=()
+          if [ -f repo/.trivyignore.yaml ]; then
+            ignore=(--ignorefile repo/.trivyignore.yaml)
+          elif [ -f repo/.trivyignore ]; then
+            ignore=(--ignorefile repo/.trivyignore)
+          fi
           "$RUNNER_TEMP/bin/trivy" fs --scanners vuln,misconfig --severity HIGH,CRITICAL \
-            --exit-code 1 --no-progress repo
+            --exit-code 1 --no-progress "${ignore[@]}" repo
 
   workflow-lint:
     name: workflow-lint
