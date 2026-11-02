@@ -1,0 +1,29 @@
+# Managed by secure-agent-workflow bootstrap. Change the template in
+# secure-agent-workflow/bootstrap/files/self-tier-check.yml and re-run
+# bootstrap, not this copy. `bootstrap.sh {{GATE_REPO}} --update-gate <sha>`
+# moves the pin.
+#
+# secure-agent-workflow's own tier check (#60), a required check on the default
+# branch. Pinned like a consumer's, and judged by .github/self-tier-map.yml,
+# which puts this repo's control code at tier 3. Not named tier-check.yml:
+# that file is the reusable workflow consumers call.
+
+name: self-tier-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  tier:
+    uses: {{GATE_REPO}}/.github/workflows/tier-check.yml@{{GATE_SHA}}
+    with:
+      tier-map: .github/self-tier-map.yml
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write

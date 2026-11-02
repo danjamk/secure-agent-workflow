@@ -7,7 +7,10 @@ bash bootstrap/bootstrap.sh <owner>/<repo> --dry-run   # show what would change
 bash bootstrap/bootstrap.sh <owner>/<repo>             # apply, then read back
 bash bootstrap/bootstrap.sh <owner>/<repo> --checks deploy-preview   # require extra checks
 bash bootstrap/bootstrap.sh <owner>/<repo> --update-gate <sha>       # move the gate pin
+bash bootstrap/bootstrap.sh <owner>/<repo> --check                   # drift check: exit 1 on any difference
 ```
+
+`--check` reads every setting and file like `--dry-run`, writes nothing, and exits 1 if anything differs from what bootstrap wants. Run it by hand, or from anything that holds an admin token. A workflow's `GITHUB_TOKEN` can't read admin settings such as the Actions policy, so it can't run in a scheduled job without storing an admin credential.
 
 Run it as a human with admin on the repo. The agent App can't: it has no `administration` permission (ADR-001).
 
@@ -62,6 +65,21 @@ The callers pin `GATE_REPO` (this repo) to a full commit SHA, so a change here r
 Bootstrap manages only its own ruleset. It lists other rulesets on the repo and leaves them alone.
 
 Running claude-shared's `protect-branch.sh` on a bootstrapped repo rewrites `protect-default` without the check pinning. Re-run bootstrap afterward.
+
+### This repo
+
+Run on `GATE_REPO` itself, bootstrap detects it and switches to self mode (#60). Everything is the same except the files:
+
+| File | Instead of | Why |
+| --- | --- | --- |
+| `.github/workflows/self-gate.yml` | `gate.yml` | Here `gate.yml` runs the PR's own copy of the gate, as advisory `candidate / *` checks |
+| `.github/workflows/self-tier-check.yml` | `tier-check.yml` | Here `tier-check.yml` is the reusable workflow consumers call |
+
+Both pin a commit on the default branch, like a consumer's callers, so a PR is judged by gate code that has already merged, never by its own. The required check names are the same as a consumer's (`checks / *`, `tier / tier-check`).
+
+The self tier check reads `.github/self-tier-map.yml`, which puts this repo's control code at tier 3: `bootstrap/`, `gate/`, `deploy/`, `standards/`, `.github/`, `.claude/`, `Makefile`. The repo keeps that map; bootstrap doesn't write it. The credential check and deploy workflows aren't installed here.
+
+A gate change takes two PRs: the change, checked by the pinned gate and exercised by the `candidate` run, then `bootstrap.sh danjamk/secure-agent-workflow --update-gate <sha>` to move the pin to it.
 
 ## Managed files
 

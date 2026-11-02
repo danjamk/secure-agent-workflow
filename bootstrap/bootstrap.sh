@@ -5,6 +5,11 @@
 #   bash bootstrap/bootstrap.sh danjamk/myrepo
 #   bash bootstrap/bootstrap.sh danjamk/myrepo --checks deploy-preview
 #   bash bootstrap/bootstrap.sh danjamk/myrepo --update-gate <sha>
+#   bash bootstrap/bootstrap.sh danjamk/myrepo --check     # drift check: exit 1 on any difference
+#
+# Run on GATE_REPO itself (this repo), it installs self-gate.yml and
+# self-tier-check.yml instead of the consumer callers, because gate.yml and
+# tier-check.yml here are the gate itself (#60).
 #
 # Idempotent: each setting is read, compared with what bootstrap wants, and
 # written only if it differs. After writing, every setting is read back and
@@ -40,12 +45,14 @@ REPO=""
 CHECKS=""
 CHECKS_SET=false
 DRY_RUN=false
+DRIFT_CHECK=false
 UPDATE_GATE=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --checks)      CHECKS="${2:-}"; CHECKS_SET=true; shift 2 ;;
         --dry-run)     DRY_RUN=true; shift ;;
+        --check)       DRY_RUN=true; DRIFT_CHECK=true; shift ;;
         --update-gate) UPDATE_GATE="${2:-}"; shift 2 ;;
         -*)            echo "Unknown flag: $1"; exit 1 ;;
         *)             REPO="$1"; shift ;;
@@ -53,7 +60,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$REPO" ]; then
-    echo "Usage: bootstrap.sh <owner>/<repo> [--dry-run] [--checks a,b] [--update-gate <sha>]"
+    echo "Usage: bootstrap.sh <owner>/<repo> [--dry-run | --check] [--checks a,b] [--update-gate <sha>]"
     exit 1
 fi
 
@@ -74,6 +81,13 @@ GATE_REPO="danjamk/secure-agent-workflow"
 # required; --checks adds to them.
 GATE_CHECKS="checks / check,checks / dependency-scan,checks / secret-scan,checks / code-scan,checks / misconfig-scan,checks / workflow-lint,tier / tier-check"
 OWNER="${REPO%/*}"
+# GATE_REPO consumes its own gate under other file names (#60).
+SELF=false
+GATE_CALLER=.github/workflows/gate.yml
+if [ "$REPO" = "$GATE_REPO" ]; then
+    SELF=true
+    GATE_CALLER=.github/workflows/self-gate.yml
+fi
 VISIBILITY=$($GH api "repos/$REPO" --jq .visibility)
 DEFAULT_BRANCH=$($GH api "repos/$REPO" --jq .default_branch)
 CHANGES=0
@@ -473,6 +487,13 @@ PY
 
 files() {
     managed_file .github/CODEOWNERS CODEOWNERS
+    if [ "$SELF" = true ]; then
+        # gate.yml and tier-check.yml here are the gate itself; its own tier
+        # map is .github/self-tier-map.yml, kept in the repo.
+        managed_file .github/workflows/self-gate.yml self-gate.yml
+        managed_file .github/workflows/self-tier-check.yml self-tier-check.yml
+        return 0
+    fi
     managed_file .github/workflows/gate.yml gate.yml
     managed_file .github/workflows/tier-check.yml tier-check.yml
     # A pin older than the credential check has no script to run; the
@@ -517,7 +538,7 @@ resolve_gate_sha() {
     fi
     for ref in ${OPEN_PR:+"$FILES_BRANCH"} "$DEFAULT_BRANCH"; do
         # A missing file fails the pipeline; that's "no pin here", not an error.
-        GATE_SHA=$( { fetch_file .github/workflows/gate.yml "$ref" 2>/dev/null || true; } \
+        GATE_SHA=$( { fetch_file "$GATE_CALLER" "$ref" 2>/dev/null || true; } \
             | sed -n "s|.*$GATE_REPO/.github/workflows/gate-checks.yml@\([0-9a-f]\{40\}\).*|\1|p" | head -1)
         if [ -n "$GATE_SHA" ]; then
             GATE_SOURCE="kept from $ref"
@@ -549,7 +570,10 @@ resolve_gate_sha
 
 echo ""
 echo "Repo:       $REPO ($VISIBILITY)"
-echo "Mode:       $([ "$DRY_RUN" = true ] && echo "dry run" || echo apply)"
+if [ "$DRIFT_CHECK" = true ]; then mode_name="drift check"
+elif [ "$DRY_RUN" = true ]; then mode_name="dry run"
+else mode_name=apply; fi
+echo "Mode:       $mode_name$([ "$SELF" = true ] && echo ", self (the gate's own repo)")"
 echo "Gate:       $GATE_REPO@${GATE_SHA:0:7} ($GATE_SOURCE)"
 echo ""
 
@@ -563,6 +587,10 @@ echo ""
 if [ "$CHANGES" -eq 0 ]; then
     echo "No changes."
     exit 0
+fi
+if [ "$DRIFT_CHECK" = true ]; then
+    echo "DRIFT  $CHANGES setting(s) differ from what bootstrap wants. Nothing was written; run bootstrap to fix."
+    exit 1
 fi
 if [ "$DRY_RUN" = true ]; then
     echo "$CHANGES setting(s) would change. Nothing was written."
