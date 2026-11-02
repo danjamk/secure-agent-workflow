@@ -65,6 +65,16 @@ This repo runs the gate on its own PRs as a consumer would (#60): `self-gate.yml
 
 Also verified: `install-tool.sh` refuses a tampered checksum and installs nothing.
 
+2026-11-02, scan hardening (#61). Each testbed got a throwaway PR with the gate pinned to the #61 branch commit:
+
+| Testbed | PR contents | Result |
+| --- | --- | --- |
+| Public | A generic API key marked `# gitleaks:allow`, then a second commit adding a `.gitleaksignore` entry for that exact finding | `secret-scan` failed: 1 leak. The log names `.gitleaksignore` as a PR change that was ignored |
+| Public | Same PR, CodeQL for JavaScript/TypeScript, Python and Actions | `code-scan` passed after reading `actions.sarif`, `javascript.sarif` and `python.sarif` |
+| Private | A fake GitHub token in a `.env` file, with `# nosemgrep` on the line before and `# gitleaks:allow` on its line | `code-scan` failed: Semgrep's `detected-github-token`. `secret-scan` failed: 2 leaks |
+
+Control, run locally with the same Semgrep image: the `.env` file has 0 findings without `--disable-nosem` and 1 with it. Semgrep's `detected-github-token` rule doesn't fire on the same token in a `.py` file, so a first attempt with a Python file passed `code-scan` for that reason, not because of `nosemgrep`.
+
 ## Tier check
 
 Computes a PR's tier from the paths it changes, and fails until the approval that tier needs exists (ADR-003).
