@@ -148,6 +148,18 @@ The agent's tier 1 and tier 2 PRs on the same repo are in `gate/README.md`.
 - Writing `.github/workflows/` through the contents API needs a token allowed to change workflow files (the `workflow` scope on a classic token). The owner's token was.
 - Not tested on the private testbed. Nothing in #16 depends on visibility.
 
+Self mode and `--check` (#60), on `danjamk/secure-agent-workflow`, 2026-11-02:
+
+| Run | Result |
+| --- | --- |
+| `--check` before applying | Exit 1, 10 differences: no required checks, no branch policies on `preview` and `staging`, `production` deploying from `main`, an old `dev` environment, the `credentials` label missing, and the two self files |
+| Apply | 10 changes, all read back. PR #66 added `self-gate.yml` and `self-tier-check.yml`, pinned to `c87485a`; its required checks ran on itself and passed |
+| `--check` after PR #66 merged | `No changes.` |
+| Throwaway PR #67: `docs/gate-test.sh` (tier 1) with a syntax error | `checks / check` failed, merge state `BLOCKED`, and `gh pr merge` was refused: "the base branch policy prohibits the merge". The ruleset has no bypass actors (`current_user_can_bypass: never`) |
+| `--check` on `danjamk/agent-testbed` | `No changes.` |
+
+- **The tier check passes the owner's own PRs here.** Bootstrap and every PR opened from the owner's account are authored by the approver, which tier 3 accepts (`gate/README.md`, Tier check). A tier 3 PR waiting for approval wasn't tested on this repo; that rule is covered by the unit tests and the 2026-10-30 testbed runs.
+
 ## Other options for a fork
 
 | Situation | What changes |
