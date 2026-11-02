@@ -1,12 +1,12 @@
 # secure-agent-workflow
 
-Tooling and standards for letting coding agents build with little supervision, while nothing reaches production unchecked.
+A secure software factory for coding agents. Agents build from approved issues with little supervision, and nothing reaches production unchecked.
 
 The agent can't change the controls: they live in the sandbox, GitHub permissions and cloud credentials, not in instructions or settings files the agent can read and edit.
 
 **Overview:** [the one-page picture](https://danjamk.github.io/secure-agent-workflow/) shows the topology, the workflow and how a project adopts it. It describes the full design, including the parts not built yet. Source: [`docs/index.html`](docs/index.html).
 
-**Status:** the agent's GitHub App, bootstrap and the merge gate (checks, scanners, tier check) are built and tested end to end on testbed repos. The orchestrator, sandbox, production deploy, PR audit and red-team runs are not built yet.
+**Status:** these are built and tested end to end on testbed repos: the agent's GitHub App, bootstrap, the merge gate (checks, scanners, tier check), the AWS credential broker, daily credential checks, and Cloudflare previews and staging. This repo's own PRs go through the same gate. The orchestrator, sandbox, infrastructure as code, production deploys, PR audit and red-team runs are not built yet.
 
 ## How it works
 
@@ -58,6 +58,20 @@ v1 runs on Cloudflare and AWS. Each part lives in its own folder and states what
 GitHub doesn't swap out. Bootstrap, the gate and the agent identity all depend on GitHub rulesets, Apps, Actions and OIDC.
 
 Whatever you replace, keep the property the design depends on: the agent cannot change the control.
+
+## Related work
+
+"Software factory" is the name in use for systems where agents build software from specs and issues, and people set direction and approve risk. These projects work in the same space. Descriptions are from their own sites and repos, November 2026.
+
+| Project | What it is | License |
+| --- | --- | --- |
+| [Warp Oz and Warp Factories](https://docs.warp.dev/factories/) | Warp's platform for cloud agents. A factory combines agent roles, work sources and automation stages around shared repos. Runs Claude Code, Codex or Warp's own agent | Commercial |
+| [StrongDM Attractor](https://github.com/strongdm/attractor) | Natural-language specs for a non-interactive coding agent for use in a software factory, written for you to build your own implementation | Apache-2.0 |
+| [OpenHands](https://github.com/OpenHands/OpenHands) | A self-hosted control center for coding agents and automations, with optional Docker sandboxes per conversation | MIT |
+| [Factory](https://factory.com/) | An agent-native development platform. Its agents ("Droids") work from the CLI, desktop, web, Slack, issue trackers and CI | Commercial |
+| [Ona](https://ona.com/) (formerly Gitpod) | Development environments, agents and guardrails, with runners in your own cloud | Commercial |
+
+This repo builds the trust boundary around the agent: its identity, credentials, the merge gate and egress, from GitHub, Cloudflare and AWS primitives. The agent itself is an existing headless CLI such as Claude Code or Codex. A comparison with these projects is in progress.
 
 ## Read first
 
