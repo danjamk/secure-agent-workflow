@@ -1,7 +1,9 @@
 # secure-agent-workflow
 
-Tooling and standards for letting coding agents build with little supervision,
-while nothing reaches production unchecked.
+A secure software factory for coding agents: tooling and standards for letting
+agents build with little supervision, while nothing reaches production
+unchecked. Use "software factory" for the whole system in docs and public
+writing; the factory account is its own cloud account (Account terms).
 
 ## Stack
 

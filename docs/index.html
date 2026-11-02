@@ -3,8 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Secure Agent Workflow</title>
-<meta name="description" content="How secure-agent-workflow lets coding agents build from approved issues while nothing reaches production unchecked.">
+<title>Secure Software Factory for Coding Agents · secure-agent-workflow</title>
+<meta name="description" content="secure-agent-workflow is an open-source secure software factory. Coding agents build from approved issues in sandboxes, a merge gate they can't edit decides what merges, and deploy credentials come from GitHub OIDC, never from the agent.">
+<meta name="keywords" content="software factory, secure software factory, coding agents, AI agents, agentic coding, Claude Code, Codex, merge gate, GitHub App, GitHub Actions, OIDC, Cloudflare Workers, Cloudflare Sandbox, DevSecOps, software supply chain">
+<link rel="canonical" href="https://danjamk.github.io/secure-agent-workflow/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="secure-agent-workflow">
+<meta property="og:title" content="Secure software factory for coding agents">
+<meta property="og:description" content="Coding agents build from approved issues with little supervision. Nothing reaches production without passing checks the agent can't edit, skip or see the credentials for.">
+<meta property="og:url" content="https://danjamk.github.io/secure-agent-workflow/">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "secure-agent-workflow",
+  "description": "An open-source secure software factory for coding agents: sandboxed build agents, a merge gate they can't edit, and deploy credentials they never hold.",
+  "codeRepository": "https://github.com/danjamk/secure-agent-workflow",
+  "url": "https://danjamk.github.io/secure-agent-workflow/",
+  "license": "https://opensource.org/licenses/MIT",
+  "author": { "@type": "Person", "name": "Dan Kuhn" },
+  "keywords": "software factory, coding agents, merge gate, OIDC, Cloudflare, GitHub Actions"
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Instrument+Serif:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
@@ -327,6 +348,13 @@ svg text { font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; }
 .dot.done { background: var(--success); }
 .dot.next { background: transparent; border: 1.5px solid var(--text-3); }
 
+/* Related work */
+.related { list-style: none; margin: 0; padding: 0; }
+.related li { display: grid; grid-template-columns: 240px 1fr; gap: 24px; padding: 12px 0; border-top: 1px solid var(--hair-soft); font-size: 15px; }
+.related a { color: var(--ink); font-weight: 500; }
+.related span { color: var(--text-2); }
+@media (max-width: 720px) { .related li { grid-template-columns: 1fr; gap: 4px; } }
+
 footer { margin-top: 96px; padding: 28px 0 40px; border-top: 1px solid var(--hair); font-size: 14px; color: var(--text-3); }
 footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 
@@ -365,6 +393,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       <a href="#topology">Topology</a>
       <a href="#workflow">Workflow</a>
       <a href="#adopt">Adopting it</a>
+      <a href="#related">Related</a>
       <a href="https://github.com/danjamk/secure-agent-workflow">Repo</a>
     </nav>
   </div>
@@ -374,7 +403,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
 <div class="inner">
 
   <section class="hero">
-    <p class="eyebrow">secure-agent-workflow · open source</p>
+    <p class="eyebrow">secure-agent-workflow · an open-source software factory</p>
     <h1>Let agents build. Keep the <em>controls</em> out of reach.</h1>
     <p class="lede">Coding agents work approved issues through to merged pull requests with little supervision. Nothing reaches production without passing checks the agent can't edit, skip or see the credentials for.</p>
 
@@ -754,7 +783,7 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
       <div class="view-num">—</div>
       <div>
         <h2>Where it stands</h2>
-        <p>The agent's identity, bootstrap, the merge gate and the planning standards are built and tested on testbeds. The AWS credential broker is written and being deployed. Next is everything up to staging. Production releases are designed and wait until that works.</p>
+        <p>The agent's identity, bootstrap, the merge gate, the credential broker and deploys to preview and staging are built and tested on testbeds. Next is the orchestrator, then the first wave of a real project. Production releases are designed and wait until that works.</p>
       </div>
     </div>
     <div class="status">
@@ -768,14 +797,17 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
           <li><i class="dot done"></i>Gate wiring installed and updated by bootstrap</li>
           <li><i class="dot done"></i>Specs, ADRs and agent instructions are tier 2</li>
           <li><i class="dot done"></i>Templates, wave planning standard and <code>/dispatch</code></li>
+          <li><i class="dot done"></i>AWS credential broker: preview and staging roles, state bucket</li>
+          <li><i class="dot done"></i>Credentials declared per repo, checked before storing and daily</li>
+          <li><i class="dot done"></i>Preview and staging deploys through the dev roles</li>
+          <li><i class="dot done"></i>This repo's own PRs go through the pinned gate</li>
         </ul>
       </div>
       <div>
         <p class="sub-h">Next</p>
         <ul>
           <li><i class="dot next"></i>Orchestrator, sandbox, outbound handler and budgets</li>
-          <li><i class="dot next"></i>AWS credential broker: preview and staging roles, state bucket</li>
-          <li><i class="dot next"></i>Preview and staging deploys through the dev roles</li>
+          <li><i class="dot next"></i>Static assets in deploys, and an onboarding guide for a new project</li>
           <li><i class="dot next"></i>Infrastructure as OpenTofu: plan on the PR, apply after merge, drift checks</li>
           <li><i class="dot next"></i>Red-team runs, with results published</li>
           <li><i class="dot next"></i>PR audit: LLM reviewers and an approver summary</li>
@@ -784,6 +816,23 @@ footer .inner { display: flex; justify-content: space-between; flex-wrap: wrap; 
         </ul>
       </div>
     </div>
+  </section>
+
+  <section class="view" id="related">
+    <div class="view-head">
+      <div class="view-num">—</div>
+      <div>
+        <h2>Related work</h2>
+        <p>"Software factory" is the name in use for systems where agents build software from specs and issues, and people set direction and approve risk. This project builds the trust boundary around the agent: identity, credentials, the merge gate and egress. The agent is an existing CLI such as Claude Code or Codex. Descriptions below are from each project's own site, November 2026.</p>
+      </div>
+    </div>
+    <ul class="related">
+      <li><a href="https://docs.warp.dev/factories/">Warp Oz and Warp Factories</a><span>Warp's platform for cloud agents: agent roles, work sources and automation stages around shared repos. Runs Claude Code, Codex or Warp's agent. Commercial.</span></li>
+      <li><a href="https://github.com/strongdm/attractor">StrongDM Attractor</a><span>Natural-language specs for a non-interactive coding agent for use in a software factory, for you to build your own. Apache-2.0.</span></li>
+      <li><a href="https://github.com/OpenHands/OpenHands">OpenHands</a><span>A self-hosted control center for coding agents, with optional Docker sandboxes per conversation. MIT.</span></li>
+      <li><a href="https://factory.com/">Factory</a><span>An agent-native development platform whose agents work from the CLI, desktop, web, Slack, issue trackers and CI. Commercial.</span></li>
+      <li><a href="https://ona.com/">Ona</a><span>Formerly Gitpod. Development environments, agents and guardrails, with runners in your own cloud. Commercial.</span></li>
+    </ul>
   </section>
 
 </div>
