@@ -18,7 +18,7 @@ permissions: {}
 
 jobs:
   checks:
-    uses: danjamk/secure-agent-workflow/.github/workflows/gate-checks.yml@c87485a29cf4cb8715b7503e2f54ce5af07b83d2
+    uses: danjamk/secure-agent-workflow/.github/workflows/gate-checks.yml@90ca25c7659c962ed96e2043226d236e481ff2d4
     permissions:
       contents: read
       actions: read
