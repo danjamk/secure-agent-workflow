@@ -23,7 +23,7 @@ The build agent acts as a GitHub App, not as a person (ADR-001). The App's permi
 | `workflows` | none | GitHub then rejects any push that touches `.github/workflows/` |
 | `administration` | none | No access to rulesets or repo settings |
 
-Events: `issues` (release and stop labels), `issue_comment` (Dan's replies resume a blocked run), `pull_request` (the coordinator watches for conflicts). The webhook stays inactive until the orchestrator exists.
+Events: `issues` (release and stop labels), `issue_comment` (Dan's replies resume a blocked run), `pull_request` (the coordinator watches for conflicts). `orchestrator/connect-app.sh` points the webhook at the Worker; the manifest creates it inactive.
 
 `pull_requests: write` also allows submitting reviews. That is harmless for the build agent: GitHub doesn't let an author approve its own PR, the outbound handler blocks the reviews endpoint, and the tier check accepts approvals only from Dan's login.
 
@@ -39,7 +39,7 @@ python3 bootstrap/github-app/create-app.py bootstrap/github-app/build-agent.mani
 bash bootstrap/github-app/mint-token.sh danjamk-build-agent <owner>/<repo>
 ```
 
-`create-app.py` stores three Keychain items under service `secure-agent-workflow`, account `<slug>:<item>`: `app-id`, `private-key` (the PEM, base64-encoded) and `webhook-secret`. Nothing secret is written to disk or printed. When the orchestrator exists, the private key and webhook secret move to Worker secrets.
+`create-app.py` stores three Keychain items under service `secure-agent-workflow`, account `<slug>:<item>`: `app-id`, `private-key` (the PEM, base64-encoded) and `webhook-secret`. Nothing secret is written to disk or printed. `orchestrator/connect-app.sh` copies the private key and webhook secret to Worker secrets.
 
 App names are unique across GitHub. A fork changes `name` in the manifest.
 

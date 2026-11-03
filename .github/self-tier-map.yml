@@ -15,9 +15,14 @@ tiers:
     - bootstrap/**
     - gate/**
     - deploy/**
+    - orchestrator/**
     - standards/**
     - Makefile
     - LICENSE
+    # What installs the orchestrator's dependencies.
+    - package.json
+    - pnpm-lock.yaml
+    - pnpm-workspace.yaml
     # Scanner config and ignore files, read from the base commit (#61).
     - "**/.gitleaks.*"
     - "**/.gitleaksignore"

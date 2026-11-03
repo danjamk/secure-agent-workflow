@@ -1,0 +1,19 @@
+{
+  "name": "saw-orchestrator",
+  "private": true,
+  "description": "Starts a sandbox per released issue. The repo's version is in the root package.json.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:security": "vitest run test/webhook.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.4.4",
+    "@cloudflare/workers-types": "5.20261019.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.12",
+    "wrangler": "4.151.1"
+  }
+}

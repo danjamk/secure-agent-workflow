@@ -124,6 +124,8 @@ class SelfMapTest(unittest.TestCase):
     def test_control_code_is_tier_3(self):
         for path in ("gate/tier_check.py", "gate/README.md", "deploy/cloudflare/prepare.py",
                      "bootstrap/bootstrap.sh", "standards/tier-map.yml", "Makefile",
+                     "orchestrator/src/webhook.ts", "orchestrator/README.md",
+                     "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml",
                      ".github/self-tier-map.yml", ".gitleaksignore", "gate/.semgrepignore"):
             self.assertEqual(self.tier(path), 3, path)
 
