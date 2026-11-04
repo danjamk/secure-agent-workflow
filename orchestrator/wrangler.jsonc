@@ -1,0 +1,36 @@
+{
+  // The top level is the dev environment, in the factory account. There is no
+  // production environment yet.
+  //
+  // No account_id: wrangler reads CLOUDFLARE_ACCOUNT_ID, so the account stays
+  // out of this public repo.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "saw-orchestrator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+
+  // Empty values fail closed: with no approver or no repos, every release is
+  // ignored. deploy.sh passes the real values from .env.local with --var. They
+  // aren't committed because a consumer's repo name can be private.
+  "vars": {
+    "BUILD_ID": "0.0.0+dev",
+    "GITHUB_APP_ID": "",
+    "APPROVER_LOGIN": "",
+    "ALLOWED_REPOS": ""
+  },
+
+  // Records webhook deliveries so a redelivery doesn't release an issue twice.
+  // Deleting this block breaks /webhook.
+  "durable_objects": {
+    "bindings": [{ "name": "DELIVERY_LOG", "class_name": "DeliveryLog" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeliveryLog"] }]
+
+  // Worker secrets, set by setup-secrets.sh and never committed:
+  //   GITHUB_APP_PRIVATE_KEY  PKCS#8 PEM. Never enters the sandbox.
+  //   GITHUB_WEBHOOK_SECRET
+}

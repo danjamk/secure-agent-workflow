@@ -7,7 +7,7 @@ writing; the factory account is its own cloud account (Account terms).
 
 ## Stack
 
-`bootstrap/` and `gate/` are built, and `deploy/` has the AWS broker, the credential tool and Cloudflare previews and staging; the rest is designed but not built. Stack:
+`bootstrap/` and `gate/` are built, `deploy/` has the AWS broker, the credential tool and Cloudflare previews and staging, and `orchestrator/` has webhook intake and token minting; the rest is designed but not built. Stack:
 
 | Component | Stack | Decision |
 |---|---|---|
@@ -47,8 +47,10 @@ Two things a newcomer gets wrong:
 | `deploy/broker/aws/` | Broker CloudFormation templates and `broker.sh` (run by a human with `AWS_PROFILE`), the broker action deploy jobs run (`action.yml`), plus testbed workflows that check every role's allows and denies |
 | `deploy/cloudflare/` | What the deploy jobs run: `prepare.py` (checks and unpacks the bundle, sanitizes the wrangler config), `deploy.sh`, and the locked wrangler. The consumer's workflow is `bootstrap/files/deploy.yml`. Tests: `python3 -m unittest discover -s deploy/cloudflare` |
 | `deploy/credentials/` | `credentials.py` (`broker.sh setup`, `set` and `status`, and `check` for the daily job), one checker per system in `checks/`, and the example `infra/credentials.yml`. Tests: `python3 -m unittest discover -s deploy/credentials` |
+| `orchestrator/` | The Worker in the factory account: webhook intake and token minting so far. `make -C orchestrator check`; `README.md` has the contract with the sandbox and how to deploy |
+| `package.json`, `pnpm-workspace.yaml` | At the root so the gate's check job sets up Node and pnpm. The workspace holds only `orchestrator/` |
 
-`orchestrator/` and `redteam/` do not exist yet.
+`redteam/` does not exist yet.
 
 ## Conventions
 
@@ -80,6 +82,5 @@ Two things a newcomer gets wrong:
 
 **secure-agent-workflow is in build mode** — `0.1.x`, patch bumped on every merged
 PR, no CHANGELOG and no tags. The build id in `/health` is `<version>+<shortsha>`.
-No `package.json` exists yet; the version starts at `0.1.0` when the orchestrator
-lands. Cap the phase and move to release mode when `bootstrap/` and `gate/` protect
+The version is in the root `package.json`. Cap the phase and move to release mode when `bootstrap/` and `gate/` protect
 a repo other than this one and red-team results are published.

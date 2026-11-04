@@ -1,0 +1,14 @@
+# The root package.json and this file exist so the gate's check job sets up Node
+# and pnpm, which it does only when they are at the repo root. A fork that drops
+# orchestrator/ can delete both, along with pnpm-lock.yaml.
+packages:
+  - orchestrator
+
+# Two-week rule for new versions, in minutes.
+minimumReleaseAge: 20160
+
+# Same undici override as deploy/cloudflare: miniflare pins a version with
+# advisories. The vitest plugin pins a zod with GHSA-mrhx-c7xc-m3w5, fixed in 4.6.6.
+overrides:
+  undici: 7.30.1
+  zod: 4.6.7

@@ -6,7 +6,7 @@ The agent can't change the controls: they live in the sandbox, GitHub permission
 
 **Overview:** [the one-page picture](https://danjamk.github.io/secure-agent-workflow/) shows the topology, the workflow and how a project adopts it. It describes the full design, including the parts not built yet. Source: [`docs/index.html`](docs/index.html).
 
-**Status:** these are built and tested end to end on testbed repos: the agent's GitHub App, bootstrap, the merge gate (checks, scanners, tier check), the AWS credential broker, daily credential checks, and Cloudflare previews and staging. This repo's own PRs go through the same gate. The orchestrator, sandbox, infrastructure as code, production deploys, PR audit and red-team runs are not built yet.
+**Status:** these are built and tested end to end on testbed repos: the agent's GitHub App, bootstrap, the merge gate (checks, scanners, tier check), the AWS credential broker, daily credential checks, and Cloudflare previews and staging. This repo's own PRs go through the same gate. The orchestrator has its webhook intake and token minting. The sandbox, infrastructure as code, production deploys, PR audit and red-team runs are not built yet.
 
 ## How it works
 
@@ -36,7 +36,7 @@ A Cloudflare token that can deploy Workers can change every Worker in its accoun
 | `bootstrap/` | One command that applies rulesets, environments and gate wiring to a repo. Also the agent's GitHub App manifest and scripts | Built |
 | `gate/` and `.github/workflows/` | Reusable merge-gate workflows: checks, scanners, tier check, PR audit | Built, except the PR audit |
 | `standards/` | ADR template, agent instructions, issue template, planning agent instructions, tier map | Built |
-| `orchestrator/` | Cloudflare Worker that runs agents in sandboxes, with credentials kept outside | Not started |
+| `orchestrator/` | Cloudflare Worker that runs agents in sandboxes, with credentials kept outside | Webhook intake and token minting. No sandbox yet |
 | `deploy/` | Deploy template with a GitHub OIDC credential broker | AWS broker, credential checks, and Cloudflare previews and staging built; OpenTofu and production not started |
 | `redteam/` | Attacks the controls must stop | Not started |
 
