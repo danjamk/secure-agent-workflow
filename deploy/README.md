@@ -246,6 +246,21 @@ All the values are `SecureString` parameters under `/<repo>/factory/deploy/`, ev
 
 To change one, such as adding a repo to `allowed-repos`, run `set-factory <owner>/<repo> <name>`, then run the workflow from the Actions tab.
 
+### Results
+
+`danjamk/secure-agent-workflow` PR #77 and its merge, 2026-11-04:
+
+| Test | Result |
+| --- | --- |
+| A PR run uses `environment: factory` | Refused by GitHub before any step ran: `Branch "refs/pull/77/merge" is not allowed to deploy to factory due to environment protection rules.` |
+| `agent-testbed`, in its own environment named `factory` with no rules, assumes the role | Refused by AWS: `AccessDenied` |
+| Merge to `main` | The run waited, and the owner approved it. It deployed the merge commit, and `/health` matched |
+| A release on `agent-testbed` after that deploy | The App commented with the new build id, so the App id, approver and repo list all work from the broker |
+| The log searched for the Worker's URL and host, both account IDs, the App id and the repo list | None appear. The approver login appears 4 times; it's the repo owner's public username |
+| Hand deploy token | Removed from `.env.local` and revoked in Cloudflare |
+
+The manual run from the Actions tab hasn't been tested yet.
+
 ## Other options for a fork
 
 | Option | What changes |
