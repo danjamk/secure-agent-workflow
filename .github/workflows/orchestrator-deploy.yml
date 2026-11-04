@@ -1,0 +1,74 @@
+# Deploys the orchestrator to the factory account (#75, ADR-002).
+#
+# The factory environment deploys only from main and waits for the owner's
+# approval (bootstrap.sh, self mode). Its role is the only one that can read the
+# factory account's token, and it trusts only this environment on this repo.
+#
+# Runs when what gets deployed changes, not on every merge: every PR bumps the
+# root package.json, and each run asks for an approval. Run it from the Actions
+# tab after changing a setting in the broker, such as the allowed repos.
+#
+# Worker secrets aren't set here. connect-app.sh stays a hand step, so this job
+# never holds the App's private key or webhook secret.
+
+name: orchestrator-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "orchestrator/**"
+      - "!orchestrator/**/*.md"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/orchestrator-deploy.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: deploy-orchestrator
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One deploy at a time, in merge order; none is cancelled.
+    concurrency:
+      group: orchestrator-deploy
+      cancel-in-progress: false
+    environment: factory
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      # Before the token is read, with install scripts off.
+      - name: Install from the lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Read the deploy settings
+        uses: ./deploy/broker/aws
+        with:
+          role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          parameters: |
+            factory/deploy/cloudflare-deploy-token
+            factory/deploy/cloudflare-account-id
+            factory/deploy/approver-login
+            factory/deploy/allowed-repos
+            factory/deploy/orchestrator-url
+            factory/deploy/agent-app-id
+
+      - name: Deploy and check /health
+        run: bash orchestrator/deploy.sh

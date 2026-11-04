@@ -27,7 +27,9 @@
 #             workflows; private: fork PR workflows off
 #   scanning  public only: secret scanning and push protection
 #   envs      preview from PR runs, staging from the default branch, production
-#             from the production branch; the old dev environment is retired
+#             from the production branch; the old dev environment is retired. On
+#             GATE_REPO, also factory from the default branch, with the owner as
+#             required reviewer: it deploys the orchestrator (#75)
 #   labels    agent:ready, agent:stop, agent:blocked, credentials
 #   files     files/ templates (CODEOWNERS, the gate callers, the daily
 #             credential check and the Cloudflare deploy, pinned to a
@@ -328,6 +330,33 @@ environment() {
     fi
 }
 
+# required_reviewer NAME LOGIN — every deploy to the environment waits for this
+# user's approval. The read-back shape differs from what PUT takes, so this
+# compares the two itself. The PUT repeats the branch policy setting because the
+# call replaces the environment's protection.
+required_reviewer() {
+    local env=$1 login=$2 id current=""
+    id=$($GH api "users/$login" --jq .id)
+    if $GH api "repos/$REPO/environments/$env" --jq \
+        '[.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[] | "\(.type):\(.reviewer.id)"] | sort | join(",")' \
+        > "$WORK/reviewers.txt" 2>/dev/null; then
+        current=$(cat "$WORK/reviewers.txt")
+    fi
+    local what="environment $env: each deploy waits for $login"
+    if [ "$current" = "User:$id" ]; then
+        [ "$MODE" = apply ] && printf '  =  %s\n' "$what"
+        return 0
+    fi
+    CHANGES=$((CHANGES + 1))
+    printf '  ~  %s\n' "$what"
+    printf '       required reviewers: %s -> User:%s\n' "${current:-none}" "$id"
+    if [ "$MODE" = apply ] && [ "$DRY_RUN" = false ]; then
+        printf '{"reviewers":[{"type":"User","id":%s}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}' "$id" \
+            > "$WORK/reviewer-body.json"
+        $GH api -X PUT "repos/$REPO/environments/$env" --input "$WORK/reviewer-body.json" --silent
+    fi
+}
+
 # retire_environment NAME — delete an environment bootstrap used to create,
 # but only if nothing was ever deployed to it.
 retire_environment() {
@@ -355,6 +384,12 @@ environments() {
     # The production branch needn't exist yet; until it does, nothing deploys.
     environment production production
     retire_environment dev
+    # Deploys the orchestrator to the factory account, so only on the repo that
+    # holds it. Its role trusts this name (deploy/broker/aws/factory.yml).
+    if [ "$SELF" = true ]; then
+        environment factory "$DEFAULT_BRANCH"
+        required_reviewer factory "$OWNER"
+    fi
 }
 
 # label NAME COLOR DESCRIPTION

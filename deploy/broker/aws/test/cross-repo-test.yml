@@ -4,6 +4,10 @@
 #
 # Needs repo secrets OTHER_PREVIEW_ROLE and OTHER_STAGING_ROLE on this repo,
 # holding the first testbed's role ARNs.
+#
+# The factory job needs an environment named factory on this repo, with no rules,
+# and a repo secret OTHER_FACTORY_ROLE holding the factory role's ARN. A role
+# trusting an environment by name alone would accept this job.
 name: broker-cross-repo-test
 
 on:
@@ -42,3 +46,28 @@ jobs:
             fi
           done
           exit "$FAILED"
+
+  factory:
+    runs-on: ubuntu-latest
+    environment: factory
+    permissions:
+      id-token: write
+    env:
+      FACTORY_ROLE: ${{ secrets.OTHER_FACTORY_ROLE }}
+      AWS_REGION: us-east-1
+    steps:
+      - name: The factory role refuses this repo's factory environment
+        run: |
+          set -uo pipefail
+          [ -n "$FACTORY_ROLE" ] || { echo "FAIL  OTHER_FACTORY_ROLE is empty"; exit 1; }
+          token="$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)"
+          if out="$(aws sts assume-role-with-web-identity --role-arn "$FACTORY_ROLE" \
+              --role-session-name "cross-repo-$GITHUB_RUN_ID" \
+              --web-identity-token "$token" 2>&1)"; then
+            echo "FAIL  factory role: assumed"; exit 1
+          elif grep -q AccessDenied <<<"$out"; then
+            echo "PASS  factory role: refused (AccessDenied)"
+          else
+            echo "FAIL  factory role: unexpected error"; exit 1
+          fi

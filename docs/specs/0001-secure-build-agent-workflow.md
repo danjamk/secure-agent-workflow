@@ -78,6 +78,7 @@ Work reaches a build agent only through a merged plan. Grooming is how loose wor
 
 - Previews and staging share the dev target. Production is always a separate target. A target is one account per provider the app uses, such as a Cloudflare account or an Auth0 tenant.
 - The orchestrator and the operator console run in their own Cloudflare account, the factory account, which is never a deploy target. A Cloudflare token that can deploy Workers can change every Worker in its account, so no deploy token may reach the account that holds the App private key and model keys.
+- The orchestrator itself deploys from `main` of this repo, through a `factory` environment that waits for the owner's approval and has its own broker role (ADR-002). No consumer repo can assume that role. Worker secrets are set by hand and never pass through CI.
 - The agent triggers previews by pushing. It never holds a deploy credential; the preview job gets one from the preview role.
 - Previews never apply infrastructure changes or migrations. A PR that changes either gets a plan and no preview (ADR-006).
 - The PR's build scripts run in a build job with no credentials and no OIDC token. A separate deploy job holds the dev deploy token and runs only secure-agent-workflow's code: it checks the bundle's digest and uploads it as built (#18).

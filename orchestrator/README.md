@@ -39,7 +39,8 @@ Written ahead of #8 and #9, which have to keep to it.
 | Component | What the orchestrator expects |
 | --- | --- |
 | `bootstrap/github-app/` | An App with the permissions in its README, and its id, private key and webhook secret in the Keychain until `connect-app.sh` copies them |
-| `bootstrap/` | The `agent:*` labels on each repo |
+| `bootstrap/` | The `agent:*` labels on each repo, and the `factory` environment on this one |
+| `deploy/broker/aws/` | The deploy token and settings, through the broker action |
 | `standards/agent-instructions.md` | The branch pattern, labels and PR format |
 | `gate/` | Nothing directly. The gate judges the PR the agent opens |
 
@@ -49,19 +50,30 @@ Written ahead of #8 and #9, which have to keep to it.
 | --- | --- | --- |
 | `GITHUB_APP_PRIVATE_KEY` | Worker secret, PKCS#8 | `connect-app.sh` |
 | `GITHUB_WEBHOOK_SECRET` | Worker secret | `connect-app.sh` |
-| `CLOUDFLARE_API_TOKEN` | `.env.local`, until CI deploys this | The operator. This account is never a deploy target for an app, and `broker.sh set` refuses this token |
+| `saw-factory-cloudflare-deploy-token` | The broker, read only by the `factory` environment's role | The operator, with `broker.sh set-factory`. This account is never a deploy target for an app, and `broker.sh set` refuses this token |
 
 ## Deploying
 
-Run from a clean checkout. `.env.local` at the repo root needs `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `APPROVER_LOGIN`, `ALLOWED_REPOS` and, after the first deploy, `ORCHESTRATOR_URL`.
+CI deploys this on merge to `main`, after the owner approves the run. `.github/workflows/orchestrator-deploy.yml` checks that `/health` matches the commit. `deploy/README.md`, Factory deploys, has the setup and which changes start a deploy.
+
+The account, the Worker's URL and the repo list stay out of committed files and out of the logs.
+
+### Deploying by hand
+
+Two jobs need a token on your machine: setting Worker secrets, which CI never does, and an emergency deploy when CI is down. No long-lived token stays on disk for either.
+
+1. Create a Cloudflare token in the factory account with Workers Scripts Edit, Account Settings Read and a TTL of one day.
+2. Put it in this shell only, from a clean checkout. `.env.local` needs `CLOUDFLARE_ACCOUNT_ID`, `APPROVER_LOGIN`, `ALLOWED_REPOS` and `ORCHESTRATOR_URL`.
+3. Run what you need, then revoke the token.
 
 ```bash
-make -C orchestrator deploy    # the first run prints the Worker's URL
+read -rs CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN
 make -C orchestrator connect   # copies secrets, points the App's webhook at the Worker
+make -C orchestrator deploy    # emergency only: this skips the approval
 make -C orchestrator health    # checks the live Worker matches this checkout
 ```
 
-The account, the Worker's URL and the repo list stay out of committed files.
+Rerun `connect` when the App's private key or webhook secret changes. A new setup also runs `deploy` once by hand first, because `connect` needs the Worker to exist and the first run prints its URL.
 
 ## Tests
 
