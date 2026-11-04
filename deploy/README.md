@@ -8,12 +8,13 @@ Deploys a consumer repo to Cloudflare with credentials from a GitHub OIDC broker
 | Credentials: manifest, `set`, `status`, Cloudflare checker (`credentials/`) | Built (#53) |
 | Daily credential check (`credentials/daily-check.sh`, `bootstrap/files/credential-check.yml`) | Built (#55) |
 | Broker action and Cloudflare previews and staging (`broker/aws/action.yml`, `cloudflare/`, `bootstrap/files/deploy.yml`) | Built (#18) |
+| The orchestrator's own deploys (`broker/aws/factory.yml`, `.github/workflows/orchestrator-deploy.yml`) | Built (#75) |
 | OpenTofu plan and apply | #49 |
 | Prod role | #32 |
 
 ## AWS broker
 
-Two CloudFormation templates, deployed by `broker/aws/broker.sh` with a named AWS profile. A human runs it, never the agent.
+Three CloudFormation templates, deployed by `broker/aws/broker.sh` with a named AWS profile. A human runs it, never the agent.
 
 ```bash
 AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh account --dry-run
@@ -26,6 +27,7 @@ AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh add-repo <owner>/<repo>
 | --- | --- | --- |
 | `account`, once per AWS account | `saw-broker` | The GitHub OIDC provider, or reuses one that exists (AWS allows one per URL). The S3 bucket `saw-tfstate-<account-id>` for OpenTofu state: versioned, encrypted, public access blocked, TLS only. The bucket is kept if the stack is deleted |
 | `add-repo`, once per consumer repo | `saw-broker-<repo>` | Roles `saw-<repo>-preview` and `saw-<repo>-staging`. Writes each ARN into the matching GitHub environment as the secret `AWS_ROLE_ARN`, and `AWS_REGION` as a variable |
+| `factory`, once, on the repo holding the orchestrator | `saw-broker-factory` | Role `saw-<repo>-factory`, and the settings in [Factory deploys](#factory-deploys) |
 
 `--dry-run` creates a CloudFormation change set, prints it and deletes it. The script refuses to run without `AWS_PROFILE`, so it never falls back to default credentials. The region defaults to `us-east-1`; set `AWS_REGION` to change it.
 
@@ -129,6 +131,7 @@ No account ID or account name appeared in the logs or the issue.
 | `/<repo>/dev/preview/*` | Preview, staging | Credentials PR code may see: the Cloudflare deploy and read-only tokens, `cloudflare-account-id` |
 | `/<repo>/dev/staging/*` | Staging | Credentials only merged code may use: the Cloudflare infrastructure token |
 | `/<repo>/prod/prod/*` | Prod (#32) | Production credentials |
+| `/secure-agent-workflow/factory/deploy/*` | Factory | The factory account's deploy token and the orchestrator's deploy settings |
 
 ### Cloudflare tokens
 
@@ -204,6 +207,44 @@ Not covered yet:
 | Preview reading the infrastructure token | Refused: the testbed's `broker-test.yml` preview job passed on the same PR |
 | Merge to `main` | `deploy-staging` deployed `agent-testbed-staging`, and `/health` returned `0.1.0+5928d1c`, the merge commit. No account ID in the log |
 | Assuming the prod role | Not tested: the prod role comes with #32 |
+
+## Factory deploys
+
+`.github/workflows/orchestrator-deploy.yml` deploys `orchestrator/` to the factory account. It's on this repo only, and no consumer gets it.
+
+| Control | What it does |
+| --- | --- |
+| `factory` environment, created by bootstrap's self mode | Deploys only from `main`, and each deploy waits for the owner's approval |
+| Role `saw-<repo>-factory` | Trusts only `...:environment:factory` on this repo, by immutable IDs. Reads only `/<repo>/factory/deploy/*` |
+| Tier map | The workflow and everything it deploys are tier 3, so an agent's PR can't merge them |
+
+The workflow runs when `orchestrator/` code, `pnpm-lock.yaml`, `pnpm-workspace.yaml` or the workflow itself changes on `main`, and from the Actions tab. Markdown files and the root `package.json` don't start it, because each run asks for an approval and every PR bumps that version. So `/health` reports the last deployed commit, which can be behind `main`. The job checks `/health` against the commit it deploys.
+
+Unlike `bootstrap/files/deploy.yml`, this is one job, with no separate build. That split exists because a consumer's build runs the agent's code. Here, every deployed path needs the owner's merge. The job installs from the lockfile with install scripts off, before it reads the token.
+
+### Setting it up
+
+```bash
+bash bootstrap/bootstrap.sh <owner>/<repo>                               # creates the factory environment
+AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh factory <owner>/<repo> --dry-run
+AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh factory <owner>/<repo>
+AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh set-factory <owner>/<repo> cloudflare-deploy-token
+```
+
+Create the token in the factory account, named `saw-factory-cloudflare-deploy-token`, with Workers Scripts Edit and Account Settings Read on that account only. `set-factory` runs the Cloudflare checker and refuses a token from any other account. `broker.sh set` keeps refusing factory account credentials.
+
+All the values are `SecureString` parameters under `/<repo>/factory/deploy/`, even the ones that aren't secret. The job masks what it reads, which keeps them out of this public repo's logs. GitHub environment variables would be printed there.
+
+| Parameter | `broker.sh factory` reads it from |
+| --- | --- |
+| `cloudflare-deploy-token` | Not read: stored with `set-factory` |
+| `cloudflare-account-id` | `CLOUDFLARE_ACCOUNT_ID` in `.env.local` |
+| `approver-login` | `APPROVER_LOGIN` in `.env.local` |
+| `allowed-repos` | `ALLOWED_REPOS` in `.env.local` |
+| `orchestrator-url` | `ORCHESTRATOR_URL` in `.env.local` |
+| `agent-app-id` | The Keychain item `create-app.py` stored |
+
+To change one, such as adding a repo to `allowed-repos`, run `set-factory <owner>/<repo> <name>`, then run the workflow from the Actions tab.
 
 ## Other options for a fork
 

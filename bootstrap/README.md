@@ -68,7 +68,11 @@ Running claude-shared's `protect-branch.sh` on a bootstrapped repo rewrites `pro
 
 ### This repo
 
-Run on `GATE_REPO` itself, bootstrap detects it and switches to self mode (#60). Everything is the same except the files:
+Run on `GATE_REPO` itself, bootstrap detects it and switches to self mode (#60). Everything is the same except one extra environment and the files.
+
+The extra environment is `factory`: deploys only from the default branch, and each one waits for the repo owner's approval. It deploys the orchestrator to the factory account (`deploy/README.md`, Factory deploys). This repo is public; GitHub limits required reviewers on private repos by plan, so a fork on a private repo should check its plan first.
+
+The files:
 
 | File | Instead of | Why |
 | --- | --- | --- |

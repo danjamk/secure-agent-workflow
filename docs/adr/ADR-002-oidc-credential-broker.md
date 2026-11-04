@@ -1,6 +1,6 @@
 # ADR-002: Deploy credentials come through a GitHub OIDC broker on AWS
 
-Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores; OIDC subjects with immutable IDs; dev role split into preview and staging, OpenTofu state bucket, per ADR-006) · Revised: 2026-11-01 (roles read by exposure path, per ADR-007)
+Status: Accepted · Date: 2026-10-30 · Revised: 2026-10-31 (dev and prod stores; OIDC subjects with immutable IDs; dev role split into preview and staging, OpenTofu state bucket, per ADR-006) · Revised: 2026-11-01 (roles read by exposure path, per ADR-007) · Revised: 2026-11-04 (a separate factory role deploys the orchestrator, #75)
 
 ## Context
 
@@ -28,6 +28,8 @@ The roles may live in two AWS accounts or one. Two accounts are stronger: a deve
 
 The preview and staging roles are built first. The prod role is built with the production release path (spec 0001, build order step 3).
 
+The orchestrator's own deploys use the same broker through a fourth role, on the one repo that holds the orchestrator. It trusts only `repo:danjamk@<owner-id>/secure-agent-workflow@<repo-id>:environment:factory` and reads `/secure-agent-workflow/factory/deploy/*`. That environment deploys only from `main` and waits for the owner's approval. No consumer repo gets this role, so an app's deploy credentials still can't reach the factory account.
+
 ## Alternatives considered
 
 - **Cloudflare tokens in GitHub environment secrets.** Simplest, but the tokens are long-lived and stored in GitHub. Reasonable for the dev store on a small project; not for prod.
@@ -40,3 +42,4 @@ The preview and staging roles are built first. The prod role is built with the p
 - No static deploy secrets in GitHub.
 - The cloud provider, not just GitHub, refuses prod credentials to any job outside `environment:production`, and dev credentials to any job outside `preview` and `staging`. Only `staging` gets the dev infrastructure token.
 - A fork or client with Vault, OpenBao or another cloud's store swaps the broker without touching workflows, and can put each store wherever its own key management requires.
+- The broker account also holds the factory account's deploy token. Anyone with admin on that AWS account can read it; the required reviewer protects the CI path only.

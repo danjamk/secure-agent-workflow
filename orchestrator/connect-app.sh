@@ -8,7 +8,9 @@
 # Worker. Values travel through pipes: nothing is printed or written to disk. Safe
 # to run again.
 #
-# Reads CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and ORCHESTRATOR_URL from .env.local.
+# Reads CLOUDFLARE_ACCOUNT_ID and ORCHESTRATOR_URL from .env.local, and
+# CLOUDFLARE_API_TOKEN from the environment. CI doesn't run this: Worker secrets
+# stay a hand step. README.md, Deploying by hand, says how to get a token.
 
 set -euo pipefail
 
@@ -24,7 +26,7 @@ set +a
 
 for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ORCHESTRATOR_URL; do
     if [ -z "${!name:-}" ]; then
-        echo "$name isn't set in .env.local." >&2
+        echo "$name isn't set." >&2
         exit 1
     fi
 done

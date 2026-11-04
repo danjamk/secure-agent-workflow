@@ -12,6 +12,7 @@ This applies to this repo and to every project that uses it. The tools enforce o
 | Token name in the provider's dashboard | `<repo>-<target>-<credential name>` | `agent-testbed-dev-cloudflare-deploy-token` |
 | Parameter path in the broker account | `/<repo>/<target>/<exposure>/<credential name>` | `/agent-testbed/dev/preview/cloudflare-deploy-token` |
 | A credential the platform itself uses, in the factory account | `saw-factory-<system>-<role>-<kind>` | `saw-factory-cloudflare-deploy-token`, `saw-factory-anthropic-api-key` |
+| Its parameter path, when CI needs it | `/secure-agent-workflow/factory/deploy/<credential name>` | `/secure-agent-workflow/factory/deploy/cloudflare-deploy-token` |
 | Environment variable, when a job needs one | The credential name, uppercase, with underscores | `CLOUDFLARE_DEPLOY_TOKEN` |
 
 The parts:
@@ -35,6 +36,7 @@ The parts:
 - The manifest validator rejects a `name` that doesn't start with `<system>-` and end in `-token`, `-key` or `-secret`.
 - `broker.sh setup <owner>/<repo>` walks through every credential that is missing or failing. It prints the dashboard name, the target, and the permissions for each one, then prompts for the value.
 - `broker.sh set` prints the dashboard name before it prompts. `broker.sh status` shows it on every credential line, so a failing line names the token to fix.
+- `broker.sh set` refuses a credential from the factory account. `broker.sh set-factory` stores those, and refuses one from any other account.
 
 ## For AI assistants
 

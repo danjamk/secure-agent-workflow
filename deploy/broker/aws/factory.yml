@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  secure-agent-workflow credential broker: the role that deploys the orchestrator
+  to the factory account (ADR-002). One per software factory, on the repo that
+  holds the orchestrator. Deployed by broker.sh factory. Needs the saw-broker
+  account stack.
+
+Parameters:
+  Owner:
+    Type: String
+    AllowedPattern: "[A-Za-z0-9-]+"
+  OwnerId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+  RepoName:
+    Type: String
+    AllowedPattern: "[A-Za-z0-9._-]+"
+  RepoId:
+    Type: String
+    AllowedPattern: "[0-9]+"
+
+Resources:
+  # A token that can deploy to the factory account can replace the Worker that
+  # holds the App's private key. So this role trusts one environment on one
+  # repo, and that environment deploys only from main with the owner's approval
+  # (bootstrap.sh, self mode).
+  FactoryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub saw-${RepoName}-factory
+      Description: !Sub "secure-agent-workflow: ${Owner}/${RepoName} orchestrator deploys"
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !ImportValue saw-broker-oidc-provider-arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${Owner}@${OwnerId}/${RepoName}@${RepoId}:environment:factory
+      Policies:
+        - PolicyName: factory
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadFactoryDeploySettings
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/factory/deploy
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${RepoName}/factory/deploy/*
+              - Sid: DecryptThroughSsmOnly
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub ssm.${AWS::Region}.amazonaws.com
+
+Outputs:
+  FactoryRoleArn:
+    Value: !GetAtt FactoryRole.Arn

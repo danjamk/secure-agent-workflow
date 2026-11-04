@@ -39,6 +39,7 @@ Two things a newcomer gets wrong:
 | `bootstrap/github-app/` | Agent GitHub App manifest, creation and token scripts, verification |
 | `gate/` | Merge gate scripts and tests. `python3 -m unittest discover -s gate` |
 | `.github/workflows/` | The gate's reusable workflows, which consumers call pinned by SHA. This repo's required checks come from `self-gate.yml` and `self-tier-check.yml`, which bootstrap installs pinned the same way; `gate.yml` runs the PR's own copy as advisory `candidate` checks |
+| `.github/workflows/orchestrator-deploy.yml` | Deploys `orchestrator/` to the factory account on merge, through the `factory` environment. Runs on this repo only |
 | `.github/self-tier-map.yml` | This repo's tier map: control code is tier 3. Consumers use `standards/tier-map.yml` |
 | `standards/tier-map.yml` | Default tier map; consumers get a copy from bootstrap |
 | `standards/planning-agent.md` | Planning agent instructions; the cloud environment's setup script fetches them |
