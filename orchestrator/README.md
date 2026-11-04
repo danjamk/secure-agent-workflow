@@ -72,6 +72,24 @@ make -C orchestrator test-security   # who can release an issue
 
 Tests run in the Workers runtime through `@cloudflare/vitest-plugin`, with a real Durable Object. Only GitHub is stubbed. Each run generates its own throwaway RSA key.
 
+### Live results
+
+2026-11-04, deployed to the factory account, on the two testbeds. Status and reason come from the App's delivery log.
+
+| Case | Status | Reason in the response |
+| --- | --- | --- |
+| Approver adds `agent:ready` to an open issue on an allowed repo | 202 | Released, and the App commented on the issue |
+| The same delivery sent again | 200 | `duplicate delivery`, with no second comment |
+| The agent App adds `agent:ready` | 200 | `sender isn't the approver` |
+| Approver adds `agent:blocked` | 200 | `another label` |
+| Approver adds `agent:ready` on a repo outside `ALLOWED_REPOS` | 200 | `repo isn't allowed` |
+| Approver adds `agent:ready` to a closed issue | 200 | `issue isn't open` |
+| Approver removes `agent:ready` | 200 | `action unlabeled` |
+| The App's own comment comes back as an event | 200 | `event issue_comment`, so comments don't loop |
+| Unsigned POST to `/webhook` | 401 | Sent directly, not by GitHub |
+
+The Worker never exposes the token, so the live test didn't observe its scope or its revocation. Tests cover both. The comment was posted, and the Worker only reaches that step after checking the token lists exactly one repo.
+
 ## Other options for a fork
 
 From the [sandbox bake-off](../docs/research/sandbox-bakeoff.md):
