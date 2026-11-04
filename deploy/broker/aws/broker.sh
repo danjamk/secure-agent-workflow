@@ -41,6 +41,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
+# Without this, the AWS CLI opens a pager on a terminal and the script waits there.
+export AWS_PAGER=""
 REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_STACK=saw-broker
 FACTORY_STACK=saw-broker-factory
