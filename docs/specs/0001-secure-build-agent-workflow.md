@@ -227,7 +227,7 @@ The orchestrator has a coordinator (one Durable Object) in front of the per-run 
 
 - An issue with open "blocked by" links waits, even if labeled `agent:ready`.
 - Two issues with the same touch area don't run at the same time.
-- When a PR falls behind `main` and conflicts, the coordinator starts a catch-up run on the same branch that merges `main` into it. Merge, not rebase: a rebase needs a force-push, which the push filter rejects (ADR-005).
+- When a PR falls behind `main` and conflicts, the coordinator starts a catch-up run on the same branch that merges `main` into it. Merge, not rebase: a rebase needs a force-push, which the `agent-branches` ruleset rejects (ADR-005).
 - Total spend across all runs counts toward a daily budget; hitting it pauses the queue and notifies Dan.
 
 ### Visibility

@@ -1,4 +1,4 @@
-# ADR-004: Build agents run in the Cloudflare Sandbox SDK
+# ADR-004: Build agents run in Cloudflare containers
 
 Status: Accepted · Date: 2026-10-30 · Revised: 2026-11-05 for Sandbox SDK 1.0 (#8)
 

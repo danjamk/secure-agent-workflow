@@ -38,7 +38,7 @@ A blocked issue frees its slot but keeps its area, so no sandbox idles while it 
 
 **Concurrency cap.** One global cap across every repo the orchestrator serves, default 1. Dan sets it as a Worker variable (`MAX_CONCURRENT_RUNS`) with `wrangler`. The agent holds no Cloudflare credential, so it can't change it, and the coordinator never raises it. The plan recommends a cap per wave, and Dan applies it when dispatching.
 
-**Catch-up runs.** On each push to `main`, the coordinator checks the open agent PRs. One whose `mergeable_state` is `dirty` gets a catch-up run on its branch that merges `main` into it. This is merge, not rebase: a rebase needs a force-push, which the push filter rejects, and squash merge keeps `main` linear anyway. A PR gets at most one catch-up per `main` commit. After two catch-ups that leave it still conflicting, it's marked `agent:blocked` with the reason.
+**Catch-up runs.** On each push to `main`, the coordinator checks the open agent PRs. One whose `mergeable_state` is `dirty` gets a catch-up run on its branch that merges `main` into it. This is merge, not rebase: a rebase needs a force-push, which the `agent-branches` ruleset rejects, and squash merge keeps `main` linear anyway. A PR gets at most one catch-up per `main` commit. After two catch-ups that leave it still conflicting, it's marked `agent:blocked` with the reason.
 
 **Daily spend budget.** The outbound handler reports each run's model spend to the coordinator, which totals it per UTC day. When the total reaches the budget (`DAILY_SPEND_LIMIT_USD`, set like the cap), the queue pauses: running runs finish within their own per-run budgets, and no new run starts. The coordinator posts once to Slack and resumes at the next UTC day, or sooner if Dan raises the limit. The worst-case overshoot is the cap times the per-run token budget.
 
@@ -50,7 +50,7 @@ A blocked issue frees its slot but keeps its area, so no sandbox idles while it 
 - **State in GitHub labels only** (for example `agent:queued` and `agent:running`). It's visible in GitHub, but the agent App can write labels, so the agent could edit its own scheduling state. Labels also can't serialize two webhooks that race for the last slot.
 - **A coordinator per repo.** It isolates repos, but spend and sandbox cost are account-wide, so the cap and the budget would need a second global layer anyway. One coordinator is simpler while v1 serves a few repos.
 - **Release the area lock at sandbox teardown.** This gives more parallelism, but a blocked or tier 2 PR would leave its area open to a second, conflicting PR. Catch-up runs would then turn conflicts the plan meant to prevent into routine work.
-- **Rebase for catch-up runs**, as spec 0001 first said. Rejected: it needs a force-push, which the push filter rejects.
+- **Rebase for catch-up runs**, as spec 0001 first said. Rejected: it needs a force-push, which the `agent-branches` ruleset rejects.
 
 ## Consequences
 
