@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:security": "vitest run test/webhook.test.ts",
+    "test:security": "vitest run test/webhook.test.ts test/outbound",
     "typecheck": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm test"
   },
@@ -15,5 +15,8 @@
     "typescript": "6.0.3",
     "vitest": "4.1.12",
     "wrangler": "4.151.1"
+  },
+  "dependencies": {
+    "graphql": "16.14.2"
   }
 }

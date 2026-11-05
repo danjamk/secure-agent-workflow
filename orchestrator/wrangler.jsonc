@@ -20,17 +20,27 @@
     "BUILD_ID": "0.0.0+dev",
     "GITHUB_APP_ID": "",
     "APPROVER_LOGIN": "",
-    "ALLOWED_REPOS": ""
+    "ALLOWED_REPOS": "",
+    "EGRESS_HOSTS": "{}",
+    "ALLOWED_MODELS": ""
   },
 
-  // Records webhook deliveries so a redelivery doesn't release an issue twice.
-  // Deleting this block breaks /webhook.
+  // DELIVERY_LOG records webhook deliveries so a redelivery doesn't release an issue
+  // twice. Deleting it breaks /webhook. RUN_STATE holds each run's stop flag, pinned
+  // branch and PR, and token.
   "durable_objects": {
-    "bindings": [{ "name": "DELIVERY_LOG", "class_name": "DeliveryLog" }]
+    "bindings": [
+      { "name": "DELIVERY_LOG", "class_name": "DeliveryLog" },
+      { "name": "RUN_STATE", "class_name": "RunState" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DeliveryLog"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DeliveryLog"] },
+    { "tag": "v2", "new_sqlite_classes": ["RunState"] }
+  ]
 
-  // Worker secrets, set by setup-secrets.sh and never committed:
-  //   GITHUB_APP_PRIVATE_KEY  PKCS#8 PEM. Never enters the sandbox.
+  // Worker secrets, set by hand and never committed. None enters the sandbox:
+  //   GITHUB_APP_PRIVATE_KEY  PKCS#8 PEM
   //   GITHUB_WEBHOOK_SECRET
+  //   ANTHROPIC_API_KEY, OPENAI_API_KEY  optional. A model host with no key is denied
 }

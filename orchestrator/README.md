@@ -4,9 +4,37 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens | Outbound handlers (#8), the sandbox and agent CLI (#9), logs (#10), stop and resume (#11), the coordinator (#13) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy | The container that uses the policy (#79), the agent CLI (#9), logs (#10), stop and resume (#11), the coordinator (#13) |
 
 An accepted release mints a token, posts a comment saying no run started, and revokes the token. The comment proves the path from label to GitHub write. #9 replaces it with starting a run.
+
+The outbound policy is deployed but nothing calls it yet, because no container exists. Its tests stub the internet, so #79 proves each denial on the real platform.
+
+## Outbound policy
+
+Every request from a run's container reaches the `Outbound` entrypoint (`src/outbound/handler.ts`). The container starts with `enableInternet: false`, so it has no other way out. Each request is denied unless a rule below allows it. The stop flag and the HTTPS check come first.
+
+| Host | Allowed | Credential |
+| --- | --- | --- |
+| `github.com` | Git for this run's repo: `info/refs`, `git-upload-pack`, `git-receive-pack`. A push must be one ref, on the run's branch, and not a deletion | Installation token |
+| `api.github.com`, REST | Reads under the run's repo. Writes: create the run's one PR, edit its title and body, comment on its issue or PR, add `agent:blocked` to its issue | Installation token |
+| `api.github.com`, GraphQL | Queries. One `markPullRequestReadyForReview` or `enablePullRequestAutoMerge` per request, on the run's PR | Installation token |
+| `api.anthropic.com`, `api.openai.com` | The message endpoints, for models in `ALLOWED_MODELS`. No vendor-run tools or URL inputs, because those make the vendor reach another host | The vendor's key. Unset means denied |
+| Hosts in `EGRESS_HOSTS` for this repo | GET and HEAD. `github.com` here allows release downloads only | None |
+
+How the rules hold up:
+
+- **Run scope.** The orchestrator passes the run's repo, issue and default branch as the entrypoint's props, which the container can't read or change. The `RunState` Durable Object holds what's set during the run: the stop flag, the branch and the PR. The first ref pushed becomes the branch, and the PR's number and node ID come from GitHub's response.
+- **Repo id.** The token is minted for the immutable repo id, so renaming a repo can't point it at another.
+- **What's forwarded.** The URL is rebuilt, headers come from a short list, and each write's JSON is rebuilt from what was checked. So `Authorization`, `Cookie`, `X-HTTP-Method-Override`, a repeated JSON key and an encoded path don't reach GitHub.
+- **Redirects.** They're never followed. One from a call with a credential comes back as a 502, because its `Location` can hold a signed URL.
+- **Force-pushes.** A push's ref commands can't show one, so the `agent-branches` ruleset blocks them (`bootstrap/README.md`).
+
+Known limits:
+
+- A commit message like `Fixes #99` can close another issue when the PR merges. The policy blocks this in PR titles and bodies, and #13 treats a blocker closed by an agent's PR as still open.
+- A registry read can carry data in its path. It reaches only the registry's own logs, and the list is per repo for that reason.
+- Output ceilings, concurrency and spend are in #11.
 
 ## What counts as a release
 
@@ -25,7 +53,7 @@ If minting or commenting fails, the Worker returns a 502 and forgets the deliver
 
 ## Contract with the sandbox
 
-Written ahead of #8 and #9, which have to keep to it.
+#79 and #9 have to keep to this.
 
 | | |
 | --- | --- |
@@ -39,7 +67,7 @@ Written ahead of #8 and #9, which have to keep to it.
 | Component | What the orchestrator expects |
 | --- | --- |
 | `bootstrap/github-app/` | An App with the permissions in its README, and its id, private key and webhook secret in the Keychain until `connect-app.sh` copies them |
-| `bootstrap/` | The `agent:*` labels on each repo, and the `factory` environment on this one |
+| `bootstrap/` | The `agent:*` labels and the `agent-branches` ruleset on each repo, and the `factory` environment on this one |
 | `deploy/broker/aws/` | The deploy token and settings, through the broker action |
 | `standards/agent-instructions.md` | The branch pattern, labels and PR format |
 | `gate/` | Nothing directly. The gate judges the PR the agent opens |
@@ -50,6 +78,8 @@ Written ahead of #8 and #9, which have to keep to it.
 | --- | --- | --- |
 | `GITHUB_APP_PRIVATE_KEY` | Worker secret, PKCS#8 | `connect-app.sh` |
 | `GITHUB_WEBHOOK_SECRET` | Worker secret | `connect-app.sh` |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Worker secrets, optional. Added with `wrangler secret put` when #9 chooses the agent CLI | The operator, by hand |
+| Installation tokens for runs | In memory in `RunState`, and never in storage. Revoked on stop | Minted on demand, replaced with 10 minutes left |
 | `saw-factory-cloudflare-deploy-token` | The broker, read only by the `factory` environment's role | The operator, with `broker.sh set-factory`. This account is never a deploy target for an app, and `broker.sh set` refuses this token |
 
 ## Deploying
@@ -79,7 +109,7 @@ Rerun `connect` when the App's private key or webhook secret changes. A new setu
 
 ```bash
 make -C orchestrator check           # typecheck and every test
-make -C orchestrator test-security   # who can release an issue
+make -C orchestrator test-security   # who can release an issue, and what a run can reach
 ```
 
 Tests run in the Workers runtime through `@cloudflare/vitest-plugin`, with a real Durable Object. Only GitHub is stubbed. Each run generates its own throwaway RSA key.

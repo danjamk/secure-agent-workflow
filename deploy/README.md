@@ -243,6 +243,9 @@ All the values are `SecureString` parameters under `/<repo>/factory/deploy/`, ev
 | `allowed-repos` | `ALLOWED_REPOS` in `.env.local` |
 | `orchestrator-url` | `ORCHESTRATOR_URL` in `.env.local` |
 | `agent-app-id` | The Keychain item `create-app.py` stored |
+| `egress-hosts` | `EGRESS_HOSTS` in `.env.local`, or `{}` if unset |
+
+`egress-hosts` lists the package registries each repo's agent may read, as JSON: `{"owner/name": ["registry.npmjs.org"]}`. It's kept here because a list in the repo would be one the agent can edit. A repo with `infra/` also needs `registry.opentofu.org` and its providers' download hosts (ADR-006). Listing `github.com` allows release downloads there and nothing more on that host.
 
 To change one, such as adding a repo to `allowed-repos`, run `set-factory <owner>/<repo> <name>`, then run the workflow from the Actions tab.
 
