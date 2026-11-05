@@ -72,6 +72,8 @@ async function readText(request: Request, max: number): Promise<string | null> {
 async function readJson(request: Request, max: number): Promise<{ value: unknown } | null> {
   const text = await readText(request, max);
   if (text === null) return null;
+  // No body, as on a DELETE, is left for the route rules to judge.
+  if (text === "") return { value: undefined };
   try {
     return { value: JSON.parse(text) };
   } catch {
@@ -91,14 +93,28 @@ function respond(response: Response, authenticated: boolean): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-function send(url: URL, method: string, headers: Headers, body?: BodyInit | null): Promise<Response> {
+async function send(
+  run: string,
+  url: URL,
+  method: string,
+  headers: Headers,
+  body?: BodyInit | null,
+): Promise<Response> {
+  const started = Date.now();
   // Rebuilt from what was checked. No userinfo, no port and no fragment reach GitHub.
-  return fetch(`https://${url.hostname}${url.pathname}${url.search}`, {
+  const response = await fetch(`https://${url.hostname}${url.pathname}${url.search}`, {
     method,
     headers,
     body: body ?? undefined,
     redirect: "manual",
   });
+  const ms = Date.now() - started;
+  // The platform's log shows only what the handler returned. This says whether a
+  // failure came from upstream. No path or body, which could hold what's sent out.
+  if (response.status >= 500 || ms > 5000) {
+    console.warn(JSON.stringify({ run, upstream: url.hostname, method, status: response.status, ms }));
+  }
+  return response;
 }
 
 function concat(first: Uint8Array, second: Uint8Array): Uint8Array {
@@ -146,7 +162,7 @@ class Route {
     if (!headers.has("user-agent")) headers.set("user-agent", "secure-agent-workflow");
     // A string is a body this handler rebuilt as JSON.
     if (typeof body === "string") headers.set("content-type", "application/json");
-    return send(this.url, this.request.method, headers, body);
+    return send(this.scope.runId, this.url, this.request.method, headers, body);
   }
 
   async git(): Promise<Response> {
@@ -201,7 +217,7 @@ class Route {
       RELEASE_PATH.test(url.pathname) &&
       !url.search;
     if (!allowed) return this.deny(reason);
-    return respond(await send(url, request.method, pickHeaders(request, REGISTRY_HEADERS)), false);
+    return respond(await send(this.scope.runId, url, request.method, pickHeaders(request, REGISTRY_HEADERS)), false);
   }
 
   async api(): Promise<Response> {
@@ -253,13 +269,13 @@ class Route {
     const headers = pickHeaders(request, host.headers);
     headers.set(host.header, host.header === "authorization" ? `Bearer ${key}` : key);
     headers.set("content-type", "application/json");
-    return respond(await send(url, request.method, headers, decision.body), true);
+    return respond(await send(this.scope.runId, url, request.method, headers, decision.body), true);
   }
 
   async registry(): Promise<Response> {
     const { request, url } = this;
     if (request.method !== "GET" && request.method !== "HEAD") return this.deny("registry: read only");
-    return respond(await send(url, request.method, pickHeaders(request, REGISTRY_HEADERS)), false);
+    return respond(await send(this.scope.runId, url, request.method, pickHeaders(request, REGISTRY_HEADERS)), false);
   }
 }
 

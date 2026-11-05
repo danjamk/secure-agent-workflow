@@ -25,7 +25,7 @@ section() { printf '\n## %s\n' "$1"; }
 
 result() {
     local outcome=$1 name=$2 detail=${3:-}
-    detail=$(printf '%s' "$detail" | tr '\n\r' '  ' | cut -c1-160)
+    detail=$(printf '%s' "$detail" | tr '\n\r' '  ' | cut -c1-300)
     if [ "$outcome" = pass ]; then
         PASSED=$((PASSED + 1))
         echo "PASS  $name${detail:+ ($detail)}"
@@ -51,7 +51,7 @@ must_fail() {
     if out=$(timeout 30 "$@" 2>&1); then
         result fail "$name" "it worked: $(printf '%s' "$out" | head -c 120)"
     else
-        result pass "$name" "$(printf '%s' "$out" | tail -n 1)"
+        result pass "$name" "$(printf '%s' "$out" | tail -n 3)"
     fi
 }
 

@@ -292,3 +292,37 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** Claude
 - **Approved by:** None
 - **Evidence:** `orchestrator/container/probe.sh`
+
+### 2026-11-05 Add Containers Edit to the factory deploy token
+
+- **Decision:** `saw-factory-cloudflare-deploy-token` gets the account permission Containers Edit, besides Workers Scripts Edit and Account Settings Read.
+- **Why:** The first deploy with the container failed at `GET /accounts/<account>/containers/me` with no reason given. The same deploy passed once the permission was added. The live Worker didn't change while it failed.
+- **Rejected:** A broader token, such as the "Edit Cloudflare Workers" template.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, by adding the permission in the dashboard
+- **Evidence:** Failed `orchestrator-deploy` run 42126043401, then the rerun that passed
+
+### 2026-11-05 Register a run's intercepts once per container
+
+- **Decision:** A run registers its intercepts the first time it sees its container, and again only if the Durable Object restarts. It used to register them on every 10-second check.
+- **Why:** In the first live probe, the call that opens the PR waited 10.3 seconds and got a 502, and GitHub accepted the same PR in 1.7 seconds when sent directly. The likeliest cause is re-registering while that request was in flight, even though Cloudflare's docs say that doesn't drop connections. The second live run tests this.
+- **Rejected:** Retrying the call in the probe, which would hide the cause from an agent too.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/src/run.ts`, the first probe's comment on agent-testbed #34
+
+### 2026-11-05 Log failures and slow responses from upstream
+
+- **Decision:** The outbound handler logs the host, method, status and time of any upstream response that's a 5xx or takes over 5 seconds, with no path or body.
+- **Why:** The platform's log shows only what the handler returned, so the first probe's 502 couldn't be traced to upstream or to the Worker.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `send` in `orchestrator/src/outbound/handler.ts`
+
+### 2026-11-05 Judge a request with no body by its route
+
+- **Decision:** An empty body passes to the route rules instead of being refused as bad JSON.
+- **Why:** A `DELETE` of `agent:stop` was refused as "bad body". It was still denied, but for the wrong reason, which makes a denial log misleading.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `readJson` in `orchestrator/src/outbound/handler.ts`
