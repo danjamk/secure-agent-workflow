@@ -182,3 +182,113 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** danjamk asked for the wider scope; Claude chose the wording and the rejection format
 - **Approved by:** danjamk asked for the scope in the working session; the wording and format are claims until danjamk merges this PR
 - **Evidence:** This entry's PR, `standards/decision-log.md`
+
+### 2026-11-05 Intercept only listed hosts
+
+- **Decision:** A run intercepts HTTPS for GitHub, the model hosts and the repo's registries by name, with no `*` and no plain HTTP. This replaces the #8 plan to intercept all HTTP and HTTPS.
+- **Why:** With `*`, every hostname resolves, so DNS could carry data out and #79's DNS check couldn't pass. The cost is that a request to an unlisted host fails inside the container and isn't logged.
+- **Rejected:** Intercepting everything, which logs every attempt with a reason.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved. Proceed" in the working session
+- **Evidence:** PR for #79 (container proof), `orchestrator/src/sandbox.ts`
+
+### 2026-11-05 Run the container from RunState, driven by an alarm
+
+- **Decision:** The existing `RunState` Durable Object owns the run's container. The release returns a 202 at once, and an alarm checks the run every 10 seconds until it finishes.
+- **Why:** That's one object per run, and `RunState` held no data yet. A running process doesn't keep a container alive, and GitHub gives up on a webhook after 10 seconds.
+- **Rejected:** A new Durable Object class for the container, and waiting for the probe inside the webhook call.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved. Proceed" in the working session
+- **Evidence:** PR for #79 (container proof), `orchestrator/src/run.ts`
+
+### 2026-11-05 Tear down on every exit, and post container output as untrusted
+
+- **Decision:** Every way a run ends goes through one step that destroys the container, posts the result and stops the run. The posted output has credentials scrubbed, a length cap and no way to close its code block.
+- **Why:** `exec` has no timeout of its own, and the output comes from code the orchestrator doesn't trust.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved. Proceed" in the working session
+- **Evidence:** PR for #79 (container proof), `orchestrator/test/run.test.ts`
+
+### 2026-11-05 Make the probe open a PR and aim its denials at fake ids
+
+- **Decision:** Besides cloning and pushing, the probe opens a draft PR, marks it ready and comments on the issue. Checks that should be denied target the testbed or fake ids. Each run leaves a branch, a PR and a comment on the testbed.
+- **Why:** #9 (agent CLI in a sandbox) depends on the PR path. If a filter fails, GitHub returns an error instead of changing anything.
+- **Rejected:** Only clone and push, as #79 first said.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved. Proceed" in the working session
+- **Evidence:** PR for #79 (container proof), `orchestrator/container/probe.sh`
+
+### 2026-11-05 Merge the container code first, then prove it live
+
+- **Decision:** The container code merges with `Refs #79`, the CI deploy builds the image, and a later docs PR records the live probe and closes #79. The deploy tries the current token first, so the docs record the permissions it actually needs.
+- **Why:** Deploys run only from `main`, which is the same pattern as #75 (CI deploy). No document states the token permissions.
+- **Rejected:** Deploying a branch by hand, which skips review and the approval step.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved. Proceed" in the working session
+- **Evidence:** PR for #79 (container proof)
+
+### 2026-11-05 Set the run limit to 12 minutes
+
+- **Decision:** A run is stopped after 12 minutes. The proposal said 10.
+- **Why:** The probe's network checks each wait up to 20 to 30 seconds for a failure, and they add up close to 10 minutes on a slow instance.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `RUN_LIMIT_MS` in `orchestrator/src/run.ts`
+
+### 2026-11-05 Build the image on Debian slim with git, curl and jq
+
+- **Decision:** The image is `debian:trixie-slim` pinned by digest, with `ca-certificates`, `curl`, `git` and `jq`. The proposal named only `git` and `curl`.
+- **Why:** `jq` lets the probe build and read JSON safely, instead of by string matching. Debian's packages aren't pinned, so a rebuild picks up security updates.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/container/Dockerfile`
+
+### 2026-11-05 Trust the platform CA through environment variables
+
+- **Decision:** The probe gets `GIT_SSL_CAINFO`, `CURL_CA_BUNDLE`, `SSL_CERT_FILE` and `NODE_EXTRA_CA_CERTS`, all pointing at the platform's CA. The system trust store isn't changed.
+- **Why:** Every HTTPS request is intercepted, so that CA is the only one needed. This needs no step that writes to the trust store at startup.
+- **Rejected:** Merging the CA into the system bundle, which Cloudflare's docs also describe.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `probeEnv` in `orchestrator/src/sandbox.ts`
+
+### 2026-11-05 Name a run by its delivery id
+
+- **Decision:** Each accepted release starts a run named by the webhook's delivery id. Relabeling an issue starts a second run.
+- **Why:** It's the simplest unique name, and stopping a second run per issue is a #9 (agent CLI in a sandbox) task.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `startRun` in `orchestrator/src/webhook.ts`
+
+### 2026-11-05 Ignore a release with no repo id or default branch
+
+- **Decision:** The webhook now requires `repository.id` and `repository.default_branch`. A payload without them is ignored with a reason, like other non-releases.
+- **Why:** The run's token is minted by repo id, and the PR's base must be the default branch.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `decide` in `orchestrator/src/webhook.ts`
+
+### 2026-11-05 Remove the token mint by repo name
+
+- **Decision:** `mintInstallationToken`, which limited a token by repo name, is gone. Runs use `mintRunToken`, which limits it by repo id.
+- **Why:** Nothing calls it once releases start runs, and a leftover helper looks like the right one to use.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/src/github.ts`
+
+### 2026-11-05 Drop the test for retrying a failed release
+
+- **Decision:** The webhook test that forced a token failure and redelivered is removed. The webhook no longer mints, so that failure can't happen there. The code that forgets a delivery when starting a run fails is still there, but no test covers it.
+- **Why:** I didn't find a way to make the Durable Object call fail in the test pool without a test-only hook in the Worker.
+- **Rejected:** Adding a test-only setting to the Worker.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/test/webhook.test.ts`
+
+### 2026-11-05 Keep running the probe after a failed clone
+
+- **Decision:** If the clone fails, the probe records one failure for the push checks and carries on with the API and credential checks.
+- **Why:** The first local run stopped at the failed clone, so the rest of the checks never ran.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/container/probe.sh`

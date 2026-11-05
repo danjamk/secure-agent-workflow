@@ -1,5 +1,6 @@
 // The test:security suite: who can release an issue, through the whole Worker.
 // Only GitHub is stubbed; the Durable Object is real.
+import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleWebhook } from "../src/webhook";
 import { deliver, release, sign, stubGitHub, testEnv } from "./helpers";
@@ -104,27 +105,47 @@ describe("what counts as a release", () => {
     const response = await deliver(
       release({
         sender: { login: "The-Approver", type: "User" },
-        repository: { full_name: "The-Approver/App" },
+        repository: { full_name: "The-Approver/App", id: 1234, default_branch: "main" },
       }),
     );
     expect(response.status).toBe(202);
-    expect(calls.length).toBeGreaterThan(0);
+    // Wait for the run to finish, so none of it reaches the network after the stub goes.
+    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+  });
+
+  it("ignores a payload with no repo id or default branch", async () => {
+    for (const repository of [
+      { full_name: "the-approver/app", default_branch: "main" },
+      { full_name: "the-approver/app", id: 1234 },
+    ]) {
+      const calls = stubGitHub();
+      const response = await deliver(release({ repository }));
+      expect(await response.json()).toHaveProperty("ignored");
+      expect(calls).toEqual([]);
+    }
   });
 });
 
 describe("a release", () => {
-  it("mints a token for the one repo, comments with it, and revokes it", async () => {
+  // Tests run with containers off, so each run reaches the "no container" failure.
+  // That still exercises the whole path: scope, token, report and teardown.
+  it("starts a run that reports on the issue and revokes its token", async () => {
     const calls = stubGitHub();
-    const response = await deliver(release());
+    const delivery = crypto.randomUUID();
+    const response = await deliver(release(), { delivery });
     expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
     expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
       "POST /app/installations/99/access_tokens",
       "POST /repos/the-approver/app/issues/7/comments",
       "DELETE /installation/token",
     ]);
-    expect(calls[0]?.body).toEqual({ repositories: ["app"] });
+    expect(calls[0]?.body).toEqual({ repository_ids: [1234] });
     expect(calls[1]?.authorization).toBe("Bearer minted-token");
-    expect(calls[2]?.authorization).toBe("Bearer minted-token");
+    expect(JSON.stringify(calls[1]?.body)).toContain(delivery);
+    expect(JSON.stringify(calls[1]?.body)).toContain("no container is configured");
+    const run = env.RUN_STATE.getByName(delivery);
+    expect(await run.admit()).toEqual({ admitted: false, reason: "the run is stopped" });
   });
 
   it("handles one delivery id once", async () => {
@@ -134,51 +155,20 @@ describe("a release", () => {
     const second = await deliver(release(), { delivery });
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({ ignored: "duplicate delivery" });
+    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
     expect(calls.filter((c) => c.url.endsWith("/access_tokens"))).toHaveLength(1);
-  });
-
-  it("lets a redelivery retry after a failure", async () => {
-    const delivery = crypto.randomUUID();
-    stubGitHub(() => new Response("nope", { status: 500 }));
-    expect((await deliver(release(), { delivery })).status).toBe(502);
-    vi.restoreAllMocks();
-    stubGitHub();
-    expect((await deliver(release(), { delivery })).status).toBe(202);
-  });
-
-  it("revokes and stops when the token isn't limited to the one repo", async () => {
-    const calls = stubGitHub(() =>
-      Response.json(
-        {
-          token: "too-wide",
-          repositories: [{ full_name: "the-approver/app" }, { full_name: "the-approver/other" }],
-        },
-        { status: 201 },
-      ),
-    );
-    const response = await deliver(release());
-    expect(response.status).toBe(502);
-    expect(calls.map((c) => c.method)).toEqual(["POST", "DELETE"]);
-    expect(calls[1]?.authorization).toBe("Bearer too-wide");
-  });
-
-  it("refuses a token response with no repo list", async () => {
-    const calls = stubGitHub(() => Response.json({ token: "unknown" }, { status: 201 }));
-    expect((await deliver(release())).status).toBe(502);
-    expect(calls.filter((c) => c.url.endsWith("/comments"))).toEqual([]);
   });
 
   it("never puts a credential in a response or a log", async () => {
     const logged: string[] = [];
-    for (const method of ["log", "error"] as const) {
+    for (const method of ["log", "warn", "error"] as const) {
       vi.spyOn(console, method).mockImplementation((...args) => {
         logged.push(args.join(" "));
       });
     }
-    stubGitHub(() =>
-      Response.json({ token: "minted-token", repositories: [] }, { status: 201 }),
-    );
+    const calls = stubGitHub();
     const response = await deliver(release());
+    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
     const text = `${await response.text()} ${logged.join(" ")}`;
     expect(text).not.toContain("minted-token");
     expect(text).not.toContain("PRIVATE KEY");

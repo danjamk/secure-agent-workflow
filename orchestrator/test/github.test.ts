@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { appJwt, mintInstallationToken } from "../src/github";
+import { appJwt, mintRunToken } from "../src/github";
 import { stubGitHub, testEnv } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
@@ -48,19 +48,34 @@ it("names the format when given GitHub's PKCS#1 key, without echoing it", async 
   await expect(appJwt("1", pem)).rejects.not.toThrow("c2VjcmV0");
 });
 
-it("sends the App JWT to mint, not a token", async () => {
+it("sends the App JWT to mint, not a token, and limits it by repo id", async () => {
   const calls = stubGitHub();
-  const token = await mintInstallationToken(testEnv(), 99, "the-approver/app");
-  expect(token).toBe("minted-token");
+  const token = await mintRunToken(testEnv(), 99, 1234);
+  expect(token.value).toBe("minted-token");
   expect(calls[0]?.authorization?.split(".")).toHaveLength(3);
+  expect(calls[0]?.body).toEqual({ repository_ids: [1234] });
 });
 
 it("refuses to mint when the App id or key isn't set", async () => {
   const calls = stubGitHub();
   for (const change of [{ GITHUB_APP_ID: "" }, { GITHUB_APP_PRIVATE_KEY: undefined }]) {
-    await expect(
-      mintInstallationToken({ ...testEnv(), ...change }, 99, "the-approver/app"),
-    ).rejects.toThrow("is not set");
+    await expect(mintRunToken({ ...testEnv(), ...change }, 99, 1234)).rejects.toThrow("is not set");
   }
   expect(calls).toEqual([]);
+});
+
+it("revokes and refuses a token that isn't limited to the one repo", async () => {
+  const calls = stubGitHub(() =>
+    Response.json(
+      {
+        token: "too-wide",
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        repositories: [{ id: 1234 }, { id: 5678 }],
+      },
+      { status: 201 },
+    ),
+  );
+  await expect(mintRunToken(testEnv(), 99, 1234)).rejects.toThrow("isn't limited");
+  expect(calls.map((c) => c.method)).toEqual(["POST", "DELETE"]);
+  expect(calls[1]?.authorization).toBe("Bearer too-wide");
 });

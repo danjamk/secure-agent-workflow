@@ -4,15 +4,27 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy | The container that uses the policy (#79), the agent CLI (#9), logs (#10), stop and resume (#11), the coordinator (#13) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs the outbound probe | The agent CLI (#9), logs (#10), stop and resume (#11), the coordinator (#13) |
 
-An accepted release mints a token, posts a comment saying no run started, and revokes the token. The comment proves the path from label to GitHub write. #9 replaces it with starting a run.
+## A run
 
-The outbound policy is deployed but nothing calls it yet, because no container exists. Its tests stub the internet, so #79 proves each denial on the real platform.
+An accepted release starts a run, named by the delivery id. For now a run is the outbound probe (#79): a fixed script, `container/probe.sh`, that tries what an agent might and reports what got through. #9 replaces it with the agent CLI.
+
+The `RunState` Durable Object owns the run, and an alarm checks it every 10 seconds:
+
+1. Register the intercepts, then start the container on a `lite` instance with `enableInternet: false`.
+2. Wait for the platform's CA, which appears once HTTPS is intercepted, then start the probe. Its output goes to a file, because a process with piped output gets `SIGPIPE` when the call that started it ends.
+3. When the probe exits, destroy the container, post its output on the issue, and stop the run, which revokes its token.
+
+Every way out goes through step 3: the probe finishing, the container stopping on its own, an error, or the 12-minute limit. The output comes from the container, so it's treated as untrusted: credentials are scrubbed, the length is capped and it can't close its code block.
+
+The probe leaves a branch, a draft PR and a comment on the testbed's issue each time. Remove them by hand.
 
 ## Outbound policy
 
-Every request from a run's container reaches the `Outbound` entrypoint (`src/outbound/handler.ts`). The container starts with `enableInternet: false`, so it has no other way out. Each request is denied unless a rule below allows it. The stop flag and the HTTPS check come first.
+The container starts with `enableInternet: false`, and the run intercepts HTTPS for these hosts only. Every request to them reaches the `Outbound` entrypoint (`src/outbound/handler.ts`), and other names don't resolve, so DNS can't carry data out. There's no plain HTTP intercept. Each request is denied unless a rule below allows it. The stop flag and the HTTPS check come first.
+
+A request to a host that isn't listed fails inside the container and never reaches the Worker, so it isn't logged.
 
 | Host | Allowed | Credential |
 | --- | --- | --- |
@@ -49,7 +61,7 @@ The Worker acts on a webhook only if all of these hold. Anything else gets a 200
 
 An empty `APPROVER_LOGIN` or `ALLOWED_REPOS` means nothing is released, and a missing webhook secret means every webhook gets a 500.
 
-If minting or commenting fails, the Worker returns a 502 and forgets the delivery id, so redelivering it from the App's delivery log tries again.
+If starting the run fails, the Worker returns a 502 and forgets the delivery id, so redelivering it from the App's delivery log tries again. A failure after that is reported on the issue.
 
 ## Contract with the sandbox
 
@@ -60,7 +72,7 @@ If minting or commenting fails, the Worker returns a 502 and forgets the deliver
 | Goes in | The issue body, `standards/agent-instructions.md`, and a clone over HTTPS |
 | Comes out | Commits on `agent/<issue>-<slug>`, a PR, issue and PR comments, the `agent:blocked` label, and the run's log |
 | Never enters | The App private key, the webhook secret, installation tokens and model API keys. The outbound handler adds tokens and keys to each request |
-| Network | Deny by default, with an allowlist. Only HTTP and HTTPS reach the handlers |
+| Network | Deny by default. HTTPS to the listed hosts reaches the policy. Nothing else resolves or connects |
 
 ## Contracts with other components
 
@@ -88,6 +100,8 @@ CI deploys this on merge to `main`, after the owner approves the run. `.github/w
 
 The account, the Worker's URL and the repo list stay out of committed files and out of the logs.
 
+`wrangler deploy` builds `container/Dockerfile` for `linux/amd64` and pushes it to Cloudflare's registry, so it needs Docker. GitHub's Ubuntu runners have it. Which token permissions the push needs isn't documented, and #79's live results record what was needed.
+
 ### Deploying by hand
 
 Two jobs need a token on your machine: setting Worker secrets, which CI never does, and an emergency deploy when CI is down. No long-lived token stays on disk for either.
@@ -113,6 +127,13 @@ make -C orchestrator test-security   # who can release an issue, and what a run 
 ```
 
 Tests run in the Workers runtime through `@cloudflare/vitest-plugin`, with a real Durable Object. Only GitHub is stubbed. Each run generates its own throwaway RSA key.
+
+The plugin turns containers off. `test/run.test.ts` drives a run against a fake container, and the live results below are the proof against the real one. To check the probe script itself, build the image and run it with networking off: every denial should pass and every allowed call should fail.
+
+```bash
+docker build --platform linux/amd64 -t saw-probe orchestrator/container
+docker run --rm --platform linux/amd64 --network none -e REPO=a/b -e ISSUE=1 -e SLUG=probe-test -e DEFAULT_BRANCH=main saw-probe /probe/probe.sh
+```
 
 ### Live results
 

@@ -1,9 +1,11 @@
-import { commentOnIssue, GitHubError, mintInstallationToken, revokeToken } from "./github";
+import type { RunScope } from "./outbound/scope";
 
 const RELEASE_LABEL = "agent:ready";
 
 export interface Release {
   repo: string;
+  repoId: number;
+  defaultBranch: string;
   issue: number;
   installationId: number;
 }
@@ -66,29 +68,33 @@ export function decide(event: string | null, payload: any, rules: Rules): Releas
 
   const issue = payload?.issue?.number;
   const installationId = payload?.installation?.id;
-  if (typeof issue !== "number" || typeof installationId !== "number") {
-    return "payload is missing the issue or installation";
+  const repoId = payload?.repository?.id;
+  const defaultBranch = payload?.repository?.default_branch;
+  if (
+    typeof issue !== "number" ||
+    typeof installationId !== "number" ||
+    typeof repoId !== "number" ||
+    typeof defaultBranch !== "string"
+  ) {
+    return "payload is missing the issue, installation or repo";
   }
-  return { repo, issue, installationId };
+  return { repo, repoId, defaultBranch, issue, installationId };
 }
 
 /**
- * Proves the path from release to a GitHub write. #9 replaces this with starting
- * a run. The token is revoked here because nothing else uses it.
+ * Starts a run, named by the delivery id. For now the run is the outbound probe
+ * (#79). #9 replaces it with the agent CLI.
  */
-async function acknowledge(release: Release, delivery: string, env: Env): Promise<void> {
-  const token = await mintInstallationToken(env, release.installationId, release.repo);
-  try {
-    await commentOnIssue(
-      token,
-      release.repo,
-      release.issue,
-      `Release received by the orchestrator (build \`${env.BUILD_ID}\`, delivery \`${delivery}\`). ` +
-        "Agent runs aren't built yet, so no run started.",
-    );
-  } finally {
-    await revokeToken(token);
-  }
+async function startRun(release: Release, delivery: string, env: Env): Promise<void> {
+  const scope: RunScope = {
+    runId: delivery,
+    installationId: release.installationId,
+    repoId: release.repoId,
+    repo: release.repo,
+    issue: release.issue,
+    defaultBranch: release.defaultBranch,
+  };
+  await env.RUN_STATE.getByName(delivery).launch(scope);
 }
 
 function json(status: number, body: object): Response {
@@ -133,13 +139,12 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   }
 
   try {
-    await acknowledge(decision, delivery, env);
+    await startRun(decision, delivery, env);
   } catch (error) {
-    // Forget the claim so redelivering from GitHub's log tries again. GitHubError
-    // messages are safe to log; anything else logs only its type.
+    // Forget the claim so redelivering from GitHub's log tries again. Only the
+    // error's type is logged.
     await log.forget(delivery);
-    const reason = error instanceof GitHubError ? error.message : (error as Error).name;
-    console.error(`Release ${delivery} failed: ${reason}`);
+    console.error(`Release ${delivery} failed: ${(error as Error).name}`);
     return json(502, { error: "release failed", delivery });
   }
   console.log(`Released ${decision.repo}#${decision.issue} from delivery ${delivery}`);

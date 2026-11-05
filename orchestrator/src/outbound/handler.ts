@@ -264,7 +264,7 @@ class Route {
 }
 
 /** Hosts one repo may read packages from. A bad setting means none. */
-function registries(env: Env, repo: string): Set<string> {
+export function registries(env: Env, repo: string): Set<string> {
   try {
     const all = JSON.parse(env.EGRESS_HOSTS ?? "{}") as Record<string, unknown>;
     const hosts = Object.hasOwn(all, repo) ? all[repo] : [];
@@ -304,8 +304,8 @@ export async function handleOutbound(request: Request, scope: RunScope, env: Env
 }
 
 /**
- * Registered on a run's container with interceptAllOutboundHttp and
- * interceptOutboundHttps("*"). #79 wires it to a real container.
+ * Registered with interceptOutboundHttps for each host in interceptHosts()
+ * (src/sandbox.ts). The policy still decides every request those hosts receive.
  */
 export class Outbound extends WorkerEntrypoint<Env, RunScope> {
   override fetch(request: Request): Promise<Response> {
