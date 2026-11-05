@@ -102,3 +102,83 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** danjamk proposed the log; Claude proposed the format and the tier
 - **Approved by:** danjamk asked for it in the working session; the format and the tier are claims until danjamk merges this PR
 - **Evidence:** This entry's PR, `standards/decision-log.md`
+
+### 2026-11-05 Pin `graphql` to 16.14.2
+
+- **Decision:** The orchestrator uses `graphql` 16.14.2.
+- **Why:** 16.15.0 and 17.1.0 came out the day before and fail the two-week rule. Only the parser is used, and the 16 line is the older one.
+- **Rejected:** 17.0.2, which also passes the two-week rule but is a newer major version with no benefit here.
+- **Decided by:** Claude
+- **Approved by:** danjamk, by merging PR #81
+- **Evidence:** PR #81 (outbound policy)
+
+### 2026-11-05 Hold run tokens in memory only
+
+- **Decision:** `RunState` keeps the installation token in memory, never in Durable Object storage. If the object is evicted, the next request mints another.
+- **Why:** A token in storage outlives the run and would be one more place to leak from. Minting again is cheap.
+- **Rejected:** Storing the token to avoid minting after an eviction.
+- **Decided by:** Claude
+- **Approved by:** danjamk, by merging PR #81
+- **Evidence:** PR #81 (outbound policy), `orchestrator/src/run.ts`
+
+### 2026-11-05 List the headers that leave the sandbox
+
+- **Decision:** The handler forwards only listed request headers. It drops `Accept-Encoding` and leaves compression to the Workers runtime.
+- **Why:** A list keeps out `Authorization`, `Cookie`, `Proxy-*` and `X-HTTP-Method-Override` without naming each one. Dropping `Accept-Encoding` avoids decoding a response twice, which is inference from the runtime's behavior and hasn't been tested live.
+- **Rejected:** Removing a list of known bad headers, which misses any header not on it.
+- **Decided by:** Claude
+- **Approved by:** None. PR #81 (outbound policy) merged, but its description didn't list this
+- **Evidence:** `orchestrator/src/outbound/handler.ts`
+
+### 2026-11-05 Set body limits in the outbound handler
+
+- **Decision:** 64 KB for a push's ref commands, 1 MB for GitHub API bodies and 32 MB for model bodies. Anything larger is denied.
+- **Why:** The handler buffers these to check them. The figures are my judgment and aren't measured, so #9 (agent CLI in a sandbox) may need to raise the model limit.
+- **Decided by:** Claude
+- **Approved by:** None. PR #81 (outbound policy) merged, but its description didn't list this
+- **Evidence:** `orchestrator/src/outbound/handler.ts`
+
+### 2026-11-05 Report two controls as not verified after a blocked check
+
+- **Decision:** The permission system blocked temporary edits that would have removed the redirect refusal and the branch deletion check. I reported both as not negative-verified and didn't retry another way.
+- **Why:** The block was on weakening security code, and getting around it wasn't mine to decide. Direct tests exist for both, but they haven't been seen to fail.
+- **Rejected:** Making the same temporary edits through a shell command.
+- **Decided by:** Claude
+- **Approved by:** danjamk, by merging PR #81
+- **Evidence:** PR #81 (outbound policy), Testing section
+
+### 2026-11-05 Close #8 with tasks moved to other issues
+
+- **Decision:** PR #81 closed #8 (outbound handlers) even though some of its tasks moved to #79 (container proof) and #11 (stop, blocked, resume). The moved tasks are noted in #8's checklist.
+- **Why:** The split was approved, and leaving #8 open would show work as outstanding that's tracked elsewhere.
+- **Rejected:** `Refs #8` until #79 finished.
+- **Decided by:** Claude
+- **Approved by:** danjamk, by merging PR #81
+- **Evidence:** PR #81 (outbound policy), #8 (outbound handlers)
+
+### 2026-11-05 Start the log with today's decisions only
+
+- **Decision:** The log begins at #8 (outbound handlers). Earlier decisions stay in ADRs and in issue and PR comments.
+- **Why:** Reconstructing older decisions from memory would produce entries nobody can check.
+- **Rejected:** Backfilling from the whole project's history.
+- **Decided by:** Claude
+- **Approved by:** danjamk, by merging PR #82
+- **Evidence:** PR #82 (start a decision log)
+
+### 2026-11-05 Try the log here before adding it to `claude-shared`
+
+- **Decision:** The standard lives in this repo for now. It moves to `claude-shared` after use on #79 (container proof) and #9 (agent CLI in a sandbox).
+- **Why:** It would apply to every repo, and the rule for what to log has already changed once.
+- **Rejected:** Adding it to `claude-shared` now.
+- **Decided by:** Claude
+- **Approved by:** None. danjamk said it probably belongs in both and hasn't ruled on the timing
+- **Evidence:** PR #82 (start a decision log), Next Steps
+
+### 2026-11-05 Log in-process decisions, including rejected recommendations
+
+- **Decision:** The log now covers any choice someone might later wonder about, including small ones an agent makes along the way. `Approved by: None` is a normal value. A rejected recommendation gets its own entry, whoever rejects it. Logging doesn't change what agents may decide alone. This replaces the stricter test in "Keep a decision log".
+- **Why:** The first test would have left out the small calls people want to look back on, and agent collaboration or evaluation could add agents that turn down recommendations.
+- **Rejected:** Adding a field for rejections, because an entry that names what was rejected already covers it.
+- **Decided by:** danjamk asked for the wider scope; Claude chose the wording and the rejection format
+- **Approved by:** danjamk asked for the scope in the working session; the wording and format are claims until danjamk merges this PR
+- **Evidence:** This entry's PR, `standards/decision-log.md`

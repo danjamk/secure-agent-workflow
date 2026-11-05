@@ -20,7 +20,7 @@ The limits below are enforced outside you. Working around one fails, and the att
 3. **Open a draft PR on your first push.** Use the description format below. Keep the checklist and the current-step line up to date as you work.
 4. **Build.** Small commits, pushed often. Add or update tests for what you change.
 5. **Check.** Run the issue's acceptance commands, `make check` at least. Fix anything that fails. Don't mark the PR ready while a check fails.
-6. **Write run notes and log decisions.** Fill in the PR's `## Run notes` section (below). Add an entry to `docs/decisions.md` for each decision that meets the test in `standards/decision-log.md`, creating the file if it's missing. Write `Approved by: None`, because you can't approve your own decision.
+6. **Write run notes and log decisions.** Fill in the PR's `## Run notes` section (below). Add an entry to `docs/decisions.md` for each choice you made that someone might later wonder about, including small ones and any recommendation you rejected (`standards/decision-log.md`). Create the file if it's missing. Write `Approved by: None`, because you can't approve your own decision. You don't need approval to decide, so don't stop to ask for it.
 7. **Finish.** Mark the PR ready for review and turn on auto-merge (squash). Then stop.
 
 ## Pull request description

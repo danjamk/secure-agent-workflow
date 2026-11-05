@@ -30,7 +30,7 @@ Two things a newcomer gets wrong:
 |---|---|
 | `docs/specs/` | Numbered specs. `0001` is the system spec. |
 | `docs/adr/` | `ADR-NNN-*.md` decision records |
-| `docs/decisions.md` | The decision log: every real decision, by a person or an agent, and who approved it |
+| `docs/decisions.md` | The decision log: choices made by people and agents, and who approved each, if anyone did |
 | `docs/research/` | Research the ADRs cite |
 | `docs/plans/` | Implementation plans, and `backlog.md` from `/groom` |
 | `docs/retros/` | Wave retrospectives from `/retro` |
@@ -67,9 +67,11 @@ Two things a newcomer gets wrong:
   deploys staging, both to the dev target. Production deploys to the prod target,
   only from the `production` branch through a release PR (spec 0001, Branches and
   environments).
-- **Log decisions as you make them.** Add them to `docs/decisions.md` in the same
-  PR as the work, following `standards/decision-log.md`. Record who approved each
-  one, in the approver's words, and don't write an approval nobody gave.
+- **Log decisions as you make them,** including small in-process ones and rejected
+  recommendations. Add them to `docs/decisions.md` in the same PR as the work,
+  following `standards/decision-log.md`. Record who approved each one, in the
+  approver's words. `Approved by: None` is fine; an approval nobody gave isn't.
+  Logging doesn't change what you may decide on your own.
 - **Credential names** follow `standards/credentials.md`: `<system>-<role>-<kind>`,
   and `<repo>-<target>-<name>` in the provider's dashboard. Use them when helping
   create or find a token. Never ask for a credential's value in a conversation;

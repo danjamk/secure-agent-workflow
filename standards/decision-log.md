@@ -6,13 +6,11 @@ The log is a record. It isn't a control, so it never grants an approval. What le
 
 ## What goes in
 
-Log a decision when all of these hold:
+Log any choice made during the work that someone might later wonder about. That includes the small ones an agent makes along the way: picking a version, a limit, a default or a library, reading an unclear requirement one way, skipping or changing a step, or how it handled a failure. If you're unsure, log it. A short entry costs little, and a missing one can't be recovered.
 
-- There was a real alternative that someone could reasonably have chosen.
-- It changes behavior, security, cost, scope or an earlier decision.
-- A reader couldn't work out the reason from the diff.
+Leave out naming and formatting, and anything the issue already specified, unless the work departs from it.
 
-Leave out naming, formatting and refactors with no change in behavior. Skip anything the issue already specified, unless the work departs from it.
+**Logging doesn't change who may decide.** Agents make decisions when that's appropriate, and they don't need approval to make them. `Approved by: None` is a normal value and doesn't mean something went wrong. Don't stop work to get an entry approved.
 
 An ADR records a decision that's expensive to reverse or sets a rule for the whole system. Give that decision a one-entry pointer here, linking the ADR, so the log stays the complete list. Other decisions need only the entry.
 
@@ -35,8 +33,8 @@ Add new entries at the bottom, in the same PR as the work.
 | --- | --- |
 | **Decision** | One or two sentences, stated plainly |
 | **Why** | The reason, in at most three sentences |
-| **Rejected** | The main alternative and why not. Write "None considered" if that's true |
-| **Decided by** | Who made the call: a person's login, or the agent. When a person chooses from a recommendation, name who proposed it, such as "Claude proposed, danjamk chose" |
+| **Rejected** | The main alternative and why not. Leave this line out if none was considered |
+| **Decided by** | Who made the call: a person's login, or the agent and its role. When someone chooses from a recommendation, name who proposed it, such as "Claude proposed, danjamk chose" |
 | **Approved by** | See below |
 | **Evidence** | The PR, plus any issue, ADR or test that backs it up |
 
@@ -54,6 +52,23 @@ Use the entry that's true:
 **Build agents always write `None`.** An agent can't approve its own decision, and it can't know who will. If an approver later reviews the PR, the PR's review history is the record, and the approver can change the line in that PR.
 
 To check a claim, look at who merged or approved the linked PR. Git and GitHub hold that history, and an entry doesn't override it.
+
+## Rejecting a recommendation
+
+Rejecting a recommendation is a decision, so it gets its own entry. This applies to a person turning down an agent's recommendation, and to an agent turning down a person's or another agent's, such as a reviewer or an evaluator rejecting a builder's approach. Name who recommended it under **Rejected**, and link what they said under **Evidence**.
+
+```markdown
+### 2026-11-05 Keep the retry limit at three
+
+- **Decision:** The limit stays at three retries, against the reviewer's recommendation of five.
+- **Why:** Five retries can outlast the run's wall-clock limit.
+- **Rejected:** Five retries, recommended by the PR audit's reviewer.
+- **Decided by:** Build agent
+- **Approved by:** None
+- **Evidence:** PR #123, review comment
+```
+
+An agent's rejection records a judgment and doesn't grant anything. Which agents can overrule which, and what happens next, is for the workflow that adds them (#21, the PR audit).
 
 ## Changing a decision
 
