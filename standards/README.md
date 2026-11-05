@@ -10,6 +10,7 @@ Templates and instructions that agents, reviewers and the operator rely on (spec
 | `planning-agent.md` | The planning agent | The cloud environment's setup script fetches it from `main` (`docs/guides/planning-agent.md`) |
 | `issue-template.md` | The planning agent, writing issues | Read from this repo; the planning agent reads it through its read-only connector |
 | `adr-template.md` | The planning agent and the operator, writing ADRs | Same |
+| `decision-log.md` | Build agents, AI assistants and operators writing `docs/decisions.md`; reviewers reading it | Build agents get it in the sandbox with their instructions. Linked from `CLAUDE.md` |
 | `wave-planning.md`, `wave-plan-template.md` | The planning agent, writing plans | Same |
 | `definition-of-ready.md` | The planning agent, `/groom`, `/dispatch` and the PR audit's readiness review | Same; the PR audit reads it from this repo |
 | `data-change-patterns.md` | The planning agent designing data changes; build agents changing persisted data | Same; build agents get it in the sandbox with their instructions |
