@@ -100,13 +100,13 @@ CI deploys this on merge to `main`, after the owner approves the run. `.github/w
 
 The account, the Worker's URL and the repo list stay out of committed files and out of the logs.
 
-`wrangler deploy` builds `container/Dockerfile` for `linux/amd64` and pushes it to Cloudflare's registry, so it needs Docker. GitHub's Ubuntu runners have it. Which token permissions the push needs isn't documented, and #79's live results record what was needed.
+`wrangler deploy` builds `container/Dockerfile` for `linux/amd64` and pushes it to Cloudflare's registry, so it needs Docker. GitHub's Ubuntu runners have it. The deploy token needs Containers Edit for the push. Without it, the first Containers API call fails with no reason given, before the Worker changes.
 
 ### Deploying by hand
 
 Two jobs need a token on your machine: setting Worker secrets, which CI never does, and an emergency deploy when CI is down. No long-lived token stays on disk for either.
 
-1. Create a Cloudflare token in the factory account with Workers Scripts Edit, Account Settings Read and a TTL of one day.
+1. Create a Cloudflare token in the factory account with Workers Scripts Edit, Containers Edit, Account Settings Read and a TTL of one day.
 2. Put it in this shell only, from a clean checkout. `.env.local` needs `CLOUDFLARE_ACCOUNT_ID`, `APPROVER_LOGIN`, `ALLOWED_REPOS` and `ORCHESTRATOR_URL`.
 3. Run what you need, then revoke the token.
 

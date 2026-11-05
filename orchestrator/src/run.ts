@@ -41,6 +41,12 @@ interface Outcome {
 export class RunState extends DurableObject<Env> {
   private token: RunToken | null = null;
   private minting: Promise<RunToken> | null = null;
+  /**
+   * In memory on purpose. Intercepts last until the container stops, so they're
+   * registered once per container. An evicted object comes back with this false and
+   * registers them again once.
+   */
+  private intercepted = false;
 
   /** Starts a run. Returns at once, because GitHub gives up on a webhook after 10 seconds. */
   async launch(scope: RunScope): Promise<void> {
@@ -134,9 +140,12 @@ export class RunState extends DurableObject<Env> {
       return { summary: "The run hit its time limit and was stopped.", output: await this.readOutput(container) };
     }
 
-    // Again on every check: intercepts end with the container, and a restarted
-    // object may find one still running. Registering again replaces the rules.
-    await this.intercept(container, scope);
+    // Once per container, not on every check. Registering again while a request is
+    // in flight looked like the cause of a 502 in the first live run (#79).
+    if (!this.intercepted) {
+      await this.intercept(container, scope);
+      this.intercepted = true;
+    }
 
     if (!container.running) {
       if (await this.ctx.storage.get<boolean>("started")) {

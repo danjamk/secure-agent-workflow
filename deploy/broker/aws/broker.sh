@@ -292,7 +292,7 @@ cmd_set_factory() {
     if [ "$NAME" = "$FACTORY_TOKEN" ]; then
         echo "Create in:  your factory account's Cloudflare dashboard"
         echo "Name it:    saw-factory-$NAME"
-        echo "Grant:      Account: Workers Scripts Edit, Account Settings Read. That account only, no zones"
+        echo "Grant:      Account: Workers Scripts Edit, Containers Edit, Account Settings Read. That account only, no zones"
     fi
 
     local value

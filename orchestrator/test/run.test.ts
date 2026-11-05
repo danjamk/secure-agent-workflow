@@ -117,6 +117,13 @@ describe("a run's container", () => {
     ]);
   });
 
+  it("registers the intercepts once per container, not on every check", async () => {
+    stubGitHub();
+    const { fake, tick } = await prepare({ caAfter: 2, exit: null });
+    for (let i = 0; i < 5; i += 1) await tick();
+    expect(fake.state.intercepted).toHaveLength(4);
+  });
+
   it("waits for the CA, then runs the probe with no credentials in its environment", async () => {
     stubGitHub();
     const { runId, fake, tick } = await prepare({ caAfter: 1, exit: null });

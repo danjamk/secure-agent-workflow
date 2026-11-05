@@ -231,7 +231,7 @@ AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh factory <owner>/<repo>
 AWS_PROFILE=<profile> bash deploy/broker/aws/broker.sh set-factory <owner>/<repo> cloudflare-deploy-token
 ```
 
-Create the token in the factory account, named `saw-factory-cloudflare-deploy-token`, with Workers Scripts Edit and Account Settings Read on that account only. `set-factory` runs the Cloudflare checker and refuses a token from any other account. `broker.sh set` keeps refusing factory account credentials.
+Create the token in the factory account, named `saw-factory-cloudflare-deploy-token`, with Workers Scripts Edit, Containers Edit and Account Settings Read on that account only. Containers Edit lets `wrangler deploy` push the run image (#79). `set-factory` runs the Cloudflare checker and refuses a token from any other account. `broker.sh set` keeps refusing factory account credentials.
 
 All the values are `SecureString` parameters under `/<repo>/factory/deploy/`, even the ones that aren't secret. The job masks what it reads, which keeps them out of this public repo's logs. GitHub environment variables would be printed there.
 

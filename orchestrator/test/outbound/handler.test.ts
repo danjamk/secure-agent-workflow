@@ -166,6 +166,30 @@ describe("credentials", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("logs a failure from upstream, with no path or body", async () => {
+    const logged: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args) => {
+      logged.push(args.join(" "));
+    });
+    stubInternet(() => new Response("error code: 502", { status: 502 }));
+    const run = await startRun();
+    const response = await handleOutbound(new Request(`${API}/issues/7?secret=x`), run, testEnv());
+    expect(response.status).toBe(502);
+    const line = JSON.parse(logged.find((entry) => entry.includes("upstream")) ?? "{}") as Record<string, unknown>;
+    expect(line).toMatchObject({ run: run.runId, upstream: "api.github.com", method: "GET", status: 502 });
+    expect(logged.join(" ")).not.toContain("issues");
+    expect(logged.join(" ")).not.toContain(TOKEN);
+  });
+
+  it("judges a DELETE with no body by its route", async () => {
+    const { calls } = stubInternet();
+    const request = new Request(`${API}/issues/7/labels/agent:stop`, { method: "DELETE" });
+    const response = await handleOutbound(request, await startRun(), testEnv());
+    expect(response.status).toBe(403);
+    expect(await response.text()).toContain("call not allowed");
+    expect(calls).toHaveLength(0);
+  });
+
   it("passes a 304 through", async () => {
     stubInternet(() => new Response(null, { status: 304 }));
     const response = await handleOutbound(new Request(`${API}/issues/7`), await startRun(), testEnv());
