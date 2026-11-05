@@ -1,6 +1,8 @@
 import { handleWebhook } from "./webhook";
 
 export { DeliveryLog } from "./deliveries";
+export { RunState } from "./run";
+export { Outbound } from "./outbound/handler";
 
 export default {
   async fetch(request, env): Promise<Response> {

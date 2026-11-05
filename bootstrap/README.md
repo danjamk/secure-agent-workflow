@@ -30,6 +30,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | --- | --- | --- |
 | Ruleset `protect-default` on the default branch | No force-push, no deletion, linear history, PR required with 0 approvals, no bypass actors | `main` changes only through a PR, for the admin too. Approvals are the tier check's job, not the ruleset's (ADR-003) |
 | | Required checks: the gate's 7 (`GATE_CHECKS`) plus any from `--checks`, each pinned to the GitHub Actions app | A check run or status from any other App can't satisfy a required check |
+| Ruleset `agent-branches` on `agent/**` | No force-push, no bypass actors | The orchestrator's push filter checks ref names and deletions, but seeing a force-push takes the commit graph. Catch-up runs merge, so they never need one (ADR-005). No deletion rule, because merged branches are deleted automatically |
 | Merge | Squash only, auto-merge allowed, branch deleted on merge | Tier 1 PRs merge themselves on green |
 | Actions | Selected actions only: GitHub-owned plus `allowed-actions.txt`; full-SHA pinning required | A workflow can't pull in an unreviewed or moving action |
 | | `GITHUB_TOKEN` read-only by default; Actions can't create or approve PRs | A workflow can't approve its own way past review |
@@ -62,7 +63,7 @@ The callers pin `GATE_REPO` (this repo) to a full commit SHA, so a change here r
 | Re-run | The repo's current pin: the open bootstrap PR's if there is one, then the default branch's |
 | `--update-gate <sha>` | That commit, through the bootstrap PR. Refused unless it's on `GATE_REPO`'s default branch, so a branch commit nobody reviewed can't be pinned |
 
-Bootstrap manages only its own ruleset. It lists other rulesets on the repo and leaves them alone.
+Bootstrap manages only its own two rulesets. It lists other rulesets on the repo and leaves them alone.
 
 Running claude-shared's `protect-branch.sh` on a bootstrapped repo rewrites `protect-default` without the check pinning. Re-run bootstrap afterward.
 

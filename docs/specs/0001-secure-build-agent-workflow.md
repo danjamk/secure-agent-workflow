@@ -90,8 +90,8 @@ Work reaches a build agent only through a merged plan. Grooming is how loose wor
 | --- | --- | --- |
 | `bootstrap/` | Applies repo settings as code: rulesets, environments, Actions policy, labels, CODEOWNERS, gate callers | `gh api` script, idempotent, dry-run mode. Extends `claude-shared/scripts/protect-branch.sh` |
 | Agent identity | GitHub App the agent acts as | App owned by `danjamk`: `contents`, `pull_requests`, `issues` write; `checks`, `metadata` read; **no `workflows`**, no `administration` (ADR-001) |
-| `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Sandbox SDK microVM, runs the agent CLI, tears it down (ADR-004). A coordinator (one Durable Object) holds the queue, the concurrency cap and dependency gating; a log Durable Object per run stores the agent's redacted log |
-| Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist | Worker outbound handlers: `enableInternet = false` plus `allowedHosts`; inject a short-lived App installation token and model API keys; reject pushes outside `agent/*` |
+| `orchestrator/` | Starts a sandbox per released issue | Cloudflare Worker: receives `issues.labeled` webhooks, starts a Cloudflare container, runs the agent CLI, tears it down (ADR-004). A coordinator (one Durable Object) holds the queue, the concurrency cap and dependency gating; a log Durable Object per run stores the agent's redacted log |
+| Egress and credential proxy | Keeps credentials out of the sandbox; enforces the domain allowlist and what each run may do | A Worker outbound entrypoint, with the container started with `enableInternet: false`. Adds a short-lived App installation token and model API keys. Each run is bound to its repo, issue, one `agent/<issue>-*` branch and one PR, and checks a stop flag on every request. A ruleset on `agent/**` blocks force-pushes (#8) |
 | `gate/` | Merge gate as reusable workflows, pinned by SHA | Deterministic checks, tier check (ADR-003), PR audit |
 | `deploy/` | Deploy template for Cloudflare | `preview` and `staging` in the dev target first; `production` from the `production` branch later. OIDC broker, attested artifacts (ADR-002). Project infrastructure as OpenTofu in the consumer's `infra/`, planned on PRs and applied only by the pipeline; Workers stay in `wrangler.jsonc` (ADR-006) |
 | `standards/` | Templates and skills that agents, reviewers and the operator rely on | ADR template, agent instructions, issue template, wave planning rules, definition of ready, data change patterns, retro and release templates, credential naming, tier map, operator skills such as `/dispatch`, planning skills `/groom`, `/retro` and `/release-prep` |
@@ -227,7 +227,7 @@ The orchestrator has a coordinator (one Durable Object) in front of the per-run 
 
 - An issue with open "blocked by" links waits, even if labeled `agent:ready`.
 - Two issues with the same touch area don't run at the same time.
-- When a PR falls behind `main` and conflicts, the coordinator starts a catch-up run on the same branch that merges `main` into it. Merge, not rebase: a rebase needs a force-push, which the push filter rejects (ADR-005).
+- When a PR falls behind `main` and conflicts, the coordinator starts a catch-up run on the same branch that merges `main` into it. Merge, not rebase: a rebase needs a force-push, which the `agent-branches` ruleset rejects (ADR-005).
 - Total spend across all runs counts toward a daily budget; hitting it pauses the queue and notifies Dan.
 
 ### Visibility
@@ -329,7 +329,7 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [ADR-001](../adr/ADR-001-agent-github-app-identity.md): The agent acts as a GitHub App.
 - [ADR-002](../adr/ADR-002-oidc-credential-broker.md): Deploy credentials come through a GitHub OIDC broker on AWS, with separate dev and prod stores.
 - [ADR-003](../adr/ADR-003-tier-check-reusable-workflow.md): The tier check is a reusable workflow.
-- [ADR-004](../adr/ADR-004-cloudflare-sandbox.md): Build agents run in the Cloudflare Sandbox SDK.
+- [ADR-004](../adr/ADR-004-cloudflare-sandbox.md): Build agents run in Cloudflare containers, with egress controlled by the Worker.
 - [ADR-005](../adr/ADR-005-coordinator.md): One Durable Object coordinates runs, with GitHub as the source of truth (proposed).
 - [ADR-006](../adr/ADR-006-infrastructure-as-code.md): Project infrastructure is OpenTofu applied by the pipeline, and Workers stay in wrangler (proposed).
 - [ADR-007](../adr/ADR-007-operator-credentials.md): Every credential is declared in the repo, checked before it is stored, and reported on (proposed).
@@ -353,5 +353,5 @@ Added in build order step 4: the planning agent approves or merges a PR.
 - [About rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
 - [Deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
 - [Approving a PR with required reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews)
-- [Cloudflare Sandbox outbound traffic](https://developers.cloudflare.com/sandbox/guides/outbound-traffic/)
+- [Cloudflare container outbound traffic](https://developers.cloudflare.com/containers/configuration/outbound-traffic/)
 - [Cloudflare Workers with GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)

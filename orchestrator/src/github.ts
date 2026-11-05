@@ -87,6 +87,44 @@ export async function mintInstallationToken(
   return minted.token;
 }
 
+export interface RunToken {
+  value: string;
+  expiresAt: number;
+}
+
+/** A token for one run, limited by the repo's id so a rename can't redirect it. */
+export async function mintRunToken(
+  env: Env,
+  installationId: number,
+  repoId: number,
+): Promise<RunToken> {
+  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) {
+    throw new GitHubError("GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY is not set");
+  }
+  const jwt = await appJwt(env.GITHUB_APP_ID, env.GITHUB_APP_PRIVATE_KEY);
+  const response = await call(`/app/installations/${installationId}/access_tokens`, "POST", jwt, {
+    repository_ids: [repoId],
+  });
+  if (!response.ok) {
+    throw new GitHubError(`Minting a token returned ${response.status}`);
+  }
+  const minted = (await response.json()) as {
+    token?: string;
+    expires_at?: string;
+    repositories?: { id?: number }[];
+  };
+  const expiresAt = Date.parse(minted.expires_at ?? "");
+  if (!minted.token || Number.isNaN(expiresAt)) {
+    throw new GitHubError("The minted token response has no token or expiry");
+  }
+  const scope = minted.repositories ?? [];
+  if (scope.length !== 1 || scope[0]?.id !== repoId) {
+    await revokeToken(minted.token);
+    throw new GitHubError("The minted token isn't limited to the one repo");
+  }
+  return { value: minted.token, expiresAt };
+}
+
 export async function commentOnIssue(
   token: string,
   repo: string,

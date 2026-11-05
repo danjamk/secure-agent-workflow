@@ -20,6 +20,8 @@
 #   ruleset   protect-default on the default branch: no force-push, no deletion,
 #             linear history, PR required, the gate's checks plus --checks
 #             required, each pinned to GitHub Actions
+#             agent-branches on agent/**: no force-push. The orchestrator's push
+#             filter can't see one, because that takes the commit graph (#8)
 #   merge     squash only, auto-merge allowed, branches deleted on merge
 #   actions   GitHub-owned actions plus allowed-actions.txt, SHA pinning required,
 #             read-only GITHUB_TOKEN, Actions cannot create or approve PRs
@@ -74,6 +76,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 RULESET_NAME="protect-default"
+AGENT_RULESET_NAME="agent-branches"
 FILES_BRANCH="bootstrap/managed-files"
 MARKER="Managed by secure-agent-workflow bootstrap"
 # The repo whose reusable workflows the callers in files/ use. A fork changes
@@ -223,7 +226,35 @@ PY
 
     if [ "$MODE" = apply ]; then
         $GH api "repos/$REPO/rulesets" --jq \
-            ".[] | select(.name != \"$RULESET_NAME\") | \"  !  other ruleset left in place: \(.name)\""
+            ".[] | select(.name != \"$RULESET_NAME\" and .name != \"$AGENT_RULESET_NAME\") | \"  !  other ruleset left in place: \(.name)\""
+    fi
+}
+
+# No deletion rule: merged branches are deleted automatically. The push filter
+# refuses a deletion from the agent.
+agent_ruleset() {
+    local existing
+    existing=$($GH api "repos/$REPO/rulesets" --jq \
+        ".[] | select(.name == \"$AGENT_RULESET_NAME\") | .id" | head -1)
+    if [ -n "$existing" ]; then
+        $GH api "repos/$REPO/rulesets/$existing" > "$WORK/current.json"
+    else
+        echo '{}' > "$WORK/current.json"
+    fi
+    cat > "$WORK/desired.json" <<JSON
+{
+  "name": "$AGENT_RULESET_NAME",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["refs/heads/agent/**"], "exclude": []}},
+  "bypass_actors": [],
+  "rules": [{"type": "non_fast_forward"}]
+}
+JSON
+    if [ -n "$existing" ]; then
+        compare "ruleset $AGENT_RULESET_NAME" PUT "repos/$REPO/rulesets/$existing"
+    else
+        compare "ruleset $AGENT_RULESET_NAME" POST "repos/$REPO/rulesets"
     fi
 }
 
@@ -586,6 +617,7 @@ resolve_gate_sha() {
 
 run_all() {
     ruleset
+    agent_ruleset
     merge_settings
     actions_policy
     fork_policy

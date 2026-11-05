@@ -69,6 +69,7 @@ jobs:
             factory/deploy/allowed-repos
             factory/deploy/orchestrator-url
             factory/deploy/agent-app-id
+            factory/deploy/egress-hosts
 
       - name: Deploy and check /health
         run: bash orchestrator/deploy.sh

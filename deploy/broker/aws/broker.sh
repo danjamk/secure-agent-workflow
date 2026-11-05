@@ -47,7 +47,7 @@ REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_STACK=saw-broker
 FACTORY_STACK=saw-broker-factory
 FACTORY_TOKEN=cloudflare-deploy-token
-FACTORY_SETTINGS="cloudflare-account-id approver-login allowed-repos orchestrator-url agent-app-id"
+FACTORY_SETTINGS="cloudflare-account-id approver-login allowed-repos orchestrator-url agent-app-id egress-hosts"
 
 CMD="${1:-}"
 shift || true
@@ -238,6 +238,12 @@ factory_setting() {
         approver-login)        env_local APPROVER_LOGIN ;;
         allowed-repos)         env_local ALLOWED_REPOS ;;
         orchestrator-url)      env_local ORCHESTRATOR_URL ;;
+        # Parameter Store has no empty values, and {} means no registries.
+        egress-hosts)
+            local hosts
+            hosts="$(env_local EGRESS_HOSTS)"
+            if [ -n "$hosts" ]; then printf '%s\n' "$hosts"; else printf '{}\n'; fi
+            ;;
         agent-app-id)
             security find-generic-password -s secure-agent-workflow \
                 -a "${APP_SLUG:-danjamk-build-agent}:app-id" -w 2>/dev/null || true

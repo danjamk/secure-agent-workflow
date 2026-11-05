@@ -6,7 +6,7 @@ The agent can't change the controls: they live in the sandbox, GitHub permission
 
 **Overview:** [the one-page picture](https://danjamk.github.io/secure-agent-workflow/) shows the topology, the workflow and how a project adopts it. It describes the full design, including the parts not built yet. Source: [`docs/index.html`](docs/index.html).
 
-**Status:** these are built and tested end to end on testbed repos: the agent's GitHub App, bootstrap, the merge gate (checks, scanners, tier check), the AWS credential broker, daily credential checks, and Cloudflare previews and staging. This repo's own PRs go through the same gate. The orchestrator has its webhook intake and token minting. The sandbox, infrastructure as code, production deploys, PR audit and red-team runs are not built yet.
+**Status:** these are built and tested end to end on testbed repos: the agent's GitHub App, bootstrap, the merge gate (checks, scanners, tier check), the AWS credential broker, daily credential checks, and Cloudflare previews and staging. This repo's own PRs go through the same gate. The orchestrator has its webhook intake, token minting and outbound policy, which is unit-tested but hasn't run against a real container yet. The sandbox, infrastructure as code, production deploys, PR audit and red-team runs are not built yet.
 
 ## How it works
 
@@ -47,7 +47,7 @@ v1 runs on Cloudflare and AWS. Each part lives in its own folder and states what
 | Part | v1 choice | Other options | Folder |
 | --- | --- | --- | --- |
 | Agent identity | GitHub App ([ADR-001](docs/adr/ADR-001-agent-github-app-identity.md)) | Machine user account; a GitHub org on Team, which adds push rulesets | `bootstrap/` |
-| Sandbox | Cloudflare Sandbox SDK ([ADR-004](docs/adr/ADR-004-cloudflare-sandbox.md)) | E2B; Docker Sandboxes on your own host; containers under gVisor or Kata; GitHub Actions runners on public repos | `orchestrator/` |
+| Sandbox | Cloudflare containers ([ADR-004](docs/adr/ADR-004-cloudflare-sandbox.md)) | E2B; Docker Sandboxes on your own host; containers under gVisor or Kata; GitHub Actions runners on public repos | `orchestrator/` |
 | Egress and credential proxy | Worker outbound handlers | Envoy or Squid with an allowlist in front of any container host | `orchestrator/` |
 | Agent CLI | Not yet chosen | Any agent CLI that runs headless, such as Claude Code or Codex | `orchestrator/` |
 | Scanners | Free tools; GitHub's own on public repos | GitHub Advanced Security, or a commercial scanner | `gate/` |

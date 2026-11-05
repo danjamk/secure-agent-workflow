@@ -11,6 +11,8 @@
 #   APPROVER_LOGIN           the only login that can release an issue
 #   ALLOWED_REPOS            comma-separated owner/name list
 #   ORCHESTRATOR_URL         optional; the Worker's URL, for /health
+#   EGRESS_HOSTS             optional; JSON, each repo's package registries.
+#                            {"owner/name": ["registry.npmjs.org"]}. Default: none
 #
 # The App id comes from AGENT_APP_ID, or from the Keychain item create-app.py stored.
 # The approver, repos and App id are passed with --var rather than committed, because
@@ -82,6 +84,7 @@ pnpm exec wrangler deploy \
     --var "BUILD_ID:$BUILD_ID" \
     --var "GITHUB_APP_ID:$APP_ID" \
     --var "APPROVER_LOGIN:$APPROVER_LOGIN" \
-    --var "ALLOWED_REPOS:$ALLOWED_REPOS"
+    --var "ALLOWED_REPOS:$ALLOWED_REPOS" \
+    --var "EGRESS_HOSTS:${EGRESS_HOSTS:-"{}"}"
 
 check_health
