@@ -196,7 +196,7 @@ class Route {
   async releaseDownload(reason: string): Promise<Response> {
     const { request, url } = this;
     const allowed =
-      registries(this.env, this.scope.repo).includes("github.com") &&
+      registries(this.env, this.scope.repo).has("github.com") &&
       (request.method === "GET" || request.method === "HEAD") &&
       RELEASE_PATH.test(url.pathname) &&
       !url.search;
@@ -264,14 +264,14 @@ class Route {
 }
 
 /** Hosts one repo may read packages from. A bad setting means none. */
-export function registries(env: Env, repo: string): string[] {
+function registries(env: Env, repo: string): Set<string> {
   try {
     const all = JSON.parse(env.EGRESS_HOSTS ?? "{}") as Record<string, unknown>;
     const hosts = Object.hasOwn(all, repo) ? all[repo] : [];
-    return Array.isArray(hosts) ? hosts.filter((host) => typeof host === "string") : [];
+    return new Set(Array.isArray(hosts) ? hosts.filter((host) => typeof host === "string") : []);
   } catch {
     console.error("EGRESS_HOSTS isn't valid JSON, so no registries are allowed");
-    return [];
+    return new Set();
   }
 }
 
@@ -294,7 +294,7 @@ export async function handleOutbound(request: Request, scope: RunScope, env: Env
     if (url.hostname === "api.github.com") return await route.api();
     const model = Object.hasOwn(MODEL_HOSTS, url.hostname) ? MODEL_HOSTS[url.hostname] : undefined;
     if (model) return await route.model(model);
-    if (registries(env, scope.repo).includes(url.hostname)) return await route.registry();
+    if (registries(env, scope.repo).has(url.hostname)) return await route.registry();
     return denied(scope, request, "host not allowed");
   } catch (error) {
     // Only the type: a message could hold a response from GitHub.

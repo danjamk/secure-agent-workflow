@@ -445,6 +445,21 @@ describe("package registries", () => {
     expect(mints()).toBe(0);
   });
 
+  it("matches a listed host exactly", async () => {
+    const { calls } = stubInternet();
+    const run = await startRun();
+    const lists = withHosts(["registry.npmjs.org.evil.example", "evil-github.com", "NPMJS.ORG"]);
+    for (const url of [
+      "https://registry.npmjs.org/x",
+      "https://evil.example/registry.npmjs.org",
+      "https://npmjs.org/x",
+      "https://github.com/a/b/releases/download/v1/c.zip",
+    ]) {
+      expect((await handleOutbound(new Request(url), run, lists)).status).toBe(403);
+    }
+    expect(calls).toHaveLength(0);
+  });
+
   it("listing github.com opens release downloads and nothing else", async () => {
     const { calls } = stubInternet();
     const run = await startRun();
