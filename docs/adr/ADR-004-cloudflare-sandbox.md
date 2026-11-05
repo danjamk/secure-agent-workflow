@@ -8,7 +8,7 @@ Build agents need an isolated environment with deny-by-default egress and no cre
 
 ## Decision
 
-An orchestrator Worker starts a Cloudflare container per issue, through a Durable Object. It starts with `enableInternet: false`, so only requests our handler intercepts leave it. An `Outbound` entrypoint in the Worker receives all of the container's HTTP and HTTPS, applies the policy in `orchestrator/src/outbound/`, and adds the GitHub App token and model API keys per request. The planning agent, where Dan is in the loop, uses Claude directly.
+An orchestrator Worker starts a Cloudflare container per issue, through a Durable Object. It starts with `enableInternet: false`, so only requests our handler intercepts leave it. The run intercepts HTTPS for a list of hosts, not `*`, so other names don't resolve (#79). An `Outbound` entrypoint in the Worker receives those requests, applies the policy in `orchestrator/src/outbound/`, and adds the GitHub App token and model API keys per request. The planning agent, where Dan is in the loop, uses Claude directly.
 
 Sandbox SDK 1.0 moved outbound control to the platform's `ctx.container` API and replaced the SDK's `allowedHosts`, so this needs no SDK dependency. `@cloudflare/sandbox` now adds only file helpers, and #9 can add it if the runner needs them.
 
@@ -23,7 +23,7 @@ Sandbox SDK 1.0 moved outbound control to the platform's `ctx.container` API and
 
 - About $5–7 a month on Workers Paid.
 - The orchestrator, token minting and push filter are code this repo owns.
-- Only HTTP and HTTPS reach the handler, so git runs over HTTPS. The handler refuses plain HTTP, so a credential is never added to it.
+- Only HTTPS to the listed hosts reaches the handler, so git runs over HTTPS. Plain HTTP isn't intercepted, and the handler refuses it anyway, so a credential is never added to it.
 - Every process in a container has root's Linux capabilities, whatever user it runs as, so nothing inside the container can act as a control.
 - `wrangler deploy` needs Docker for the image. The Durable Object scheduling policy for containers is in public beta.
 - The handler sees requests, not the commit graph, so a GitHub ruleset blocks force-pushes on `agent/**`.

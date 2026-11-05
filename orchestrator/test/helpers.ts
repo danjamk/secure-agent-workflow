@@ -22,7 +22,7 @@ export function release(overrides: Record<string, unknown> = {}): Record<string,
     action: "labeled",
     label: { name: "agent:ready" },
     sender: { login: "the-approver", type: "User" },
-    repository: { full_name: "the-approver/app" },
+    repository: { full_name: "the-approver/app", id: 1234, default_branch: "main" },
     issue: { number: 7, state: "open" },
     installation: { id: 99 },
     ...overrides,
@@ -65,7 +65,11 @@ export function stubGitHub(mint?: () => Response): Call[] {
     if (request.url.endsWith("/access_tokens")) {
       if (mint) return mint();
       return Response.json(
-        { token: "minted-token", repositories: [{ full_name: "the-approver/app" }] },
+        {
+          token: "minted-token",
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+          repositories: [{ id: 1234, full_name: "the-approver/app" }],
+        },
         { status: 201 },
       );
     }

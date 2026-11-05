@@ -55,38 +55,6 @@ export async function appJwt(appId: string, pem: string, now = Date.now()): Prom
   return `${unsigned}.${base64url(new Uint8Array(signature))}`;
 }
 
-/** Mint an installation token limited to one repo, and refuse one that isn't. */
-export async function mintInstallationToken(
-  env: Env,
-  installationId: number,
-  repo: string,
-): Promise<string> {
-  if (!env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) {
-    throw new GitHubError("GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY is not set");
-  }
-  const jwt = await appJwt(env.GITHUB_APP_ID, env.GITHUB_APP_PRIVATE_KEY);
-  const name = repo.slice(repo.indexOf("/") + 1);
-  const response = await call(`/app/installations/${installationId}/access_tokens`, "POST", jwt, {
-    repositories: [name],
-  });
-  if (!response.ok) {
-    throw new GitHubError(`Minting a token returned ${response.status}`);
-  }
-  const minted = (await response.json()) as {
-    token?: string;
-    repositories?: { full_name?: string }[];
-  };
-  if (!minted.token) {
-    throw new GitHubError("The minted token response has no token");
-  }
-  const scope = minted.repositories ?? [];
-  if (scope.length !== 1 || scope[0]?.full_name?.toLowerCase() !== repo.toLowerCase()) {
-    await revokeToken(minted.token);
-    throw new GitHubError("The minted token isn't limited to the one repo");
-  }
-  return minted.token;
-}
-
 export interface RunToken {
   value: string;
   expiresAt: number;

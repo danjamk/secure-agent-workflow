@@ -37,6 +37,16 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["DeliveryLog"] },
     { "tag": "v2", "new_sqlite_classes": ["RunState"] }
+  ],
+
+  // Each RunState starts one container for its run (#79). `wrangler deploy`
+  // builds the image, so it needs Docker. Tests run with containers off.
+  "containers": [
+    {
+      "class_name": "RunState",
+      "scheduling_policy": "durable_object",
+      "images": { "probe": { "dockerfile": "./container/Dockerfile" } }
+    }
   ]
 
   // Worker secrets, set by hand and never committed. None enters the sandbox:
