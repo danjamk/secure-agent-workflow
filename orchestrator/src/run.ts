@@ -6,6 +6,7 @@ import {
   findComment,
   getIssue,
   GitHubError,
+  isPrivateRepo,
   mintRunToken,
   revokeToken,
   setLabel,
@@ -446,6 +447,28 @@ export class RunState extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Where the operator reads the run's log (#105), or null with no console URL set.
+   * A public repo gets only the path: the console's hostname would also give away
+   * the orchestrator's, and neither goes into public comments.
+   */
+  private async logLink(scope: RunScope): Promise<string | null> {
+    const base = (this.env.CONSOLE_URL ?? "").replace(/\/+$/, "");
+    if (!/^https:\/\/[a-z0-9.-]+$/.test(base)) return null;
+    const path = `/api/runs/${scope.runId}/log`;
+    let visibility = await this.ctx.storage.get<"private" | "public">("repoVisibility");
+    if (!visibility) {
+      try {
+        visibility = (await isPrivateRepo(await this.accessToken(), scope.repo)) ? "private" : "public";
+      } catch {
+        // Unknown counts as public, and isn't stored, so a later check can try again.
+        return `\`${path}\` on the operator console`;
+      }
+      await this.ctx.storage.put("repoVisibility", visibility);
+    }
+    return visibility === "private" ? `${base}${path}` : `\`${path}\` on the operator console`;
+  }
+
   private async describe(scope: RunScope): Promise<string> {
     const runner = (await this.ctx.storage.get<string>("runner")) ?? "unknown";
     return `Run \`${scope.runId}\` (build \`${this.env.BUILD_ID}\`, runner \`${runner}\`)`;
@@ -456,7 +479,8 @@ export class RunState extends DurableObject<Env> {
     if (await this.ctx.storage.get<boolean>("statusTried")) return;
     await this.ctx.storage.put("statusTried", true);
     try {
-      const body = `${await this.describe(scope)} started. This comment is updated when the run ends.`;
+      const link = await this.logLink(scope);
+      const body = `${await this.describe(scope)} started. This comment is updated when the run ends.${link ? ` Log: ${link}.` : ""}`;
       const id = await commentOnIssue(await this.accessToken(), scope.repo, scope.issue, body);
       await this.ctx.storage.put("statusComment", id);
     } catch (error) {
@@ -542,9 +566,10 @@ export class RunState extends DurableObject<Env> {
     if (lines > 0) {
       const removed = (await this.ctx.storage.get<number>("logRemoved")) ?? 0;
       const n = (value: number) => value.toLocaleString("en-US");
+      const link = await this.logLink(scope);
       notes.push(
         `Log: ${n(lines)} ${lines === 1 ? "line" : "lines"} stored, ${n(removed)} ${removed === 1 ? "credential" : "credentials"} removed, ` +
-          `kept until ${new Date(purgeAt).toISOString().slice(0, 10)}.`,
+          `kept until ${new Date(purgeAt).toISOString().slice(0, 10)}.${link ? ` ${link}` : ""}`,
       );
     }
     try {
@@ -630,8 +655,13 @@ export class RunState extends DurableObject<Env> {
       if (options.addBlockedLabel) {
         await setLabel(token.value, scope.repo, scope.issue, "agent:blocked", true);
       }
+      const link = await this.logLink(scope);
       if (options.halted && pr) {
-        await commentOnIssue(token.value, scope.repo, pr.number, `Run \`${scope.runId}\` was stopped by ${options.halted}.`);
+        const logNote = link ? ` Log: ${link}.` : "";
+        await commentOnIssue(token.value, scope.repo, pr.number, `Run \`${scope.runId}\` was stopped by ${options.halted}.${logNote}`);
+      } else if (pr && link) {
+        // One click from the PR to the run's log (spec 0001, Observability).
+        await commentOnIssue(token.value, scope.repo, pr.number, `Run \`${scope.runId}\` ended. Log: ${link}.`);
       }
     } finally {
       if (token.temporary) await revokeToken(token.value);

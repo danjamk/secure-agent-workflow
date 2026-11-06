@@ -16,6 +16,8 @@ tiers:
     - gate/**
     - deploy/**
     - orchestrator/**
+    # Runs in console-deploy.yml with the factory deploy token (#105).
+    - console/deploy.sh
     - standards/**
     - Makefile
     - LICENSE

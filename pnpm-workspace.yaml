@@ -1,8 +1,9 @@
 # The root package.json and this file exist so the gate's check job sets up Node
 # and pnpm, which it does only when they are at the repo root. A fork that drops
-# orchestrator/ can delete both, along with pnpm-lock.yaml.
+# orchestrator/ and console/ can delete both, along with pnpm-lock.yaml.
 packages:
   - orchestrator
+  - console
 
 # Two-week rule for new versions, in minutes.
 minimumReleaseAge: 20160

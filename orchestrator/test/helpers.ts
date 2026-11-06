@@ -51,10 +51,15 @@ export interface Call {
 }
 
 /**
- * Stand-in for GitHub. Records calls; `mint` overrides the token response, and
- * `comments` is what listing an issue's comments returns.
+ * Stand-in for GitHub. Records calls; `mint` overrides the token response,
+ * `comments` is what listing an issue's comments returns, and `repo` is what
+ * reading the repo returns, or null for an error.
  */
-export function stubGitHub(mint?: () => Response, comments: { id: number; body: string }[] = []): Call[] {
+export function stubGitHub(
+  mint?: () => Response,
+  comments: { id: number; body: string }[] = [],
+  repo: { private: boolean } | null = { private: false },
+): Call[] {
   const calls: Call[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const request = new Request(input, init);
@@ -86,6 +91,7 @@ export function stubGitHub(mint?: () => Response, comments: { id: number; body: 
       return Response.json({ title: "Add a parser", body: "Parse the config file." });
     }
     if (request.url.endsWith("/installation/token")) return new Response(null, { status: 204 });
+    if (request.method === "GET" && /\/repos\/[^/]+\/[^/]+$/.test(request.url)) return repo ? Response.json(repo) : new Response("down", { status: 503 });
     return new Response("unexpected", { status: 500 });
   });
   return calls;

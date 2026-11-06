@@ -16,6 +16,8 @@
 #   ACCESS_TEAM, ACCESS_AUD, OPERATOR_EMAIL
 #                            optional; Cloudflare Access for the /api routes. Unset
 #                            refuses every /api request
+#   CONSOLE_URL              optional; the console's URL, for each run's log link.
+#                            Unset posts no link
 #
 # The App id comes from AGENT_APP_ID, or from the Keychain item create-app.py stored.
 # The approver, repos and App id are passed with --var rather than committed, because
@@ -91,6 +93,7 @@ pnpm exec wrangler deploy \
     --var "EGRESS_HOSTS:${EGRESS_HOSTS:-"{}"}" \
     ${ACCESS_TEAM:+--var "ACCESS_TEAM:$ACCESS_TEAM"} \
     ${ACCESS_AUD:+--var "ACCESS_AUD:$ACCESS_AUD"} \
-    ${OPERATOR_EMAIL:+--var "OPERATOR_EMAIL:$OPERATOR_EMAIL"}
+    ${OPERATOR_EMAIL:+--var "OPERATOR_EMAIL:$OPERATOR_EMAIL"} \
+    ${CONSOLE_URL:+--var "CONSOLE_URL:$CONSOLE_URL"}
 
 check_health

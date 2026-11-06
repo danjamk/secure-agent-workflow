@@ -39,7 +39,9 @@
     // /api request. deploy.sh passes the real values, which aren't committed.
     "ACCESS_TEAM": "",
     "ACCESS_AUD": "",
-    "OPERATOR_EMAIL": ""
+    "OPERATOR_EMAIL": "",
+    // The console's URL, for each run's log link (#105). Empty posts no link.
+    "CONSOLE_URL": ""
   },
 
   // DELIVERY_LOG records webhook deliveries so a redelivery doesn't release an issue

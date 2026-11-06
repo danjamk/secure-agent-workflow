@@ -19,6 +19,9 @@ on:
     paths:
       - "orchestrator/**"
       - "!orchestrator/**/*.md"
+      # Bundled into the Worker and written into each run's container (#9).
+      - "standards/agent-instructions.md"
+      - "standards/decision-log.md"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/orchestrator-deploy.yml"
@@ -70,6 +73,10 @@ jobs:
             factory/deploy/orchestrator-url
             factory/deploy/agent-app-id
             factory/deploy/egress-hosts
+            factory/deploy/access-team?
+            factory/deploy/access-aud?
+            factory/deploy/operator-email?
+            factory/deploy/console-url?
 
       - name: Deploy and check /health
         run: bash orchestrator/deploy.sh

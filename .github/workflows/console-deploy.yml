@@ -1,0 +1,64 @@
+# Deploys the operator console to the factory account (#105, ADR-010).
+#
+# The same controls as orchestrator-deploy.yml: the factory environment deploys
+# only from main and waits for the owner's approval, and only its role can read
+# the factory token. The console holds no secrets; Cloudflare Access protects the
+# whole Worker, set up by hand (console/README.md).
+
+name: console-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "console/**"
+      - "!console/**/*.md"
+      - "!console/design/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/console-deploy.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: deploy-console
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: console-deploy
+      cancel-in-progress: false
+    environment: factory
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      # Before the token is read, with install scripts off.
+      - name: Install from the lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Read the deploy settings
+        uses: ./deploy/broker/aws
+        with:
+          role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          parameters: |
+            factory/deploy/cloudflare-deploy-token
+            factory/deploy/cloudflare-account-id
+
+      - name: Deploy
+        run: bash console/deploy.sh

@@ -169,6 +169,14 @@ export async function getIssue(
 }
 
 /** Best effort: an unrevoked token expires within the hour. */
+/** True only if GitHub says the repo is private. Anything else counts as public. */
+export async function isPrivateRepo(token: string, repo: string): Promise<boolean> {
+  const response = await call(`/repos/${repo}`, "GET", token);
+  if (!response.ok) return false;
+  const data = (await response.json()) as { private?: unknown };
+  return data.private === true;
+}
+
 export async function revokeToken(token: string): Promise<void> {
   try {
     const response = await call("/installation/token", "DELETE", token);
