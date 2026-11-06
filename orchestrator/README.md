@@ -21,7 +21,7 @@ The `RunState` Durable Object owns the run, and an alarm checks it every 10 seco
 
 1. Post the run's status comment on the issue.
 2. Register the intercepts, then start the container with `enableInternet: false`.
-3. Wait for the platform's CA, which appears once HTTPS is intercepted. Then write the runner's files and start its command. For the agent, the files are the issue's title and body, and `standards/agent-instructions.md`, which is bundled into the Worker. The command's output goes to a file, because a process with piped output gets `SIGPIPE` when the call that started it ends.
+3. Wait for the platform's CA, which appears once HTTPS is intercepted. Then write the runner's files and start its command. For the agent, the files are the issue's title and body, `standards/agent-instructions.md`, and `standards/decision-log.md`, which says how to add each decision as its own file in `docs/decisions/`. Both standards are bundled into the Worker, so a change to them reaches agents with the next deploy. The command's output goes to a file, because a process with piped output gets `SIGPIPE` when the call that started it ends.
 4. When the command exits, destroy the container, edit the status comment with the result, release the issue and stop the run, which revokes its token.
 
 Every way out goes through step 4: the command finishing, the container stopping on its own, an error, or the time limit. For the agent, the result is Claude Code's final result event, because it can exit 0 after a failed model request. The output comes from the container, so it's treated as untrusted: credentials are scrubbed, the length is capped and it can't close its code block.

@@ -30,7 +30,7 @@ Two things a newcomer gets wrong:
 |---|---|
 | `docs/specs/` | Numbered specs. `0001` is the system spec. |
 | `docs/adr/` | `ADR-NNN-*.md` decision records |
-| `docs/decisions.md` | The decision log: choices made by people and agents, and who approved each, if anyone did |
+| `docs/decisions/` | The decision log, one file per decision: choices made by people and agents, and who approved each, if anyone did. `make decisions` prints them all in date order |
 | `docs/research/` | Research the ADRs cite |
 | `docs/plans/` | Implementation plans, and `backlog.md` from `/groom` |
 | `docs/retros/` | Wave retrospectives from `/retro` |
@@ -69,8 +69,9 @@ Two things a newcomer gets wrong:
   only from the `production` branch through a release PR (spec 0001, Branches and
   environments).
 - **Log decisions as you make them,** including small in-process ones and rejected
-  recommendations. Add them to `docs/decisions.md` in the same PR as the work,
-  following `standards/decision-log.md`. Record who approved each one, in the
+  recommendations. Add each one as its own file in `docs/decisions/`, named
+  `YYYY-MM-DD-<slug>.md`, in the same PR as the work, following
+  `standards/decision-log.md`. Record who approved each one, in the
   approver's words. `Approved by: None` is fine; an approval nobody gave isn't.
   Logging doesn't change what you may decide on your own.
 - **Credential names** follow `standards/credentials.md`: `<system>-<role>-<kind>`,
