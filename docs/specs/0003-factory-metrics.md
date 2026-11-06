@@ -35,6 +35,7 @@ Each run record carries the version of everything that shaped the run. Each fiel
 | Tests and code | `baseSha` | The commit the branch started from |
 | Gate | `gateSha`, `tierMapSha` | The reusable workflow SHA the caller pins, and the tier map's blob SHA at the base commit |
 | Workflow | `orchestratorBuild`, `imageDigest` | The orchestrator's build id from `/health`, and the sandbox image digest |
+| Host and credential | `host`, `modelCredential` | `cloudflare` or `local`, and `api_key` or `subscription` (ADR-011, if accepted) |
 
 A retro then compares runs that differ in one field, for example "first-pass yield before and after `instructionsSha` changed".
 
