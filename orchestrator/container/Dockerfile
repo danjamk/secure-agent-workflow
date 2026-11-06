@@ -6,7 +6,7 @@
 FROM node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl git jq make \
+    && apt-get install --yes --no-install-recommends ca-certificates curl git jq make python3 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.309 \
@@ -18,6 +18,12 @@ RUN npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.309 
 RUN useradd --create-home --uid 1001 --shell /bin/bash agent \
     && mkdir -p /workspace/task \
     && chown -R agent:agent /workspace
+
+# The commit trailer Claude Code adds by default is off: commits are the App's, with
+# no co-author line. Managed settings outrank the repo's own .claude/settings.json.
+RUN mkdir -p /etc/claude-code \
+    && printf '%s\n' '{"attribution": {"commit": ""}}' > /etc/claude-code/managed-settings.json \
+    && chmod 0444 /etc/claude-code/managed-settings.json
 
 COPY probe.sh run-agent.sh agent-gh /agent/
 RUN chmod 0555 /agent/probe.sh /agent/run-agent.sh /agent/agent-gh \
