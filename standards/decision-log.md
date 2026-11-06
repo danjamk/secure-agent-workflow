@@ -1,6 +1,6 @@
 # Decision log
 
-Each repo keeps one log at `docs/decisions.md`: a plain record of what was decided, why, who decided and who approved it. It's written for someone who wasn't there, such as an independent reviewer, the PR audit or the operator six months later.
+Each repo keeps its log in `docs/decisions/`, one file per decision: a plain record of what was decided, why, who decided and who approved it. It's written for someone who wasn't there, such as an independent reviewer, the PR audit or the operator six months later.
 
 The log is a record. It isn't a control, so it never grants an approval. What lets a change merge is the tier check.
 
@@ -16,7 +16,13 @@ An ADR records a decision that's expensive to reverse or sets a rule for the who
 
 ## Format
 
-Add new entries at the bottom, in the same PR as the work.
+Add each decision as a new file in `docs/decisions/`, in the same PR as the work. Two PRs then never change the same file, so agents working side by side don't conflict.
+
+- **Name:** `YYYY-MM-DD-<slug>.md`, with the decision's date and its heading as the slug: lowercase, apostrophes and backticks dropped, every other run of characters that isn't a letter or digit turned into one hyphen. The entry below is `2026-11-05-block-force-pushes-with-a-ruleset.md`.
+- **Same name twice:** if a file with that name exists, add `-2`, then `-3`.
+- **Content:** one entry, in the format below, heading included.
+
+To read through, print the files in name order, which is date order: `make decisions` in secure-agent-workflow, or `for f in docs/decisions/2*.md; do cat "$f"; echo; done` anywhere. The combined view is printed when asked, not committed, because a combined file that every PR updates would conflict the same way. Entries from one day come out in name order.
 
 ```markdown
 ### 2026-11-05 Block force-pushes with a ruleset
@@ -72,7 +78,7 @@ An agent's rejection records a judgment and doesn't grant anything. Which agents
 
 ## Changing a decision
 
-Don't edit or delete an old entry. Add a new one that says which entry it replaces, by date and title. Correcting a typo or a broken link is fine.
+Don't edit or delete an old file. Add a new one that names the file it replaces, under **Rejected** or **Evidence**. Correcting a typo or a broken link is fine.
 
 ## What not to put in it
 
@@ -82,6 +88,6 @@ The log follows the repo's visibility, and in a public repo everyone can read it
 
 | Option | Trade-off |
 | --- | --- |
-| One file per decision in `docs/decisions/` | No merge conflicts when agents run in parallel, but it's harder to read through |
+| One file, `docs/decisions.md`, with entries added at the end | Easy to read through, but two open PRs that both add entries always conflict, and agents running side by side hit it on most PRs |
 | Decisions in PR descriptions only | Nothing to maintain, but there's no single list, and the record lives only on GitHub |
 | ADRs for everything | Fuller reasoning, but too heavy for the many small calls an agent makes, so they'd go unrecorded |

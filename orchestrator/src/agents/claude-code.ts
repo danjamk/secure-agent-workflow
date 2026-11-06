@@ -40,6 +40,7 @@ export const claudeCode: Runner = {
     const files: Record<string, string> = {
       [`${TASK}/issue.md`]: `# #${scope.issue}: ${issue.title}\n\n${cut(issue.body)}\n`,
       [`${TASK}/agent-instructions.md`]: instructions,
+      // The format, and where each decision goes: one file in docs/decisions/ (#94).
       [`${TASK}/decision-log.md`]: decisionLog,
     };
     if (resume) files[`${TASK}/reply.md`] = `${cut(resume.reply)}\n`;

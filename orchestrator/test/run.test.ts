@@ -76,6 +76,9 @@ describe("a run's container", () => {
     expect(fake.state.written["/workspace/task/issue.md"]).toBe("# #7: Add a parser\n\nParse the config file.\n");
     expect(fake.state.written["/workspace/task/agent-instructions.md"]).toContain("# Build agent instructions");
     expect(fake.state.written["/workspace/task/decision-log.md"]).toContain("# Decision log");
+    // One file per decision (#94), so agents running side by side don't conflict.
+    expect(fake.state.written["/workspace/task/decision-log.md"]).toContain("`YYYY-MM-DD-<slug>.md`");
+    expect(fake.state.written["/workspace/task/agent-instructions.md"]).toContain("Add a file to `docs/decisions/`");
     const [command] = fake.state.commands;
     expect(command?.cmd[2]).toContain("/agent/run-agent.sh > /workspace/task/run.log");
     expect(command?.user).toBe("1001:1001");
