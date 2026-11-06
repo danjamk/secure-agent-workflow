@@ -459,3 +459,61 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** Claude
 - **Approved by:** None
 - **Evidence:** `orchestrator/README.md`, Live results: the first agent run
+
+### 2026-11-06 Split the spend budget out of #11
+
+- **Decision:** #11 (stop, blocked, resume) keeps the run lifecycle. The token budget, price map, output ceiling and spend ledger moved to #92 (meter model spend).
+- **Why:** The design review's R3 asks for reserving cost before each call and a ledger, which is its own one to two days in the outbound handler. Until #92 lands, the workspace spend limit and Claude Code's own estimate cap spend.
+- **Rejected:** One PR for both.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved" in the working session
+- **Evidence:** [#11 design comment](https://github.com/danjamk/secure-agent-workflow/issues/11#issuecomment-6674467454), #92
+
+### 2026-11-06 Stop writes the flag first, and is final
+
+- **Decision:** Adding `agent:stop` or removing `agent:ready` writes the run's stop flag before anything else, then revokes the token, destroys the container and reports. Removing the label afterward restarts nothing, and a stop clears a blocked issue.
+- **Why:** Writing the flag first means the outbound policy refuses every request after it. The delay is the time the webhook takes, usually under a second. In-flight requests can finish, and their charges stand.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved" in the working session
+- **Evidence:** `halt` in `orchestrator/src/run.ts`, `orchestrator/test/lifecycle.test.ts`
+
+### 2026-11-06 Learn of a block from the policy, and resume on the approver's reply
+
+- **Decision:** A run is blocked when the agent's `agent:blocked` label gets through the outbound policy, or when it hits the time limit. A reply from the approver on the issue or its PR starts a fresh run with the branch and PR pinned. Removing the label does nothing.
+- **Why:** The record comes from the policy layer, not from what the agent says. Accepting a reply on the issue or the PR costs nothing, and the issue is where the status comment is.
+- **Rejected:** PR comments only, as the spec first said.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved" in the working session
+- **Evidence:** `orchestrator/src/webhook.ts`, `orchestrator/test/lifecycle.test.ts`
+
+### 2026-11-06 Allow three runs per release
+
+- **Decision:** A release gets its first run and two resumes. After that, the approver adds `agent:ready` to start again.
+- **Why:** This stops a loop of block, reply and block before #92 bounds spend.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved" in the working session
+- **Evidence:** `MAX_RUNS` in `orchestrator/src/run.ts`
+
+### 2026-11-06 Keep blocked records in the delivery log
+
+- **Decision:** A blocked issue's scope, branch, PR and run number are a row in `DeliveryLog`. A reply takes the row, so two replies resume once. A new release clears it.
+- **Why:** That object already holds which run is active on each issue, and taking the row there keeps a resume to one.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/src/deliveries.ts`
+
+### 2026-11-06 Mint a token for a stopped run's own report
+
+- **Decision:** A stopped run's token is revoked at once. To edit its status comment and comment on the PR, the Worker mints a separate token and revokes it right after.
+- **Why:** The run's own token is refused once the stop flag is set, which is what blocks the container. The report token never reaches the container, which is already destroyed.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `reportingToken` in `orchestrator/src/run.ts`
+
+### 2026-11-06 Resume runs on the branch the agent pushed
+
+- **Decision:** A resumed run's script fetches the saved branch and checks it out before Claude Code starts. The prompt says it's a resumed run and points at the reply.
+- **Why:** The new container starts empty, and the branch is where the earlier work is.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/container/run-agent.sh`

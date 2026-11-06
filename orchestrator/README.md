@@ -4,7 +4,7 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run | Logs (#10), stop and resume (#11), the coordinator (#13) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume | Logs (#10), the spend budget (#92), the coordinator (#13) |
 
 ## A run
 
@@ -34,6 +34,21 @@ Inside the container:
 - A repo's own `.claude/settings.json` hooks and `.mcp.json` servers run too, without a prompt. They stay inside the container, and an MCP server can reach only the allowed hosts.
 
 Each probe run leaves a branch, a PR and a comment on the testbed's issue. Remove them by hand.
+
+## Stop, blocked and resume
+
+Only the approver's login, on a user account, can do any of these. The agent App can add labels and comment too, and those are ignored.
+
+| Event | What happens |
+| --- | --- |
+| The approver adds `agent:stop` or removes `agent:ready` | The run writes its stop flag first, so the outbound policy refuses every request after that. Then it revokes its token, destroys the container, edits the status comment and comments on the PR. Requests already in flight, such as a streaming model response or a push, can finish, and their charges stand. A stop is final: removing the label restarts nothing. It also clears a blocked issue |
+| The agent adds `agent:blocked` and exits | The policy records the label when it gets through. The run ends as blocked and saves the branch and PR |
+| The run hits its time limit | It ends as blocked, and the orchestrator adds `agent:blocked`. Work it didn't push is lost |
+| The approver comments on a blocked issue or its PR | A fresh run starts with the branch and PR pinned, removes `agent:blocked`, and gets the reply as `reply.md` |
+| Anyone removes `agent:blocked` | Nothing. Only a reply resumes a run |
+| A new `agent:ready` | Starts over, and a blocked run from before can't be resumed |
+
+A release gets 3 runs: the first and two resumes. After the third, the status comment says a reply won't resume it, and the approver adds `agent:ready` to start again. The spend budget per run is #92 (meter model spend). Until then, the workspace spend limit and Claude Code's own estimate cap it.
 
 ## Outbound policy
 

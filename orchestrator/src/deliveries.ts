@@ -20,6 +20,56 @@ export class DeliveryLog extends DurableObject<Env> {
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS active_runs (issue TEXT PRIMARY KEY, run TEXT NOT NULL, at INTEGER NOT NULL)",
     );
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS blocked (issue TEXT PRIMARY KEY, repo_id INTEGER NOT NULL, pr INTEGER, record TEXT NOT NULL, at INTEGER NOT NULL)",
+    );
+  }
+
+  /** The issue's active run, if any. */
+  activeRun(issue: string): string | null {
+    const row = this.ctx.storage.sql
+      .exec<{ run: string }>("SELECT run FROM active_runs WHERE issue = ? AND at >= ?", issue, Date.now() - ACTIVE_RUN_MS)
+      .toArray()[0];
+    return row?.run ?? null;
+  }
+
+  /** Saves what a reply needs to resume a blocked issue. A later block replaces it. */
+  markBlocked(issue: string, repoId: number, pr: number | null, record: string): void {
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO blocked (issue, repo_id, pr, record, at) VALUES (?, ?, ?, ?, ?)",
+      issue,
+      repoId,
+      pr,
+      record,
+      Date.now(),
+    );
+  }
+
+  /** The blocked issue a comment on `number` belongs to: the issue itself, or its PR. */
+  findBlocked(repoId: number, number: number): string | null {
+    const row = this.ctx.storage.sql
+      .exec<{ issue: string }>(
+        "SELECT issue FROM blocked WHERE issue = ? OR (repo_id = ? AND pr = ?)",
+        `${repoId}#${number}`,
+        repoId,
+        number,
+      )
+      .toArray()[0];
+    return row?.issue ?? null;
+  }
+
+  /** Takes the blocked record, so only one reply resumes it. */
+  takeBlocked(issue: string): string | null {
+    const row = this.ctx.storage.sql
+      .exec<{ record: string }>("SELECT record FROM blocked WHERE issue = ?", issue)
+      .toArray()[0];
+    if (!row) return null;
+    this.ctx.storage.sql.exec("DELETE FROM blocked WHERE issue = ?", issue);
+    return row.record;
+  }
+
+  clearBlocked(issue: string): void {
+    this.ctx.storage.sql.exec("DELETE FROM blocked WHERE issue = ?", issue);
   }
 
   /**

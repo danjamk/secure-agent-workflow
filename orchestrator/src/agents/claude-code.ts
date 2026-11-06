@@ -31,15 +31,17 @@ export const claudeCode: Runner = {
   instance: "standard-1",
   limitMs: 60 * 60 * 1000,
 
-  files({ scope, issue }) {
-    const body = issue.body.length > MAX_ISSUE_BODY ? `${issue.body.slice(0, MAX_ISSUE_BODY)}\n\n[cut]` : issue.body;
-    return {
-      [`${TASK}/issue.md`]: `# #${scope.issue}: ${issue.title}\n\n${body}\n`,
+  files({ scope, issue, resume }) {
+    const cut = (text: string) => (text.length > MAX_ISSUE_BODY ? `${text.slice(0, MAX_ISSUE_BODY)}\n\n[cut]` : text);
+    const files: Record<string, string> = {
+      [`${TASK}/issue.md`]: `# #${scope.issue}: ${issue.title}\n\n${cut(issue.body)}\n`,
       [`${TASK}/agent-instructions.md`]: instructions,
     };
+    if (resume) files[`${TASK}/reply.md`] = `${cut(resume.reply)}\n`;
+    return files;
   },
 
-  command({ scope }) {
+  command({ scope, resume }) {
     return {
       script: "/agent/run-agent.sh",
       user: "1001:1001",
@@ -52,6 +54,8 @@ export const claudeCode: Runner = {
         MODEL,
         MAX_TURNS: String(MAX_TURNS),
         MAX_BUDGET_USD: String(MAX_BUDGET_USD),
+        RESUME_BRANCH: resume?.branch ?? "",
+        RESUME_PR: resume?.pr ? String(resume.pr) : "",
         HOME: "/home/agent",
         // A placeholder: Claude Code won't start without a key, and the Worker
         // replaces it on the way out.

@@ -73,7 +73,7 @@ If you need a decision, information you can't find, or a change outside your sco
    - **Question:** the one thing you need answered, with your recommended answer.
    - **Next steps:** what you'll do once it's answered.
 3. Add the `agent:blocked` label to your issue (`agent-gh blocked`).
-4. Stop. A new run picks up from your branch and your note after the approver replies.
+4. Stop. When the approver replies, a new run starts with your branch checked out and your PR pinned. It gets the reply in `reply.md`, next to the issue. Read your handoff note and continue; don't open a second PR.
 
 ## Never
 

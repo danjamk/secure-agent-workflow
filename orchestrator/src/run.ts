@@ -1,7 +1,17 @@
 import { DurableObject } from "cloudflare:workers";
-import { RUNNERS, type RunContext, type Runner, type RunReport } from "./agents";
-import { commentOnIssue, editComment, findComment, getIssue, GitHubError, mintRunToken, revokeToken, type RunToken } from "./github";
-import type { Pins, RunScope } from "./outbound/scope";
+import { RUNNERS, type Resume, type RunContext, type Runner, type RunReport } from "./agents";
+import {
+  commentOnIssue,
+  editComment,
+  findComment,
+  getIssue,
+  GitHubError,
+  mintRunToken,
+  revokeToken,
+  setLabel,
+  type RunToken,
+} from "./github";
+import type { Pins, PullRequest, RunScope } from "./outbound/scope";
 import { CA_PATH, interceptHosts, scrubOutput } from "./sandbox";
 
 /** Installation tokens last an hour. Replace one before a long push could outlive it. */
@@ -10,6 +20,9 @@ const REFRESH_MS = 10 * 60 * 1000;
 export const TICK_MS = 10 * 1000;
 /** Longer than a tick, so the container outlives the gap between alarms. */
 const INACTIVITY_MS = 15 * 60 * 1000;
+
+/** A release gets its first run and this many resumes, in all. Then the approver releases it again. */
+export const MAX_RUNS = 3;
 
 const LOG_PATH = "/workspace/task/run.log";
 const EXIT_PATH = "/workspace/task/run.exit";
@@ -21,6 +34,23 @@ type Phase = "starting" | "running" | "done";
 
 /** A failure whose message is safe to post and log. */
 class RunError extends Error {}
+
+/** What a resumed run starts from. */
+export interface ResumeState {
+  branch: string;
+  pr: PullRequest | null;
+  reply: string;
+  runNumber: number;
+}
+
+/** Saved for a blocked issue, so a reply can resume it. */
+export interface BlockedRecord {
+  scope: Omit<RunScope, "runId">;
+  runner: string;
+  branch: string;
+  pr: PullRequest | null;
+  runNumber: number;
+}
 
 /** The key for "one run per issue", by the repo's immutable id. */
 export function issueKey(scope: RunScope): string {
@@ -57,8 +87,11 @@ export class RunState extends DurableObject<Env> {
    */
   private intercepted = false;
 
-  /** Starts a run. Returns at once, because GitHub gives up on a webhook after 10 seconds. */
-  async launch(scope: RunScope, runner: string): Promise<void> {
+  /**
+   * Starts a run. Returns at once, because GitHub gives up on a webhook after 10
+   * seconds. A resumed run starts with the branch and PR already pinned.
+   */
+  async launch(scope: RunScope, runner: string, resume?: ResumeState): Promise<void> {
     if (await this.ctx.storage.get<RunScope>("scope")) return;
     const chosen = RUNNERS[runner];
     if (!chosen) throw new RunError(`no runner named ${runner}`);
@@ -67,8 +100,40 @@ export class RunState extends DurableObject<Env> {
       runner,
       phase: "starting" satisfies Phase,
       deadline: Date.now() + chosen.limitMs,
+      runNumber: resume?.runNumber ?? 1,
     });
+    if (resume) {
+      await this.ctx.storage.put({
+        resume: { branch: resume.branch, pr: resume.pr?.number ?? null, reply: resume.reply } satisfies Resume,
+        branch: `refs/heads/${resume.branch}`,
+      });
+      if (resume.pr) await this.ctx.storage.put("pr", resume.pr);
+    }
     await this.ctx.storage.setAlarm(Date.now());
+  }
+
+  /** Called by the outbound policy when the agent's agent:blocked label got through. */
+  async markBlocked(): Promise<void> {
+    await this.ctx.storage.put("blocked", true);
+  }
+
+  /**
+   * Stops the run for good. The stop flag is written first, so every request after
+   * this is refused. Requests already in flight can finish. False if the run had
+   * already ended.
+   */
+  async halt(by: string): Promise<boolean> {
+    const phase = await this.ctx.storage.get<Phase>("phase");
+    if (!phase || phase === "done") return false;
+    await this.ctx.storage.put({ stopped: true, haltedBy: by });
+    const token = this.token;
+    this.token = null;
+    if (token) await revokeToken(token.value);
+    await this.finish({
+      summary: `Stopped by ${by}. Removing the label won't restart it; add \`agent:ready\` to start a new run.`,
+      output: "",
+    });
+    return true;
   }
 
   /** Used by tests that drive the run without the alarm. */
@@ -160,8 +225,9 @@ export class RunState extends DurableObject<Env> {
 
     if (Date.now() > deadline) {
       return {
-        summary: `The run hit its ${Math.round(runner.limitMs / 60_000)}-minute limit and was stopped.`,
+        summary: `The run hit its ${Math.round(runner.limitMs / 60_000)}-minute limit. Work it didn't push is lost.`,
         output: await this.read(container, LOG_PATH),
+        blocked: true,
       };
     }
 
@@ -188,6 +254,7 @@ export class RunState extends DurableObject<Env> {
       const context: RunContext = {
         scope,
         issue: await getIssue(await this.accessToken(), scope.repo, scope.issue),
+        resume: (await this.ctx.storage.get<Resume>("resume")) ?? null,
         env: this.env,
       };
       for (const [path, content] of Object.entries(runner.files(context))) {
@@ -274,9 +341,21 @@ export class RunState extends DurableObject<Env> {
       const reason = error instanceof GitHubError ? error.message : (error as Error).name;
       console.error(`Posting a run's status comment failed: ${reason}`);
     }
+    // A resumed run clears the label the last run left, so the issue shows it's moving.
+    if (await this.ctx.storage.get<Resume>("resume")) {
+      try {
+        await setLabel(await this.accessToken(), scope.repo, scope.issue, "agent:blocked", false);
+      } catch (error) {
+        const reason = error instanceof GitHubError ? error.message : (error as Error).name;
+        console.error(`Removing agent:blocked failed: ${reason}`);
+      }
+    }
   }
 
-  /** Tears down, reports, releases the issue and stops the run, whatever happened before. */
+  /**
+   * Tears down, reports, records whether the issue is blocked, releases the issue and
+   * stops the run, whatever happened before.
+   */
   private async finish(report: RunReport): Promise<void> {
     await this.ctx.storage.put("phase", "done" satisfies Phase);
     await this.ctx.storage.deleteAlarm();
@@ -287,40 +366,112 @@ export class RunState extends DurableObject<Env> {
       console.error(`Destroying a run's container failed: ${(error as Error).name}`);
     }
     const scope = await this.ctx.storage.get<RunScope>("scope");
+    if (!scope) {
+      await this.stop();
+      return;
+    }
+
+    const halted = await this.ctx.storage.get<string>("haltedBy");
+    const agentBlocked = (await this.ctx.storage.get<boolean>("blocked")) ?? false;
+    const blocked = !halted && (report.blocked === true || agentBlocked);
+    const runNumber = (await this.ctx.storage.get<number>("runNumber")) ?? 1;
+    const canResume = blocked && runNumber < MAX_RUNS;
+    const pr = (await this.ctx.storage.get<Pins["pr"]>("pr")) ?? null;
+    const branch = (await this.ctx.storage.get<string>("branch"))?.replace(/^refs\/heads\//, "") ?? null;
+
+    const notes: string[] = [];
+    let summary = report.summary;
+    if (blocked && agentBlocked && !report.blocked) summary = `Blocked: the agent is waiting for a reply. ${summary}`;
+    if (canResume) {
+      notes.push(`Reply on this issue${pr ? ` or on PR #${pr.number}` : ""} to resume. This was run ${runNumber} of ${MAX_RUNS}.`);
+    } else if (blocked) {
+      notes.push(`This was run ${runNumber} of ${MAX_RUNS}, so a reply won't resume it. Add \`agent:ready\` to start again.`);
+    }
+
+    const log = this.env.DELIVERY_LOG.getByName("global");
     try {
-      if (scope) await this.report(scope, report);
+      if (canResume && branch) {
+        const record: BlockedRecord = {
+          scope: {
+            installationId: scope.installationId,
+            repoId: scope.repoId,
+            repo: scope.repo,
+            issue: scope.issue,
+            defaultBranch: scope.defaultBranch,
+          },
+          runner: (await this.ctx.storage.get<string>("runner")) ?? "claude-code",
+          branch,
+          pr,
+          runNumber,
+        };
+        await log.markBlocked(issueKey(scope), scope.repoId, pr?.number ?? null, JSON.stringify(record));
+      } else {
+        await log.clearBlocked(issueKey(scope));
+      }
+    } catch (error) {
+      console.error(`Recording a run's outcome failed: ${(error as Error).name}`);
+    }
+
+    try {
+      await this.report(scope, { ...report, summary }, notes, {
+        addBlockedLabel: canResume && !agentBlocked,
+        halted: halted ?? null,
+      });
     } catch (error) {
       const reason = error instanceof GitHubError ? error.message : (error as Error).name;
       console.error(`Reporting a run failed: ${reason}`);
     }
-    if (scope) {
-      try {
-        await this.env.DELIVERY_LOG.getByName("global").releaseIssue(issueKey(scope), scope.runId);
-      } catch (error) {
-        console.error(`Releasing a run's issue failed: ${(error as Error).name}`);
-      }
+    try {
+      await log.releaseIssue(issueKey(scope), scope.runId);
+    } catch (error) {
+      console.error(`Releasing a run's issue failed: ${(error as Error).name}`);
     }
     await this.stop();
   }
 
-  private async report(scope: RunScope, report: RunReport): Promise<void> {
-    const token = await this.accessToken();
-    const pr = await this.ctx.storage.get<Pins["pr"]>("pr");
-    const output = scrubOutput(report.output, [token]);
-    const body = [
-      `${await this.describe(scope)}: ${report.summary}`,
-      pr ? `\nPR: #${pr.number}` : "",
-      output ? `\n\`\`\`\n${output}\n\`\`\`` : "",
-    ].join("\n");
-    // If posting the start comment failed after GitHub made it, find it by the run id
-    // so the run still ends with one comment.
-    const id =
-      (await this.ctx.storage.get<number>("statusComment")) ??
-      (await findComment(token, scope.repo, scope.issue, `Run \`${scope.runId}\``));
-    if (id === undefined) {
-      await commentOnIssue(token, scope.repo, scope.issue, body);
-    } else {
-      await editComment(token, scope.repo, id, body);
+  /** A token for the Worker's own GitHub writes. A stopped run mints one just for its report. */
+  private async reportingToken(scope: RunScope): Promise<{ value: string; temporary: boolean }> {
+    if (!(await this.ctx.storage.get<boolean>("stopped"))) {
+      return { value: await this.accessToken(), temporary: false };
+    }
+    const token = await mintRunToken(this.env, scope.installationId, scope.repoId);
+    return { value: token.value, temporary: true };
+  }
+
+  private async report(
+    scope: RunScope,
+    report: RunReport,
+    notes: string[],
+    options: { addBlockedLabel: boolean; halted: string | null },
+  ): Promise<void> {
+    const token = await this.reportingToken(scope);
+    try {
+      const pr = await this.ctx.storage.get<Pins["pr"]>("pr");
+      const output = scrubOutput(report.output, [token.value]);
+      const body = [
+        `${await this.describe(scope)}: ${report.summary}`,
+        pr ? `\nPR: #${pr.number}` : "",
+        notes.length ? `\n${notes.join("\n")}` : "",
+        output ? `\n\`\`\`\n${output}\n\`\`\`` : "",
+      ].join("\n");
+      // If posting the start comment failed after GitHub made it, find it by the run id
+      // so the run still ends with one comment.
+      const id =
+        (await this.ctx.storage.get<number>("statusComment")) ??
+        (await findComment(token.value, scope.repo, scope.issue, `Run \`${scope.runId}\``));
+      if (id === undefined) {
+        await commentOnIssue(token.value, scope.repo, scope.issue, body);
+      } else {
+        await editComment(token.value, scope.repo, id, body);
+      }
+      if (options.addBlockedLabel) {
+        await setLabel(token.value, scope.repo, scope.issue, "agent:blocked", true);
+      }
+      if (options.halted && pr) {
+        await commentOnIssue(token.value, scope.repo, pr.number, `Run \`${scope.runId}\` was stopped by ${options.halted}.`);
+      }
+    } finally {
+      if (token.temporary) await revokeToken(token.value);
     }
   }
 
