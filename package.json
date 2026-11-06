@@ -1,6 +1,6 @@
 {
   "name": "secure-agent-workflow",
-  "version": "0.1.9",
+  "version": "0.1.12",
   "description": "A secure software factory for coding agents",
   "private": true,
   "license": "MIT",

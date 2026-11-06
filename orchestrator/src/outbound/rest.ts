@@ -1,6 +1,8 @@
 import { deny, hasOnlyKeys, type Deny, type Pins, type RunScope } from "./scope";
 
-export type RestDecision = { allow: true; body?: string; pinPullRequest?: boolean } | Deny;
+export type RestDecision =
+  | { allow: true; body?: string; pinPullRequest?: boolean; marksBlocked?: boolean }
+  | Deny;
 
 const MAX_TITLE = 1024;
 const MAX_TEXT = 65536;
@@ -72,7 +74,7 @@ function addBlocked(body: unknown): RestDecision {
   if (!Array.isArray(labels) || labels.length !== 1 || labels[0] !== "agent:blocked") {
     return deny("rest: the only label a run can add is agent:blocked");
   }
-  return { allow: true, body: JSON.stringify({ labels: ["agent:blocked"] }) };
+  return { allow: true, body: JSON.stringify({ labels: ["agent:blocked"] }), marksBlocked: true };
 }
 
 /**

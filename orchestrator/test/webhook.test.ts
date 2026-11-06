@@ -129,23 +129,44 @@ describe("what counts as a release", () => {
 describe("a release", () => {
   // Tests run with containers off, so each run reaches the "no container" failure.
   // That still exercises the whole path: scope, token, report and teardown.
-  it("starts a run that reports on the issue and revokes its token", async () => {
+  it("starts a run that posts a status comment, edits it at the end and revokes its token", async () => {
     const calls = stubGitHub();
     const delivery = crypto.randomUUID();
     const response = await deliver(release(), { delivery });
     expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ runner: "claude-code" });
     await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
     expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
       "POST /app/installations/99/access_tokens",
       "POST /repos/the-approver/app/issues/7/comments",
+      "PATCH /repos/the-approver/app/issues/comments/1",
       "DELETE /installation/token",
     ]);
     expect(calls[0]?.body).toEqual({ repository_ids: [1234] });
     expect(calls[1]?.authorization).toBe("Bearer minted-token");
     expect(JSON.stringify(calls[1]?.body)).toContain(delivery);
-    expect(JSON.stringify(calls[1]?.body)).toContain("no container is configured");
+    expect(JSON.stringify(calls[2]?.body)).toContain("no container is configured");
     const run = env.RUN_STATE.getByName(delivery);
     expect(await run.admit()).toEqual({ admitted: false, reason: "the run is stopped" });
+  });
+
+  it("picks the probe for an issue labeled agent:probe", async () => {
+    const calls = stubGitHub();
+    const labels = [{ name: "agent:ready" }, { name: "agent:probe" }];
+    const response = await deliver(release({ issue: { number: 7, state: "open", labels } }));
+    expect(await response.json()).toMatchObject({ runner: "probe" });
+    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+  });
+
+  it("refuses a second run on an issue while one is active", async () => {
+    const calls = stubGitHub();
+    const log = env.DELIVERY_LOG.getByName("global");
+    expect(await log.claimIssue("1234#7", "active-run")).toBe(true);
+    const response = await deliver(release());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ignored: "a run is already active on this issue" });
+    expect(calls).toEqual([]);
+    await log.releaseIssue("1234#7", "active-run");
   });
 
   it("handles one delivery id once", async () => {

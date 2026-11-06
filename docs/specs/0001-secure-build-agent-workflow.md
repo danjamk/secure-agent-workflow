@@ -176,7 +176,7 @@ The draft PR is the system of record. Slack is the notification and reply channe
 ### Stop
 
 - Adding `agent:stop` or removing `agent:ready` ends the run: the orchestrator revokes the installation token, tears down the sandbox, and comments on the PR.
-- Stop is enforced in the orchestrator and outbound handler, not by asking the agent, so it works even if the agent ignores instructions.
+- Stop is enforced in the orchestrator and outbound handler, not by asking the agent, so it works even if the agent ignores instructions. The run's stop flag is written before anything else, so every request after it is refused. Requests already in flight can finish, and their charges stand.
 
 ### Cost controls
 
@@ -338,7 +338,7 @@ Added in build order step 4: the planning agent approves or merges a PR.
 
 ## Open decisions
 
-- [ ] Which agent CLIs to support first (suggest Claude Code and Codex).
+- [x] Which agent CLIs to support first: Claude Code (#9). Codex or another CLI is one more runner module.
 - [ ] Builder and reviewer model families: the concrete models behind each run profile class (ADR-008).
 - [ ] AWS account to host the OIDC broker (one account for v1; see Credentials).
 - [ ] Planning agent identity (build order step 4).

@@ -1,6 +1,5 @@
 import { registries } from "./outbound/handler";
 import { MODEL_HOSTS } from "./outbound/models";
-import type { RunScope } from "./outbound/scope";
 
 /** The certificate the platform signs intercepted HTTPS with. It appears once HTTPS is intercepted. */
 export const CA_PATH = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
@@ -19,25 +18,14 @@ export function interceptHosts(env: Env, repo: string): string[] {
   return hosts;
 }
 
-/** What the probe gets. Nothing secret: the container holds no credentials. */
-export function probeEnv(scope: RunScope, slug: string): Record<string, string> {
+/** Every HTTPS request is intercepted, so the platform's CA is the only one a run needs. */
+export function caEnv(): Record<string, string> {
   return {
-    REPO: scope.repo,
-    ISSUE: String(scope.issue),
-    SLUG: slug,
-    DEFAULT_BRANCH: scope.defaultBranch,
-    HOME: "/root",
-    // Every HTTPS request is intercepted, so the platform's CA is the only one needed.
     GIT_SSL_CAINFO: CA_PATH,
     CURL_CA_BUNDLE: CA_PATH,
     SSL_CERT_FILE: CA_PATH,
     NODE_EXTRA_CA_CERTS: CA_PATH,
   };
-}
-
-/** A branch name the probe can use: agent/<issue>-probe-<8 hex>. */
-export function probeSlug(runId: string): string {
-  return `probe-${runId.replace(/[^0-9a-f]/gi, "").slice(0, 8).toLowerCase()}`;
 }
 
 const MAX_OUTPUT = 60_000;
