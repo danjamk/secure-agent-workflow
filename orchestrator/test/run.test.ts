@@ -275,6 +275,9 @@ describe("a run's model budget", () => {
     const body = edited(calls)[0];
     expect(body).toContain(`Blocked: ${whose} $5.00 model budget is spent.`);
     expect(body).toContain(note);
+    // Only a resumable block gets the label, which the agent didn't add itself.
+    const labeled = calls.some((c) => c.method === "POST" && c.url.endsWith("/issues/7/labels"));
+    expect(labeled).toBe(resumable);
   });
 });
 

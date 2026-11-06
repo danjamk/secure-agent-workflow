@@ -643,3 +643,37 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** Claude
 - **Approved by:** None
 - **Evidence:** `orchestrator/src/run.ts`, `orchestrator/test/run.test.ts`
+
+### 2026-11-06 Test the budget block with a $0.50 run budget
+
+- **Decision:** The block test ran at a $0.50 run budget, set in the dashboard and set back to $5 after, where the first call was refused. The run at $1 finished under budget.
+- **Why:** Each call reserves about $0.32 for output plus its bytes, and the testbed is too small for a run's requests to grow past what $1 covers.
+- **Rejected:** A larger task to spend past $1. It costs more and still depends on how the agent works.
+- **Decided by:** Claude
+- **Approved by:** danjamk set both budgets in the dashboard ("Budget set", "set")
+- **Evidence:** `orchestrator/README.md`, Live results: model spend
+
+### 2026-11-06 Add agent:blocked when a budget blocks a run
+
+- **Decision:** A run blocked by its own budget gets `agent:blocked`, like a run that hits its time limit.
+- **Why:** In the live test the run ended blocked with no label. The finish step took the block flag to mean the agent had added the label.
+- **Decided by:** Claude
+- **Approved by:** danjamk, "go" to the fix list in the working session
+- **Evidence:** `orchestrator/src/run.ts`, `orchestrator/test/run.test.ts`
+
+### 2026-11-06 Turn off Claude Code's commit trailer in managed settings
+
+- **Decision:** The image writes `/etc/claude-code/managed-settings.json` with `{"attribution": {"commit": ""}}`, read-only. The PR line Claude Code adds stays.
+- **Why:** An agent commit carried a `Co-Authored-By` trailer, against the standard. Managed settings outrank the repo's own `.claude/settings.json`. That `""` hides the trailer comes from the settings reference's summary, not a tested example, so the next agent run checks it.
+- **Rejected:** The deprecated `includeCoAuthoredBy: false`, which may also drop the PR line.
+- **Decided by:** Claude
+- **Approved by:** danjamk, "go" to the fix list in the working session
+- **Evidence:** `orchestrator/container/Dockerfile`
+
+### 2026-11-06 Close #92 on the live tests
+
+- **Decision:** #92 (meter model spend) closes on one metered run, one blocked run and the fixes in the same PR. The per-run match against the Anthropic console isn't verified, because the console reports by day.
+- **Why:** Each task in the issue works live or is covered by tests under `test:security`.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/README.md`, Live results: model spend

@@ -30,6 +30,7 @@ Inside the container:
 
 - `run-agent.sh` clones the repo, sets the App's bot as the commit author and runs Claude Code with a fixed prompt that points at the files. The issue reaches the agent only as a file.
 - `agent-gh` makes the GitHub writes the agent needs: open its draft PR, edit it, mark it ready, turn on auto-merge, comment, and add `agent:blocked`. The `gh` CLI isn't installed, because it makes these writes through GraphQL calls the policy refuses.
+- Claude Code's `Co-Authored-By` commit trailer is off, in the image's managed settings, which a repo's own settings can't override.
 - Claude Code's web search and web fetch are off, along with its telemetry, error reports, auto-update and feedback, each of which would try a host the container can't reach.
 - A repo's own `.claude/settings.json` hooks and `.mcp.json` servers run too, without a prompt. They stay inside the container, and an MCP server can reach only the allowed hosts.
 
@@ -273,6 +274,23 @@ Fixed after the tests:
 - The agent called the license PR tier 1. The gate overruled it, and the instructions now say how to work out the tier from the repo's tier map.
 - A block before any push saved no resume point. A resume now starts from the default branch in that case.
 - Agents' decision log entries conflict with each other. #94 moves the log to one file per decision.
+
+### Live results: model spend
+
+2026-11-06, build `0.1.14+df85e8e`, on agent-testbed. `RUN_BUDGET_USD` was changed in the dashboard for the block tests and set back to 5 after.
+
+| Test | Result |
+| --- | --- |
+| Normal run (#46) | Finished and opened a PR. The status comment read "Model use: 7 calls, 14 input and 1,902 output tokens, 131,870 read from cache and 25,353 written, $0.11". Claude Code's own estimate was $0.10. The figure matches the token counts at the 5-minute cache write rate, so the responses carried the cache breakdown. No call was refused: Claude Code sends none of the refused price options, and stays under the `max_tokens` ceiling |
+| $1 run budget (#48) | Not a test: the repo is small, and the run finished for $0.10. Each call reserves about $0.32 for output, plus its bytes, so a $1 run refuses only once its requests pass about 150KB |
+| $0.50 run budget (#50) | The first call was refused before it was sent, so its body is over about 45KB. The run ended blocked: "Blocked: the run's $0.50 model budget is spent", with "Reply on this issue to resume". The agent's log showed the policy's 403. No call was charged |
+| Anthropic console | Not verified per run. The console reports cost by day, and the day's figure didn't change while the tests ran, which looks like reporting delay |
+
+Fixed after the tests:
+
+- A budget block didn't add `agent:blocked`, because the finish step took the block flag to mean the agent had added the label itself.
+- The agent's first README edit failed because the image had no `python3`. It's installed now.
+- An agent commit had Claude Code's `Co-Authored-By` trailer. The image's managed settings (`/etc/claude-code/managed-settings.json`) turn it off. That isn't verified live yet; the next agent run will show it.
 
 ## Other options for a fork
 

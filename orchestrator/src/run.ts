@@ -454,7 +454,8 @@ export class RunState extends DurableObject<Env> {
 
     try {
       await this.report(scope, { ...report, summary }, notes, {
-        addBlockedLabel: canResume && !agentBlocked,
+        // The agent adds its own label. A budget refusal sets the same flag but no label.
+        addBlockedLabel: canResume && (!agentBlocked || blockedReason !== undefined),
         halted: halted ?? null,
       });
     } catch (error) {
