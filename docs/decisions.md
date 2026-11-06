@@ -526,3 +526,37 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** Claude proposed, following spec 0002's proposal
 - **Approved by:** None
 - **Evidence:** ADR-010, spec 0002 (Stop)
+
+### 2026-11-06 Track the console's orchestrator routes as human-authored issues
+
+- **Decision:** The console's workspace, deploy and orchestrator routes are four issues (H-1 to H-4 in `docs/plans/console-phase-1.md`), authored by the operator, sub-issues of #35 with no milestone.
+- **Why:** They are code with tests and a review, like #9 to #13, and the epic should show what blocks the console. They stay out of the wave milestone because `/dispatch` labels every open issue in a milestone and tier 3 work stays out of waves.
+- **Rejected:** Operator tasks at the top of the wave, as the draft had them, which leaves the largest pieces of Phase 1 untracked.
+- **Decided by:** Claude proposed; danjamk leaned toward issues in the handoff
+- **Approved by:** None
+- **Evidence:** `docs/plans/console-phase-1.md`, `standards/wave-planning.md`, `standards/skills/dispatch/SKILL.md`
+
+### 2026-11-06 Build the console wave against a fixed route contract
+
+- **Decision:** The plan fixes the orchestrator's console routes as TypeScript types, and every console issue tests against fixtures of them, so the wave can run before #13 and workflow-loop W1-4 land.
+- **Why:** The console's real data depends on most of build order step 1. Fixtures let the screens and Stop be built and reviewed in parallel with that work.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `docs/plans/console-phase-1.md`, Route contract
+
+### 2026-11-06 Build the console as static TypeScript with no runtime dependencies
+
+- **Decision:** The console is TypeScript compiled by `tsc` to ES modules and served as static assets, with no framework and no bundler. Dev dependencies are installed once, in H-1.
+- **Why:** The lockfile is tier 3 in this repo, so agents can't add dependencies, and the design is plain CSS classes that need no framework.
+- **Rejected:** A UI framework with a bundler, which would need dependency changes during the wave.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `docs/plans/console-phase-1.md`, H-1; `.github/self-tier-map.yml`
+
+### 2026-11-06 Console defaults: refresh, feed lost, caution, spend day
+
+- **Decision:** The console refreshes every 15 seconds, shows feed lost after 30 seconds without a successful fetch, shows spend caution at 80% of the daily limit, and treats the spend day as the UTC day.
+- **Why:** The design gives no numbers for the first three. The UTC day matches the coordinator, which totals and resets spend per UTC day (ADR-005).
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `docs/plans/console-phase-1.md`, W1-2 and W1-5
