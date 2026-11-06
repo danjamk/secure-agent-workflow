@@ -1,5 +1,6 @@
 import { registries } from "./outbound/handler";
 import { MODEL_HOSTS } from "./outbound/models";
+import { redact } from "./redact";
 
 /** The certificate the platform signs intercepted HTTPS with. It appears once HTTPS is intercepted. */
 export const CA_PATH = "/etc/cloudflare/certs/cloudflare-containers-ca.crt";
@@ -29,8 +30,6 @@ export function caEnv(): Record<string, string> {
 }
 
 const MAX_OUTPUT = 60_000;
-const CREDENTIALS =
-  /gh[opsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9_-]{20,}|x-access-token:[^\s@]+|-----BEGIN[^-]*PRIVATE KEY-----[\s\S]*?(?:-----END[^-]*PRIVATE KEY-----|$)/g;
 
 /**
  * Output from the container, made safe to post. It comes from code the orchestrator
@@ -38,9 +37,6 @@ const CREDENTIALS =
  * break out of its code block.
  */
 export function scrubOutput(output: string, secrets: string[] = []): string {
-  let text = output.length > MAX_OUTPUT ? `${output.slice(0, MAX_OUTPUT)}\n[output cut at ${MAX_OUTPUT} characters]` : output;
-  for (const secret of secrets.filter((value) => value.length >= 8)) {
-    text = text.split(secret).join("[removed]");
-  }
-  return text.replace(CREDENTIALS, "[removed]").replace(/`{3,}/g, "'''");
+  const text = output.length > MAX_OUTPUT ? `${output.slice(0, MAX_OUTPUT)}\n[output cut at ${MAX_OUTPUT} characters]` : output;
+  return redact(text, secrets).text.replace(/`{3,}/g, "'''");
 }

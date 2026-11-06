@@ -117,6 +117,7 @@ export function fakeContainer(options: FakeOptions = {}) {
     written: {} as Record<string, string>,
     destroyed: 0,
     caChecks: 0,
+    logReads: 0,
   };
   const encode = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
   const container = {
@@ -145,12 +146,19 @@ export function fakeContainer(options: FakeOptions = {}) {
     async exec(cmd: string[], execOptions?: ContainerExecOptions) {
       let exitCode = 0;
       let stdout = "";
+      let raw: Uint8Array | null = null;
       if (cmd[0] === "test") {
         state.caChecks += 1;
         exitCode = state.caChecks > (options.caAfter ?? 0) ? 0 : 1;
       } else if (cmd[3] === "write-file") {
         const bytes = Uint8Array.from(atob(cmd[4] ?? ""), (c) => c.charCodeAt(0));
         state.written[cmd[5] ?? ""] = new TextDecoder().decode(bytes);
+      } else if (cmd[3] === "read-log") {
+        // tail -c +N <path> | head -c <max>, from the file as it is now.
+        state.logReads += 1;
+        const content = options.files?.[cmd[5] ?? ""];
+        const start = Number(cmd[4]) - 1;
+        raw = new TextEncoder().encode(content ?? "").slice(start, start + Number(cmd[6]));
       } else if (cmd[0] === "/bin/sh") {
         state.commands.push({ cmd, env: execOptions?.env, user: execOptions?.user });
       } else if (cmd[0] === "cat") {
@@ -164,7 +172,7 @@ export function fakeContainer(options: FakeOptions = {}) {
       }
       return {
         exitCode: Promise.resolve(exitCode),
-        output: async () => ({ stdout: encode(stdout), stderr: encode(""), exitCode }),
+        output: async () => ({ stdout: raw ? (raw.buffer as ArrayBuffer) : encode(stdout), stderr: encode(""), exitCode }),
       };
     },
   };

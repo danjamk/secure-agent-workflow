@@ -400,7 +400,8 @@ describe("model hosts", () => {
 
   it("fails closed when the key isn't set", async () => {
     const { calls } = stubInternet();
-    const response = await handleOutbound(request(), await startRun(), testEnv({ ALLOWED_MODELS: "allowed-model" }));
+    const unset = testEnv({ ALLOWED_MODELS: "allowed-model", ANTHROPIC_API_KEY: undefined });
+    const response = await handleOutbound(request(), await startRun(), unset);
     expect(response.status).toBe(503);
     expect(calls).toHaveLength(0);
   });
