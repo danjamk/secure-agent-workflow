@@ -87,6 +87,7 @@ describe("a run's container", () => {
       ANTHROPIC_API_KEY: "provided-by-the-worker",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       DISABLE_TELEMETRY: "1",
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS: "32000",
     });
     expect(JSON.stringify(command?.env)).not.toMatch(/minted-token|ghs_|sk-ant/);
   });
@@ -222,6 +223,58 @@ describe("a run's container", () => {
     // The launch's own alarm runs with no container and reports that. Let it finish
     // before the GitHub stub is removed.
     await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+  });
+});
+
+describe("a run's model budget", () => {
+  const log = () => env.DELIVERY_LOG.getByName("global");
+  const NONE = { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
+  const roomy = { run: 1e12, issue: 1e12, month: 1e12 };
+
+  it("doesn't start when the month has less left than a run's budget", async () => {
+    const calls = stubGitHub();
+    // Holds all but $1 of the month's $15, then gives it back.
+    const id = crypto.randomUUID();
+    const amount = 15e6 - (await log().monthUsed()) - 1e6;
+    expect((await log().reserve({ id, run: "filler", issue: "filler", amount, limits: roomy })).reserved).toBe(true);
+    try {
+      const { fake, tick } = await prepare();
+      await tick();
+      expect(fake.state.started).toHaveLength(0);
+      expect(edited(calls)[0]).toContain("Not started: the month's $15.00 model budget has $1.00 left, less than a run's $5.00.");
+    } finally {
+      await log().settle(id, { tokens: NONE, cost: 0 });
+    }
+  });
+
+  it("reports the run's model use", async () => {
+    const calls = stubGitHub();
+    const { runId, tick } = await prepare();
+    const id = crypto.randomUUID();
+    await log().reserve({ id, run: runId, issue: "1234#7", amount: 10, limits: roomy });
+    const tokens = { input: 1200, output: 340, cacheRead: 56_000, cacheWrite5m: 700, cacheWrite1h: 0 };
+    await log().settle(id, { tokens, cost: 412_345 });
+    await tick();
+    await tick();
+    await tick();
+    expect(edited(calls)[0]).toContain(
+      "Model use: 1 call, 1,200 input and 340 output tokens, 56,000 read from cache and 700 written, $0.41.",
+    );
+  });
+
+  it.each([
+    ["the run's", true, "Reply on this issue to resume."],
+    ["the month's", false, "A reply won't resume it, because a resume doesn't renew that budget."],
+  ])("ends a run blocked by %s budget with the reason", async (whose, resumable, note) => {
+    const calls = stubGitHub();
+    const { stub, tick } = await prepare({ exit: "1" });
+    await stub.markBlocked(`${whose} $5.00 model budget is spent`, resumable);
+    await tick();
+    await tick();
+    await tick();
+    const body = edited(calls)[0];
+    expect(body).toContain(`Blocked: ${whose} $5.00 model budget is spent.`);
+    expect(body).toContain(note);
   });
 });
 

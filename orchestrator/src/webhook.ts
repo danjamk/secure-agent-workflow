@@ -149,8 +149,10 @@ async function release(target: Target, delivery: string, env: Env, log: Log): Pr
   if (!(await log.claimIssue(issueKey(scope), delivery))) {
     return json(200, { ignored: "a run is already active on this issue" });
   }
-  // A new release starts over, so an older blocked run can't be resumed after it.
+  // A new release starts over, so an older blocked run can't be resumed after it, and
+  // the issue's model budget is whole again.
   await log.clearBlocked(issueKey(scope));
+  await log.clearIssueSpend(issueKey(scope));
   const runner = runnerFor(target.labels);
   try {
     await env.RUN_STATE.getByName(delivery).launch(scope, runner.name);

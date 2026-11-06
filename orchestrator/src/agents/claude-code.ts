@@ -8,7 +8,10 @@ export const MODEL = "claude-sonnet-5-5";
 export const BACKGROUND_MODEL = "claude-haiku-5-5";
 
 export const MAX_TURNS = 200;
-/** Claude Code's own estimate, so it's a soft cap. The workspace spend limit is the hard one. */
+/**
+ * Claude Code's own estimate, so it's a soft cap. The outbound handler's run budget
+ * (RUN_BUDGET_USD, #92) is the hard one, and the workspace spend limit is the backstop.
+ */
 export const MAX_BUDGET_USD = 5;
 
 /** The agent App's bot account, so commits show as the App's (`GET /users/<slug>[bot]`). */
@@ -43,7 +46,7 @@ export const claudeCode: Runner = {
     return files;
   },
 
-  command({ scope, resume }) {
+  command({ scope, resume, env }) {
     return {
       script: "/agent/run-agent.sh",
       user: "1001:1001",
@@ -64,6 +67,8 @@ export const claudeCode: Runner = {
         // replaces it on the way out.
         ANTHROPIC_API_KEY: "provided-by-the-worker",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: BACKGROUND_MODEL,
+        // The handler refuses a call over the ceiling, so Claude Code asks for no more.
+        CLAUDE_CODE_MAX_OUTPUT_TOKENS: env.MAX_OUTPUT_TOKENS ?? "",
         // Each of these would try a host the container can't reach.
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
         DISABLE_TELEMETRY: "1",

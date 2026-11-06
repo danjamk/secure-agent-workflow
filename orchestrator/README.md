@@ -4,7 +4,7 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume | Logs (#10), the spend budget (#92), the coordinator (#13) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets | Logs (#10), the coordinator (#13) |
 
 ## A run
 
@@ -44,11 +44,12 @@ Only the approver's login, on a user account, can do any of these. The agent App
 | The approver adds `agent:stop` or removes `agent:ready` | The run writes its stop flag first, so the outbound policy refuses every request after that. Then it revokes its token, destroys the container, edits the status comment and comments on the PR. Requests already in flight, such as a streaming model response or a push, can finish, and their charges stand. A stop is final: removing the label restarts nothing. It also clears a blocked issue |
 | The agent adds `agent:blocked` and exits | The policy records the label when it gets through. The run ends as blocked and saves the branch and PR |
 | The run hits its time limit | It ends as blocked, and the orchestrator adds `agent:blocked`. Work it didn't push is lost |
+| A model call would go over a budget | The policy refuses it and the run ends as blocked, with the budget named. A reply resumes a run that spent its own budget. One that spent the issue's or the month's can't be resumed (Model spend) |
 | The approver comments on a blocked issue or its PR | A fresh run starts with the branch and PR pinned, removes `agent:blocked`, and gets the reply as `reply.md` |
 | Anyone removes `agent:blocked` | Nothing. Only a reply resumes a run |
 | A new `agent:ready` | Starts over, and a blocked run from before can't be resumed |
 
-A release gets 3 runs: the first and two resumes. After the third, the status comment says a reply won't resume it, and the approver adds `agent:ready` to start again. The spend budget per run is #92 (meter model spend). Until then, the workspace spend limit and Claude Code's own estimate cap it.
+A release gets 3 runs: the first and two resumes. After the third, the status comment says a reply won't resume it, and the approver adds `agent:ready` to start again. Model spend is capped per run, per release and per month (Model spend).
 
 ## Outbound policy
 
@@ -61,7 +62,8 @@ A request to a host that isn't listed fails inside the container and never reach
 | `github.com` | Git for this run's repo: `info/refs`, `git-upload-pack`, `git-receive-pack`. A push must be one ref, on the run's branch, and not a deletion | Installation token |
 | `api.github.com`, REST | Reads under the run's repo. Writes: create the run's one PR, edit its title and body, comment on its issue or PR, add `agent:blocked` to its issue | Installation token |
 | `api.github.com`, GraphQL | Queries. One `markPullRequestReadyForReview` or `enablePullRequestAutoMerge` per request, on the run's PR | Installation token |
-| `api.anthropic.com`, `api.openai.com` | The message endpoints, for models in `ALLOWED_MODELS`. No vendor-run tools or URL inputs, because those make the vendor reach another host | The vendor's key. Unset means denied |
+| `api.anthropic.com` | The message endpoints, for models in `ALLOWED_MODELS` that have a price. No vendor-run tools or URL inputs, because those make the vendor reach another host. Each charged call is metered (Model spend) | The vendor's key. Unset means denied |
+| `api.openai.com` | Nothing yet. The handler can't read OpenAI's usage, so its calls can't be metered | The vendor's key |
 | Hosts in `EGRESS_HOSTS` for this repo | GET and HEAD. `github.com` here allows release downloads only | None |
 
 How the rules hold up:
@@ -76,7 +78,27 @@ Known limits:
 
 - A commit message like `Fixes #99` can close another issue when the PR merges. The policy blocks this in PR titles and bodies, and #13 treats a blocker closed by an agent's PR as still open.
 - A registry read can carry data in its path. It reaches only the registry's own logs, and the list is per repo for that reason.
-- Output ceilings, concurrency and spend are in #11.
+- Concurrency across runs is the coordinator's (#13).
+
+## Model spend
+
+Every charged model call is reserved before it's sent and settled after (#92, R3 in `docs/research/design-review-2026-11-01.md`). The settings are Worker variables in `wrangler.jsonc`:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `MODEL_PRICES` | Sonnet 5.5 and Haiku 5.5 | Dollars per million tokens for input, output, 5-minute and 1-hour cache writes, and cache reads. A model with no price is refused. Haiku is priced at its rate for prompts over 100K tokens, so it has one price |
+| `RUN_BUDGET_USD` | 5 | One run |
+| `ISSUE_BUDGET_USD` | 8 | A release and its resumes. A new `agent:ready` starts it over |
+| `MONTHLY_BUDGET_USD` | 15 | A UTC calendar month, across all runs. A run doesn't start unless the month has a full run budget left |
+| `MAX_OUTPUT_TOKENS` | 32000 | The largest `max_tokens` a call may ask for. Claude Code gets the same value as `CLAUDE_CODE_MAX_OUTPUT_TOKENS` |
+
+An unset or invalid budget is $0, which refuses every charged call.
+
+- **Before a call.** The policy refuses a call with no `max_tokens`, one over the ceiling, and one that sets `speed`, `inference_geo` or `service_tier` to anything but the standard price. It reserves the worst case: the body's bytes at the dearest input rate, since a token is at least a byte, plus `max_tokens` at the output rate. The reservation has to fit the run's, the issue's and the month's budgets, counting calls still in flight. `DeliveryLog` holds the ledger, and one instance serves the deployment, so two calls can't both take the last of a budget.
+- **After a call.** The response passes through unchanged. Its usage, from the JSON body or from the stream's `message_start` and final `message_delta`, settles the reservation. An error response settles to $0. A stream that's cut off before `message_stop`, a body with no usage, or a failed send keeps the whole reservation, because whether it was billed isn't known.
+- **Reporting.** The status comment ends with the run's calls, tokens and cost.
+- **What it costs.** A large context holds a large reservation while the call runs: a 600KB request holds about $2.70, even when cache reads make it cost a few cents. So the last few dollars of a run can't start a large call.
+- **What it doesn't cover.** `count_tokens` is free and isn't metered. Container and Worker costs aren't counted here. The Anthropic workspace spend limit stays the backstop.
 
 ## What counts as a release
 
