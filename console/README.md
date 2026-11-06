@@ -1,6 +1,6 @@
 # Console
 
-The operator console (spec 0002): a Cloudflare Worker in the factory account, behind Cloudflare Access, that shows what's waiting on the operator, what's running, and spend, and lets the operator stop a run. Not built yet; `design/` holds the approved design, and `docs/plans/console-phase-1.md` the build plan.
+The operator console (spec 0002): a Cloudflare Worker in the factory account, behind Cloudflare Access, that shows what's waiting on the operator, what's running, and spend, and lets the operator stop a run. Not built yet; `design/` holds the approved design. The build plan comes from the planning agent.
 
 ## Contracts with other components
 
