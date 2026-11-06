@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Control room, working state</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../components.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#0c162f}
+a{color:#a0b5db}a:hover{color:#e6eeff}
+</style>
+</helmet>
+<div style="width: 1440px; height: 940px; box-sizing: border-box; background: linear-gradient(180deg, var(--chassis-top), var(--chassis-bottom) 22%); color: var(--text-1); font-family: var(--font-sans); display: flex; flex-direction: column;">
+
+  <header style="display: flex; align-items: center; gap: 16px; padding: 16px 28px; border-bottom: 1px solid var(--seam); box-shadow: 0 1px 0 rgba(255,255,255,.05);">
+    <span style="font-size: 20px; font-weight: 600; letter-spacing: -.4px;">Operator console</span>
+    <span class="oc-cap" style="margin-left: 8px;">3 REPOS · 2 WAVES ACTIVE</span>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 14px;">
+      <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2);">slots <b style="color: var(--text-1); font-weight: 500;">2/3</b></span>
+      <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2);">merged today <b style="color: var(--text-1); font-weight: 500;">9</b></span>
+      <span class="oc-feed"><span class="oc-feed__dot"></span>live · 14:20</span>
+      <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3);">@danjamk</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; min-height: 0; padding: 24px 28px; display: grid; grid-template-columns: 400px minmax(0, 1fr) 320px; gap: 20px; align-items: start;">
+
+    <section style="display: flex; flex-direction: column; gap: 12px;" aria-labelledby="dw-h">
+      <div style="display: flex; align-items: baseline; gap: 8px;"><h2 id="dw-h" style="margin: 0; font-size: 16px; font-weight: 600;">Waiting on you</h2><span style="font-family: var(--font-mono); font-size: 12px; color: var(--blocked);">3</span><span class="oc-cap" style="margin-left: auto;">OLDEST FIRST IN EACH KIND</span></div>
+
+      <article class="oc-alarm oc-alarm--blocked">
+        <div class="oc-alarm__head"><span class="oc-tag">BLOCKED</span><span class="oc-alarm__kind">needs your answer</span><span class="oc-alarm__age">4m</span></div>
+        <p class="oc-alarm__title" style="margin: 0; font-size: 16px;">The smoke test needs a health endpoint path. Use /health or /api/health?</p>
+        <div class="oc-alarm__meta"><b>#48</b> Preview deploy smoke test · reference build · area:deploy</div>
+        <div class="oc-alarm__actions">
+          <a class="oc-key oc-key--out oc-key--chip" href="https://github.com">/health</a>
+          <a class="oc-key oc-key--out oc-key--chip" href="https://github.com">/api/health</a>
+          <a class="oc-key oc-key--out" href="https://github.com" style="height: 28px; padding: 0 12px; font-size: 13px;">Reply in GitHub</a>
+        </div>
+      </article>
+
+      <article class="oc-alarm oc-alarm--approval">
+        <div class="oc-alarm__head"><span class="oc-tag oc-tag--tier">TIER 2</span><span class="oc-alarm__kind">approval in GitHub</span><span class="oc-alarm__age">12m</span></div>
+        <p class="oc-alarm__title" style="margin: 0; font-size: 16px;">#47 Add zod for request validation</p>
+        <div class="oc-alarm__meta">adds a dependency · checks 9/9 · audit clean · package.json, lockfile</div>
+        <div class="oc-alarm__actions"><a class="oc-key oc-key--out" href="https://github.com" style="height: 32px; font-size: 13px;">Approve in GitHub</a><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">Files ↗</a></div>
+      </article>
+
+      <article class="oc-alarm oc-alarm--alert">
+        <div class="oc-alarm__head"><span class="oc-tag" style="background: var(--failed); color: var(--on-warning);">FAILED</span><span class="oc-alarm__kind">gate failed after escalation</span><span class="oc-alarm__age">31m</span></div>
+        <p class="oc-alarm__title" style="margin: 0; font-size: 16px;">#52 Theme toggle on settings</p>
+        <div class="oc-alarm__meta">lint failed (2) · frontier-medium · 2 runs · $4.06</div>
+        <div class="oc-alarm__actions"><a class="oc-key oc-key--out" href="https://github.com" style="height: 32px; font-size: 13px;">Check run</a><a class="oc-key oc-key--out" href="https://github.com" style="height: 32px; font-size: 13px;">PR</a></div>
+      </article>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px; min-width: 0;" aria-labelledby="dr-h">
+      <div style="display: flex; align-items: baseline; gap: 8px;"><h2 id="dr-h" style="margin: 0; font-size: 16px; font-weight: 600;">Runs</h2><span class="oc-cap">LAST 24 H · NEWEST FIRST</span><a href="https://github.com" style="margin-left: auto; font-family: var(--font-mono); font-size: 12px;">All runs ↗</a></div>
+
+      <div class="oc-panel" style="position: relative;">
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--seam);">
+          <span class="oc-cap">STATE</span><span class="oc-cap">ISSUE</span><span class="oc-cap">TITLE</span><span class="oc-cap">ELAPSED</span><span class="oc-cap">PROFILE · MODEL</span><span class="oc-cap" style="text-align: right;">COST</span><span class="oc-cap">LINKS</span><span class="oc-cap"></span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 0 14px; height: 52px; border-bottom: 1px solid var(--seam); background: rgba(61,139,255,.06);">
+          <span class="oc-status oc-status--running"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="currentColor"></circle></svg><span>running</span></span>
+          <span class="oc-token oc-token--running" style="justify-self: start;">#42</span>
+          <span style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Snapshot the run profile at dispatch</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2);">18m</span>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">standard-med · sonnet-4.5</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; text-align: right;">$3.18</span>
+          <span style="display: flex; gap: 8px;"><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">PR↗</a><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">Log↗</a></span>
+          <button class="oc-stop" style="height: 32px; padding: 0 12px 0 9px; font-size: 13px; justify-self: end;" aria-label="Hold to stop run 42"><svg class="oc-stop__ring" viewBox="0 0 18 18" aria-hidden="true"><circle class="track" cx="9" cy="9" r="7"></circle><circle class="fill" cx="9" cy="9" r="7" stroke-dasharray="0 44"></circle><rect class="glyph" x="6" y="6" width="6" height="6" rx="1"></rect></svg>Hold to stop</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 0 14px; height: 52px; border-bottom: 1px solid var(--seam);">
+          <span class="oc-status oc-status--running"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="currentColor"></circle></svg><span>running</span></span>
+          <span class="oc-token oc-token--running" style="justify-self: start;">#50</span>
+          <span style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Settings page copy <span style="color: var(--blocked); font-family: var(--font-mono); font-size: 11px;">▲ escalated</span></span>
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2);">6m</span>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">frontier-med · opus-4.1</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; text-align: right;">$1.92</span>
+          <span style="display: flex; gap: 8px;"><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">PR↗</a><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">Log↗</a></span>
+          <button class="oc-stop" style="height: 32px; padding: 0 12px 0 9px; font-size: 13px; justify-self: end;" aria-label="Hold to stop run 50"><svg class="oc-stop__ring" viewBox="0 0 18 18" aria-hidden="true"><circle class="track" cx="9" cy="9" r="7"></circle><circle class="fill" cx="9" cy="9" r="7" stroke-dasharray="0 44"></circle><rect class="glyph" x="6" y="6" width="6" height="6" rx="1"></rect></svg>Hold to stop</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 0 14px; height: 44px; border-bottom: 1px solid var(--seam);">
+          <span class="oc-status oc-status--failed"><svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1" y="1" width="8" height="8" fill="currentColor"></rect></svg><span>failed</span></span>
+          <span class="oc-token oc-token--failed" style="justify-self: start;">#52</span>
+          <span style="font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Theme toggle on settings</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3);">41m</span>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);">frontier-med · opus-4.1</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--text-2);">$4.06</span>
+          <span style="display: flex; gap: 8px;"><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">PR↗</a><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">Log↗</a></span>
+          <span></span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 0 14px; height: 44px; border-bottom: 1px solid var(--seam);">
+          <span class="oc-status oc-status--approval"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 .3 9.7 5 5 9.7.3 5Z" fill="currentColor"></path></svg><span>in review</span></span>
+          <span class="oc-token oc-token--approval" style="justify-self: start;">#47</span>
+          <span style="font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Add zod for request validation</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3);">22m</span>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);">standard-med · sonnet-4.5</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--text-2);">$2.71</span>
+          <span style="display: flex; gap: 8px;"><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">PR↗</a><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">Log↗</a></span>
+          <span></span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 0 14px; height: 44px; border-bottom: 1px solid var(--seam);">
+          <span class="oc-status oc-status--blocked"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 .8 9.6 9.2H.4Z" fill="currentColor"></path></svg><span>blocked</span></span>
+          <span class="oc-token oc-token--blocked" style="justify-self: start;">#48</span>
+          <span style="font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Preview deploy smoke test</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3);">14m</span>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);">small-med · haiku-4.5</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--text-2);">$0.37</span>
+          <span style="display: flex; gap: 8px;"><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">Issue↗</a></span>
+          <span></span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 0 14px; height: 44px; border-bottom: 1px solid var(--seam);">
+          <span class="oc-status oc-status--merged"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.75" fill="none" stroke="currentColor" stroke-width="1.5"></circle><circle cx="5" cy="5" r="1.6" fill="currentColor"></circle></svg><span>merged</span></span>
+          <span class="oc-token oc-token--merged" style="justify-self: start;">#41</span>
+          <span style="font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Create the run profile labels in bootstrap</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3);">11m</span>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);">small-med · haiku-4.5</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--text-2);">$0.84</span>
+          <span style="display: flex; gap: 8px;"><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">PR↗</a><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">Log↗</a></span>
+          <span></span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 96px 52px minmax(0, 1fr) 64px 172px 60px 84px 128px; gap: 10px; align-items: center; padding: 0 14px; height: 44px;">
+          <span class="oc-status oc-status--stopped"><svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect></svg><span>stopped</span></span>
+          <span class="oc-token oc-token--stopped" style="justify-self: start;">#39</span>
+          <span style="font-size: 13px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Booking API retries</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3);">9m</span>
+          <span style="font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);">@danjamk 09:41</span>
+          <span style="font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--text-2);">$0.92</span>
+          <span style="display: flex; gap: 8px;"><a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">PR↗</a></span>
+          <span></span>
+        </div>
+
+        <div class="oc-hover oc-hover--open" role="tooltip" style="top: 86px; left: 120px;">
+          <div class="oc-hover__title">#42 Snapshot the run profile at dispatch</div>
+          <dl class="oc-hover__grid" style="margin: 0;">
+            <dt>state</dt><dd style="color: var(--running);">running · 18m</dd>
+            <dt>repo</dt><dd>secure-agent-workflow</dd>
+            <dt>wave</dt><dd>Workflow loop, wave 1</dd>
+            <dt>area</dt><dd>area:orchestrator (holds lock)</dd>
+            <dt>profile</dt><dd>run:standard-medium</dd>
+            <dt>tier</dt><dd>2 expected</dd>
+            <dt>budget</dt><dd>tokens 61% · wall 30%</dd>
+            <dt>blocks</dt><dd>#43, #44</dd>
+          </dl>
+          <div class="oc-hover__foot">↗ issue · ↗ PR · ↗ log</div>
+        </div>
+      </div>
+      <span class="oc-alarm__meta">9 merged · 1 failed · 1 stopped in the last 24 h. Older runs are in GitHub.</span>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;" aria-labelledby="ds-h">
+      <h2 id="ds-h" style="margin: 0; font-size: 16px; font-weight: 600;">Spend today</h2>
+      <div class="oc-gauge oc-well" style="width: auto;">
+        <div class="oc-gauge__head"><span class="oc-cap">SPEND / TODAY</span>
+          <div class="oc-seg" role="tablist" aria-label="Gauge face"><button class="oc-seg__key" role="tab" aria-selected="true">Dial</button><button class="oc-seg__key" role="tab" aria-selected="false">Runway</button></div>
+        </div>
+        <svg class="oc-gauge__face" viewBox="0 0 260 236" role="img" aria-label="Spend $41.20 of $75 limit; projected $103 by midnight"><defs><linearGradient id="bz" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--key-top)"></stop><stop offset="1" stop-color="var(--seam)"></stop></linearGradient><linearGradient id="fc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--well-top)"></stop><stop offset="1" stop-color="var(--well)"></stop></linearGradient><linearGradient id="hb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--key-top)"></stop><stop offset="1" stop-color="var(--seam)"></stop></linearGradient></defs><circle cx="130" cy="120" r="114" fill="url(#bz)"></circle><path d="M24 120 A106 106 0 0 1 236 120" fill="none" stroke="rgba(255,255,255,.14)"></path><circle cx="130" cy="120" r="104" fill="var(--seam)"></circle><circle cx="130" cy="120" r="101" fill="url(#fc)"></circle><path d="M52.06 165 A90 90 0 1 1 207.94 165" fill="none" stroke="var(--dial-track)" stroke-width="8"></path><path d="M52.06 165 A90 90 0 1 1 215.6 92.19" fill="none" stroke="var(--running)" stroke-width="3" opacity=".5"></path><path d="M215.6 92.19 A90 90 0 0 1 207.94 165" fill="none" stroke="var(--blocked)" stroke-width="3"></path><line x1="46.86" y1="168" x2="58.99" y2="161" stroke="var(--text-2)" stroke-width="1.75"></line><text x="69.38" y="159" text-anchor="middle" style="font:500 11px var(--font-mono);fill:var(--text-2)">0</text><line x1="36.85" y1="143.22" x2="44.61" y2="141.29" stroke="var(--text-3)" stroke-width="1"></line><line x1="34.06" y1="116.65" x2="42.05" y2="116.93" stroke="var(--text-3)" stroke-width="1"></line><line x1="38.7" y1="90.33" x2="52.01" y2="94.66" stroke="var(--text-2)" stroke-width="1.75"></line><text x="63.43" y="102.37" text-anchor="middle" style="font:500 11px var(--font-mono);fill:var(--text-2)">15</text><line x1="50.41" y1="66.32" x2="57.04" y2="70.79" stroke="var(--text-3)" stroke-width="1"></line><line x1="68.29" y1="46.46" x2="73.43" y2="52.59" stroke="var(--text-3)" stroke-width="1"></line><line x1="90.95" y1="32.3" x2="96.65" y2="45.09" stroke="var(--text-2)" stroke-width="1.75"></line><text x="101.53" y="60.05" text-anchor="middle" style="font:500 11px var(--font-mono);fill:var(--text-2)">30</text><line x1="116.64" y1="24.93" x2="117.75" y2="32.86" stroke="var(--text-3)" stroke-width="1"></line><line x1="143.36" y1="24.93" x2="142.25" y2="32.86" stroke="var(--text-3)" stroke-width="1"></line><line x1="169.05" y1="32.3" x2="163.35" y2="45.09" stroke="var(--text-2)" stroke-width="1.75"></line><text x="158.47" y="60.05" text-anchor="middle" style="font:500 11px var(--font-mono);fill:var(--text-2)">45</text><line x1="191.71" y1="46.46" x2="186.57" y2="52.59" stroke="var(--text-3)" stroke-width="1"></line><line x1="209.59" y1="66.32" x2="202.96" y2="70.79" stroke="var(--text-3)" stroke-width="1"></line><line x1="221.3" y1="90.33" x2="207.99" y2="94.66" stroke="var(--text-2)" stroke-width="1.75"></line><text x="196.57" y="102.37" text-anchor="middle" style="font:500 11px var(--font-mono);fill:var(--text-2)">60</text><line x1="225.94" y1="116.65" x2="217.95" y2="116.93" stroke="var(--text-3)" stroke-width="1"></line><line x1="223.15" y1="143.22" x2="215.39" y2="141.29" stroke="var(--text-3)" stroke-width="1"></line><line x1="213.14" y1="168" x2="201.01" y2="161" stroke="var(--text-2)" stroke-width="1.75"></line><text x="190.62" y="159" text-anchor="middle" style="font:500 11px var(--font-mono);fill:var(--text-2)">75</text><line x1="215.74" y1="169.5" x2="197.55" y2="159" stroke="var(--failed)" stroke-width="3"></line><circle cx="191.61" cy="185.61" r="3" fill="var(--text-3)"></circle><polygon points="198.15 196.02 187.37 178.59 204.58 189.73" fill="var(--well)" stroke="var(--failed)" stroke-width="1.5" stroke-linejoin="round"></polygon><polygon points="131.53 134.63 147.65 35.83 122.72 132.78" fill="rgba(0,0,0,.55)" transform="translate(1.5,2.5)"></polygon><polygon points="131.53 134.63 147.65 35.83 122.72 132.78" fill="var(--running)"></polygon><circle cx="130" cy="120" r="10" fill="url(#hb)" stroke="var(--seam)"></circle><circle cx="128" cy="117" r="3" fill="rgba(255,255,255,.18)"></circle><path d="M48 90 Q130 2 212 90 Q130 42 48 90Z" fill="rgba(255,255,255,.035)"></path><text x="130" y="164" text-anchor="middle" style="font:500 24px var(--font-mono);letter-spacing:-.5px;fill:var(--running)">$41.20</text><text x="130" y="180" text-anchor="middle" style="font:400 9px var(--font-label);letter-spacing:.8px;fill:var(--text-3)">LIMIT $75</text><rect x="68" y="193" width="124" height="18" rx="3" fill="var(--well)" stroke="var(--failed)" stroke-opacity=".6"></rect><text x="130" y="206" text-anchor="middle" style="font:500 11px var(--font-mono);fill:var(--failed)">◇ $103 by 24:00</text></svg>
+        <div class="oc-gauge__foot"><span class="oc-cap">RUNWAY</span><span class="oc-gauge__pause">pauses 19:37 · 5h 17m</span></div>
+      </div>
+      <div class="oc-panel" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+        <span class="oc-cap">BY RUN TODAY</span>
+        <div class="oc-bullet" style="grid-template-columns: 52px 1fr 52px;"><span style="font-family: var(--font-mono); font-size: 12px;">#52</span><div class="oc-bullet__bar" style="--safe: 100%; --caution: 100%;"><div class="oc-bullet__fill" style="--v: 100%; --z: var(--failed);"></div></div><span class="oc-bullet__val">$4.06</span></div>
+        <div class="oc-bullet" style="grid-template-columns: 52px 1fr 52px;"><span style="font-family: var(--font-mono); font-size: 12px;">#42</span><div class="oc-bullet__bar" style="--safe: 100%; --caution: 100%;"><div class="oc-bullet__fill" style="--v: 78%;"></div></div><span class="oc-bullet__val">$3.18</span></div>
+        <div class="oc-bullet" style="grid-template-columns: 52px 1fr 52px;"><span style="font-family: var(--font-mono); font-size: 12px;">#47</span><div class="oc-bullet__bar" style="--safe: 100%; --caution: 100%;"><div class="oc-bullet__fill" style="--v: 67%; --z: var(--approval);"></div></div><span class="oc-bullet__val">$2.71</span></div>
+        <div class="oc-bullet" style="grid-template-columns: 52px 1fr 52px;"><span style="font-family: var(--font-mono); font-size: 12px;">#50</span><div class="oc-bullet__bar" style="--safe: 100%; --caution: 100%;"><div class="oc-bullet__fill" style="--v: 47%;"></div></div><span class="oc-bullet__val">$1.92</span></div>
+        <span class="oc-alarm__meta">+ 8 more · $29.33 total</span>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pager states</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="../tokens.css">
+<link rel="stylesheet" href="../components.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#0c162f}
+a{color:#a0b5db}a:hover{color:#e6eeff}
+</style>
+</helmet>
+<div style="width: 1310px; height: 900px; box-sizing: border-box; padding: 20px; display: flex; gap: 40px; align-items: flex-start; background: var(--chassis-bottom); color: var(--text-1); font-family: var(--font-sans);">
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 10px;">
+    <span class="oc-cap">HEALTHY · NOTHING WAITING</span>
+    <div style="height: 844px; border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, var(--chassis-top), var(--chassis-bottom) 30%); box-shadow: var(--shadow-chassis); display: flex; flex-direction: column;">
+      <header style="display: flex; align-items: center; gap: 10px; padding: 18px 16px 14px; border-bottom: 1px solid var(--seam);">
+        <span style="font-size: 17px; font-weight: 600; letter-spacing: -.3px;">Operator console</span>
+        <span class="oc-feed" style="margin-left: auto;"><span class="oc-feed__dot"></span>live</span>
+      </header>
+      <section style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Waiting on you</h2>
+        <div class="oc-well" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;">
+          <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12" fill="none" stroke="var(--running)" stroke-width="1.5"></circle><path d="M8.5 14.5 12.5 18.5 19.5 10" fill="none" stroke="var(--running)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <span style="font-size: 16px; font-weight: 500;">Line running normally</span>
+          <span style="font-size: 13px; color: var(--text-2);">No blocked runs, approvals or failures. 9 merged today.</span>
+        </div>
+      </section>
+      <section style="padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: baseline; gap: 8px;"><h2 style="margin: 0; font-size: 15px; font-weight: 600;">Runs</h2><span class="oc-cap">LAST 24 H · 1 RUNNING</span></div>
+        <div class="oc-panel">
+          <div style="padding: 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--seam);">
+            <span class="oc-status oc-status--running" style="height: auto;"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="currentColor"></circle></svg><span>running</span></span>
+            <span style="font-family: var(--font-mono); font-size: 12px; font-weight: 500;">#43</span>
+            <span style="font-size: 13px; color: var(--text-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Map run profiles to models</span>
+            <button class="oc-stop" style="height: 44px; border-radius: 22px; padding: 0 12px;" aria-label="Hold to stop run 43"><svg class="oc-stop__ring" viewBox="0 0 18 18" aria-hidden="true"><circle class="track" cx="9" cy="9" r="7"></circle><circle class="fill" cx="9" cy="9" r="7" stroke-dasharray="0 44"></circle><rect class="glyph" x="6" y="6" width="6" height="6" rx="1"></rect></svg>Stop</button>
+          </div>
+          <div style="padding: 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--seam);">
+            <span class="oc-status oc-status--merged" style="height: auto;"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.75" fill="none" stroke="currentColor" stroke-width="1.5"></circle><circle cx="5" cy="5" r="1.6" fill="currentColor"></circle></svg><span>merged</span></span>
+            <span style="font-family: var(--font-mono); font-size: 12px; font-weight: 500;">#42</span>
+            <span style="font-size: 13px; color: var(--text-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Snapshot the run profile</span>
+            <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2);">$3.40</span>
+          </div>
+          <div style="padding: 12px; display: flex; align-items: center; gap: 8px;">
+            <span class="oc-status oc-status--merged" style="height: auto;"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.75" fill="none" stroke="currentColor" stroke-width="1.5"></circle><circle cx="5" cy="5" r="1.6" fill="currentColor"></circle></svg><span>merged</span></span>
+            <span style="font-family: var(--font-mono); font-size: 12px; font-weight: 500;">#41</span>
+            <span style="font-size: 13px; color: var(--text-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Run profile labels in bootstrap</span>
+            <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2);">$0.84</span>
+          </div>
+        </div>
+      </section>
+      <section style="padding: 4px 16px; display: flex; flex-direction: column; gap: 10px;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600;">Spend today</h2>
+        <div class="oc-well" style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: baseline; justify-content: space-between;"><span style="font-family: var(--font-mono); font-size: 24px; font-weight: 500; color: var(--running);">$18.60</span><span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2);">of $75 limit</span></div>
+          <div class="oc-bullet__bar" style="--safe: 80%; --caution: 100%; height: 14px;"><div class="oc-bullet__fill" style="--v: 25%;"></div><div class="oc-bullet__limit"></div></div>
+          <div style="display: flex; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--seam);"><span class="oc-cap">RUNWAY</span><span style="font-family: var(--font-mono); font-size: 13px; color: var(--text-2);">within limit today</span></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 10px;">
+    <span class="oc-cap">STOP · HOLDING #42, #50 STOPPING</span>
+    <div style="height: 844px; border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, var(--chassis-top), var(--chassis-bottom) 30%); box-shadow: var(--shadow-chassis); display: flex; flex-direction: column;">
+      <header style="display: flex; align-items: center; gap: 10px; padding: 18px 16px 14px; border-bottom: 1px solid var(--seam);">
+        <span style="font-size: 17px; font-weight: 600; letter-spacing: -.3px;">Operator console</span>
+        <span class="oc-feed" style="margin-left: auto;"><span class="oc-feed__dot"></span>live</span>
+      </header>
+      <section style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: baseline; gap: 8px;"><h2 style="margin: 0; font-size: 15px; font-weight: 600;">Runs</h2><span class="oc-cap">2 RUNNING</span></div>
+        <div class="oc-panel">
+          <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--seam);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="oc-status oc-status--running" style="height: auto;"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="currentColor"></circle></svg><span>running</span></span>
+              <span style="font-family: var(--font-mono); font-size: 12px; font-weight: 500;">#42</span>
+              <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2); margin-left: auto;">18m · $3.18</span>
+            </div>
+            <span style="font-size: 14px;">Snapshot the run profile at dispatch</span>
+            <button class="oc-stop" style="height: 56px; border-radius: 28px; justify-content: center; font-size: 16px;" aria-label="Keep holding to stop run 42"><svg class="oc-stop__ring" viewBox="0 0 18 18" aria-hidden="true" style="width: 24px; height: 24px;"><circle class="track" cx="9" cy="9" r="7"></circle><circle class="fill" cx="9" cy="9" r="7" stroke-dasharray="27.3 44"></circle><rect class="glyph" x="6" y="6" width="6" height="6" rx="1"></rect></svg>Keep holding · 62%</button>
+            <span class="oc-alarm__meta">Release now to cancel. Stop applies agent:stop as @danjamk.</span>
+          </div>
+          <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="oc-status oc-status--running" style="height: auto;"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="currentColor"></circle></svg><span>running</span></span>
+              <span style="font-family: var(--font-mono); font-size: 12px; font-weight: 500;">#50</span>
+              <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-2); margin-left: auto;">6m · $1.92</span>
+            </div>
+            <span style="font-size: 14px;">Settings page copy</span>
+            <button class="oc-stop oc-stop--stopping" style="height: 56px; border-radius: 28px; justify-content: center; font-size: 16px;" disabled><svg class="oc-stop__ring" viewBox="0 0 18 18" aria-hidden="true" style="width: 24px; height: 24px;"><circle class="track" cx="9" cy="9" r="7"></circle><circle class="fill" cx="9" cy="9" r="7" stroke-dasharray="44 44"></circle><rect class="glyph" x="6" y="6" width="6" height="6" rx="1"></rect></svg>Stopping…</button>
+            <div class="oc-well oc-log" style="font-size: 11.5px;">
+              <div class="oc-log__step"><span class="oc-log__time">09:41:02</span><span>agent:stop added by @danjamk</span></div>
+              <div class="oc-log__step"><span class="oc-log__time">09:41:03</span><span class="oc-log__ok">✓</span><span>installation token revoked</span></div>
+              <div class="oc-log__step"><span class="oc-log__time">09:41:03</span><span style="color: var(--text-3);">…</span><span style="color: var(--text-3);">tearing down sandbox</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div style="width: 390px; display: flex; flex-direction: column; gap: 10px;">
+    <span class="oc-cap">FEED LOST · #50 STOPPED · STOP STILL WORKS</span>
+    <div style="height: 844px; border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, var(--chassis-top), var(--chassis-bottom) 30%); box-shadow: var(--shadow-chassis); display: flex; flex-direction: column;">
+      <header style="display: flex; align-items: center; gap: 10px; padding: 18px 16px 14px; border-bottom: 1px solid var(--seam);">
+        <span style="font-size: 17px; font-weight: 600; letter-spacing: -.3px;">Operator console</span>
+        <span class="oc-feed oc-feed--lost" style="margin-left: auto;"><span class="oc-feed__dot"></span>FEED LOST <b>00:14</b></span>
+      </header>
+      <div style="margin: 12px 16px 0; padding: 10px 12px; border-radius: 6px; background: var(--well); box-shadow: inset 0 0 0 1px rgba(255,181,71,.5); font-size: 13px; color: var(--text-2);">Showing the last update from 09:43. Stop still works.</div>
+      <section style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: baseline; gap: 8px;"><h2 style="margin: 0; font-size: 15px; font-weight: 600;">Waiting on you</h2><span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3);">1 · stale</span></div>
+        <article class="oc-alarm oc-alarm--blocked oc-alarm--compact oc-degraded">
+          <div class="oc-alarm__head"><span class="oc-tag">BLOCKED</span><span class="oc-alarm__kind">needs your answer</span><span class="oc-alarm__age">6m</span></div>
+          <p class="oc-alarm__title" style="margin: 0;">#48 Use /health or /api/health?</p>
+          <div class="oc-alarm__actions"><a class="oc-key oc-key--out" href="https://github.com" style="height: 40px;">Reply in GitHub</a></div>
+        </article>
+      </section>
+      <section style="padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: baseline; gap: 8px;"><h2 style="margin: 0; font-size: 15px; font-weight: 600;">Runs</h2><span class="oc-cap">LAST KNOWN</span></div>
+        <div class="oc-panel">
+          <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--seam);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="oc-status oc-status--running" style="height: auto; opacity: .6;"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="currentColor"></circle></svg><span>running?</span></span>
+              <span style="font-family: var(--font-mono); font-size: 12px; font-weight: 500;">#42</span>
+              <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text-3); margin-left: auto; text-decoration: line-through;">20m · $3.44</span>
+            </div>
+            <button class="oc-stop" style="height: 44px; border-radius: 22px; align-self: flex-end;" aria-label="Hold to stop run 42"><svg class="oc-stop__ring" viewBox="0 0 18 18" aria-hidden="true"><circle class="track" cx="9" cy="9" r="7"></circle><circle class="fill" cx="9" cy="9" r="7" stroke-dasharray="0 44"></circle><rect class="glyph" x="6" y="6" width="6" height="6" rx="1"></rect></svg>Hold to stop</button>
+          </div>
+          <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="oc-status oc-status--stopped" style="height: auto;"><svg viewBox="0 0 10 10" aria-hidden="true"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.5"></rect></svg><span>stopped</span></span>
+              <span style="font-family: var(--font-mono); font-size: 12px; font-weight: 500;">#50</span>
+              <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-3); margin-left: auto;">by @danjamk 09:41</span>
+            </div>
+            <div class="oc-well oc-log" style="font-size: 11.5px;">
+              <div class="oc-log__step"><span class="oc-log__time">09:41:02</span><span>agent:stop added by @danjamk</span></div>
+              <div class="oc-log__step"><span class="oc-log__time">09:41:03</span><span class="oc-log__ok">✓</span><span>installation token revoked</span></div>
+              <div class="oc-log__step"><span class="oc-log__time">09:41:05</span><span class="oc-log__ok">✓</span><span>sandbox torn down</span></div>
+            </div>
+            <a href="https://github.com" style="font-family: var(--font-mono); font-size: 12px;">PR comment ↗</a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1310,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

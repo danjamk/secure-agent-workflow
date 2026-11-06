@@ -209,7 +209,7 @@ Most of what a wave teaches is visible while it runs, so the evidence is written
 
 ### Later: operator console
 
-A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. It runs in the factory account with the orchestrator, never in an account a deploy token can reach. It works on a phone: the queue, a run's status and log, stopping a run, and the PRs waiting on Dan all fit a narrow screen, since that is where approvals already happen. Visual design goes through Claude Design.
+A console on Cloudflare, behind Cloudflare Access, after the orchestrator exists. It shows the queue, running sandboxes, live logs, spend against each budget, and the PRs waiting on Dan. Its actions are the ones labels already perform (dispatch, stop), applied through GitHub so the audit trail stays there; approvals link out to GitHub. It holds no credential the orchestrator doesn't already hold. It runs in the factory account with the orchestrator, never in an account a deploy token can reach. It works on a phone: the queue, a run's status and log, stopping a run, and the PRs waiting on Dan all fit a narrow screen, since that is where approvals already happen. Visual design goes through Claude Design. Spec 0002 has the design brief and the phasing, and `console/design/` the design.
 
 ## Coordination and parallelism
 
