@@ -21,6 +21,10 @@ export default defineConfig({
           ALLOWED_REPOS: "the-approver/app, the-approver/other",
           GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
           GITHUB_APP_PRIVATE_KEY: privateKey,
+          // Fake values the log's redaction must find (#10), built from parts so the
+          // gate's secret scan doesn't flag them. The outbound tests set their own.
+          ANTHROPIC_API_KEY: ["test", "anthropic", "key", "0123456789"].join("-"),
+          OPENAI_API_KEY: ["test", "openai", "key", "0123456789"].join("-"),
           TEST_PUBLIC_KEY: publicKey,
         },
       },

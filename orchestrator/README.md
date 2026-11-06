@@ -4,7 +4,7 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets | Logs (#10), the coordinator (#13) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets, a redacted log per run | Serving the logs (#101), the coordinator (#13) |
 
 ## A run
 
@@ -80,6 +80,17 @@ Known limits:
 - A commit message like `Fixes #99` can close another issue when the PR merges. The policy blocks this in PR titles and bodies, and #13 treats a blocker closed by an agent's PR as still open.
 - A registry read can carry data in its path. It reaches only the registry's own logs, and the list is per repo for that reason.
 - Concurrency across runs is the coordinator's (#13).
+
+## Run logs
+
+Each run keeps its own log in its `RunState` Durable Object (#10). On every check, the run reads what the agent's event stream (`events.jsonl`) and the runner script's output (`run.log`) gained since the last check. It redacts that, then stores it. Nothing unredacted is stored.
+
+- **Whole lines only.** A line is stored once its newline arrives, so a credential can't be split across two reads and slip past redaction. A line over 256KB is split at a space, quote or comma, which a credential can't contain. The last line is taken when the run ends, newline or not.
+- **Redaction.** First, the exact value of every credential the Worker holds: the App's private key, whole and line by line, the webhook secret, the model keys, every token minted for the run, and each token in git's Basic auth form. Each is matched as it is and JSON-escaped, since the event stream is JSON. Then, patterns for common token formats: GitHub tokens, `sk-` and `sk-ant-` keys, AWS key ids, JWTs, Basic auth and PEM private keys. The status comment's output goes through the same redaction.
+- **Size.** At most 10 MB per run. After that, the log ends with a line saying it was cut, and the run reads no more.
+- **Retention.** 30 days after the run ends, its Durable Object deletes everything it holds, the log included. It keeps one flag, so the same delivery can't start the run again.
+- **Status comment.** It ends with the number of lines stored, the number of credentials removed, and the date the log will be deleted.
+- **Reading it.** `RunState.readLog()`, over the Durable Object binding only. Nothing serves it over HTTP yet. #101 serves it behind Cloudflare Access, through a console Worker on `workers.dev`, because the factory account has no custom domain.
 
 ## Model spend
 

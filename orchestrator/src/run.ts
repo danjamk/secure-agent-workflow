@@ -13,6 +13,7 @@ import {
 } from "./github";
 import type { Pins, PullRequest, RunScope } from "./outbound/scope";
 import { dollars, limits } from "./outbound/spend";
+import { credentialValues, redact } from "./redact";
 import { CA_PATH, interceptHosts, scrubOutput } from "./sandbox";
 
 /** Installation tokens last an hour. Replace one before a long push could outlive it. */
@@ -28,6 +29,23 @@ export const MAX_RUNS = 3;
 const LOG_PATH = "/workspace/task/run.log";
 const EXIT_PATH = "/workspace/task/run.exit";
 const MAX_READ = 65_536;
+
+/**
+ * What the run's log holds (#10): the agent CLI's event stream, and the runner
+ * script's own output. Read as the run goes, redacted, then stored here.
+ */
+const LOG_SOURCES = [
+  { name: "agent", path: "/workspace/task/events.jsonl" },
+  { name: "runner", path: LOG_PATH },
+] as const;
+const LOG_CHUNK = 256 * 1024;
+/** Chunks read per source on each check, so a busy run doesn't fall behind. */
+const LOG_CHUNKS_PER_CHECK = 4;
+export const MAX_LOG_BYTES = 10 * 1024 * 1024;
+export const LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const NEWLINE = 0x0a;
+/** Where a line too long for one read is split: bytes a credential can't contain. */
+const SPLIT_AT = new Set([0x20, 0x22, 0x2c]);
 
 export type Admission = ({ admitted: true } & Pins) | { admitted: false; reason: string };
 
@@ -88,6 +106,8 @@ export class RunState extends DurableObject<Env> {
    * registers them again once.
    */
   private intercepted = false;
+  /** Every token minted for the run, in memory only, so the log can be redacted of them. */
+  private minted: string[] = [];
 
   /**
    * Starts a run. Returns at once, because GitHub gives up on a webhook after 10
@@ -95,6 +115,8 @@ export class RunState extends DurableObject<Env> {
    */
   async launch(scope: RunScope, runner: string, resume?: ResumeState): Promise<void> {
     if (await this.ctx.storage.get<RunScope>("scope")) return;
+    // A run whose log has been purged keeps this, so its delivery can't start it again.
+    if (await this.ctx.storage.get<boolean>("purged")) return;
     const chosen = RUNNERS[runner];
     if (!chosen) throw new RunError(`no runner named ${runner}`);
     await this.ctx.storage.put({
@@ -194,7 +216,11 @@ export class RunState extends DurableObject<Env> {
 
   override async alarm(): Promise<void> {
     const phase = await this.ctx.storage.get<Phase>("phase");
-    if (!phase || phase === "done") return;
+    if (phase === "done") {
+      await this.purgeIfDue();
+      return;
+    }
+    if (!phase) return;
     let report: RunReport | null;
     try {
       report = await this.step(phase);
@@ -291,6 +317,7 @@ export class RunState extends DurableObject<Env> {
       return null;
     }
 
+    await this.captureLog(container, false);
     const exit = await this.run(container, ["cat", EXIT_PATH]);
     if (exit.exitCode !== 0) return null;
     return runner.report(exit.stdout.trim(), await this.read(container, LOG_PATH), (path) =>
@@ -314,9 +341,86 @@ export class RunState extends DurableObject<Env> {
   }
 
   private async run(container: Container, command: string[]): Promise<{ exitCode: number; stdout: string }> {
+    const { exitCode, bytes } = await this.runBytes(container, command);
+    return { exitCode, stdout: new TextDecoder().decode(bytes) };
+  }
+
+  private async runBytes(container: Container, command: string[]): Promise<{ exitCode: number; bytes: Uint8Array }> {
     const process = await container.exec(command, { stdout: "pipe", stderr: "ignore" });
     const output = await process.output();
-    return { exitCode: output.exitCode, stdout: new TextDecoder().decode(output.stdout) };
+    return { exitCode: output.exitCode, bytes: new Uint8Array(output.stdout) };
+  }
+
+  /** The run's stored log, oldest line first. Already redacted. */
+  async readLog(): Promise<string> {
+    if (!(await this.ctx.storage.get<number>("logLines"))) return "";
+    return this.ctx.storage.sql
+      .exec<{ text: string }>("SELECT text FROM log ORDER BY seq")
+      .toArray()
+      .map((row) => row.text)
+      .join("");
+  }
+
+  /**
+   * Reads what each log source gained since the last check, redacts it and stores it.
+   * Only whole lines are taken, so a credential can't be split across two reads and
+   * slip past redaction. `final` takes a last line with no newline too.
+   */
+  private async captureLog(container: Container, final: boolean): Promise<void> {
+    if (await this.ctx.storage.get<boolean>("logFull")) return;
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS log (seq INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, text TEXT NOT NULL)");
+    const secrets = credentialValues(this.env, this.minted);
+    for (const source of LOG_SOURCES) {
+      for (let i = 0; i < LOG_CHUNKS_PER_CHECK; i += 1) {
+        const key = `logOffset:${source.name}`;
+        const offset = (await this.ctx.storage.get<number>(key)) ?? 0;
+        const read = await this.runBytes(container, [
+          "/bin/sh",
+          "-c",
+          'tail -c "+$1" "$2" 2>/dev/null | head -c "$3"',
+          "read-log",
+          String(offset + 1),
+          source.path,
+          String(LOG_CHUNK),
+        ]);
+        if (read.exitCode !== 0 || read.bytes.length === 0) break;
+        const take = takeLines(read.bytes, read.bytes.length === LOG_CHUNK, final);
+        if (take === 0) break;
+        const { text, count } = redact(new TextDecoder().decode(read.bytes.subarray(0, take)), secrets);
+        if (!(await this.storeLog(source.name, text, count))) return;
+        await this.ctx.storage.put(key, offset + take);
+        // A short read means the source has nothing more for now.
+        if (read.bytes.length < LOG_CHUNK) break;
+      }
+    }
+  }
+
+  /** False once the log is full, after storing a line that says so. */
+  private async storeLog(source: string, text: string, removed: number): Promise<boolean> {
+    const stored = (await this.ctx.storage.get<number>("logBytes")) ?? 0;
+    const size = new TextEncoder().encode(text).byteLength;
+    const full = stored + size > MAX_LOG_BYTES;
+    const kept = full ? `[log cut at ${MAX_LOG_BYTES / 1024 / 1024} MB]\n` : text;
+    this.ctx.storage.sql.exec("INSERT INTO log (source, text) VALUES (?, ?)", source, kept);
+    await this.ctx.storage.put({
+      logBytes: stored + (full ? 0 : size),
+      logLines: ((await this.ctx.storage.get<number>("logLines")) ?? 0) + (kept.match(/\n/g)?.length ?? 0),
+      logRemoved: ((await this.ctx.storage.get<number>("logRemoved")) ?? 0) + (full ? 0 : removed),
+    });
+    if (full) await this.ctx.storage.put("logFull", true);
+    return !full;
+  }
+
+  /** Deletes the run's state once its log has been kept for LOG_RETENTION_MS. */
+  private async purgeIfDue(): Promise<void> {
+    const purgeAt = await this.ctx.storage.get<number>("purgeAt");
+    if (purgeAt === undefined) return;
+    if (Date.now() < purgeAt) {
+      await this.ctx.storage.setAlarm(purgeAt);
+      return;
+    }
+    await this.ctx.storage.deleteAll();
+    await this.ctx.storage.put("purged", true);
   }
 
   /** Passed as an argument, so nothing in the content is read by a shell. */
@@ -379,6 +483,12 @@ export class RunState extends DurableObject<Env> {
     await this.ctx.storage.deleteAlarm();
     try {
       const container = this.container();
+      if (container?.running) await this.captureLog(container, true);
+    } catch (error) {
+      console.error(`Reading a run's last log lines failed: ${(error as Error).name}`);
+    }
+    try {
+      const container = this.container();
       if (container?.running) await container.destroy();
     } catch (error) {
       console.error(`Destroying a run's container failed: ${(error as Error).name}`);
@@ -427,6 +537,16 @@ export class RunState extends DurableObject<Env> {
     } catch (error) {
       console.error(`Reading a run's model use failed: ${(error as Error).name}`);
     }
+    const purgeAt = Date.now() + LOG_RETENTION_MS;
+    const lines = (await this.ctx.storage.get<number>("logLines")) ?? 0;
+    if (lines > 0) {
+      const removed = (await this.ctx.storage.get<number>("logRemoved")) ?? 0;
+      const n = (value: number) => value.toLocaleString("en-US");
+      notes.push(
+        `Log: ${n(lines)} ${lines === 1 ? "line" : "lines"} stored, ${n(removed)} ${removed === 1 ? "credential" : "credentials"} removed, ` +
+          `kept until ${new Date(purgeAt).toISOString().slice(0, 10)}.`,
+      );
+    }
     try {
       // With no branch, the agent blocked before pushing, and a resume starts from
       // the default branch with the reply.
@@ -468,6 +588,8 @@ export class RunState extends DurableObject<Env> {
       console.error(`Releasing a run's issue failed: ${(error as Error).name}`);
     }
     await this.stop();
+    await this.ctx.storage.put("purgeAt", purgeAt);
+    await this.ctx.storage.setAlarm(purgeAt);
   }
 
   /** A token for the Worker's own GitHub writes. A stopped run mints one just for its report. */
@@ -488,7 +610,7 @@ export class RunState extends DurableObject<Env> {
     const token = await this.reportingToken(scope);
     try {
       const pr = await this.ctx.storage.get<Pins["pr"]>("pr");
-      const output = scrubOutput(report.output, [token.value]);
+      const output = scrubOutput(report.output, credentialValues(this.env, [...this.minted, token.value]));
       const body = [
         `${await this.describe(scope)}: ${report.summary}`,
         pr ? `\nPR: #${pr.number}` : "",
@@ -527,6 +649,23 @@ export class RunState extends DurableObject<Env> {
       throw new Error("The run is stopped");
     }
     this.token = token;
+    this.minted.push(token.value);
     return token;
   }
+}
+
+/**
+ * How many bytes of a read to store now: through the last newline. A full read with
+ * no newline is one long line, split where a credential can't be. A partial last
+ * line waits for the next read, unless it's the final one.
+ */
+export function takeLines(bytes: Uint8Array, full: boolean, final: boolean): number {
+  const newline = bytes.lastIndexOf(NEWLINE);
+  if (newline !== -1) return newline + 1;
+  if (final) return bytes.length;
+  if (!full) return 0;
+  for (let i = bytes.length - 1; i > 0; i -= 1) {
+    if (SPLIT_AT.has(bytes[i]!)) return i + 1;
+  }
+  return bytes.length;
 }
