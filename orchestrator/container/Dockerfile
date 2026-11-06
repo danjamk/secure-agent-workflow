@@ -6,7 +6,7 @@
 FROM node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates curl git jq \
+    && apt-get install --yes --no-install-recommends ca-certificates curl git jq make \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.309 \

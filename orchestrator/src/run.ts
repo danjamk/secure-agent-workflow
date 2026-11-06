@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { RUNNERS, type RunContext, type Runner, type RunReport } from "./agents";
-import { commentOnIssue, editComment, getIssue, GitHubError, mintRunToken, revokeToken, type RunToken } from "./github";
+import { commentOnIssue, editComment, findComment, getIssue, GitHubError, mintRunToken, revokeToken, type RunToken } from "./github";
 import type { Pins, RunScope } from "./outbound/scope";
 import { CA_PATH, interceptHosts, scrubOutput } from "./sandbox";
 
@@ -312,7 +312,11 @@ export class RunState extends DurableObject<Env> {
       pr ? `\nPR: #${pr.number}` : "",
       output ? `\n\`\`\`\n${output}\n\`\`\`` : "",
     ].join("\n");
-    const id = await this.ctx.storage.get<number>("statusComment");
+    // If posting the start comment failed after GitHub made it, find it by the run id
+    // so the run still ends with one comment.
+    const id =
+      (await this.ctx.storage.get<number>("statusComment")) ??
+      (await findComment(token, scope.repo, scope.issue, `Run \`${scope.runId}\``));
     if (id === undefined) {
       await commentOnIssue(token, scope.repo, scope.issue, body);
     } else {

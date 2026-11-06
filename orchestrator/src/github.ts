@@ -1,7 +1,11 @@
 const API = "https://api.github.com";
 
-/** GitHub gives up on a webhook after 10 seconds, and a release makes three calls. */
-const CALL_TIMEOUT_MS = 3000;
+/**
+ * Runs make these calls from their alarm, not from the webhook, so they can wait
+ * longer. A 3-second limit, from when the webhook made them, likely lost a status
+ * comment's id in #9's first run.
+ */
+const CALL_TIMEOUT_MS = 15_000;
 
 /** Never includes a response body or a credential, because it goes to the logs. */
 export class GitHubError extends Error {}
@@ -114,6 +118,22 @@ export async function editComment(token: string, repo: string, id: number, body:
   if (!response.ok) {
     throw new GitHubError(`Editing a comment returned ${response.status}`);
   }
+}
+
+/** The id of the first comment on the issue that contains `marker`, if any. */
+export async function findComment(
+  token: string,
+  repo: string,
+  issue: number,
+  marker: string,
+): Promise<number | undefined> {
+  const response = await call(`/repos/${repo}/issues/${issue}/comments?per_page=100`, "GET", token);
+  if (!response.ok) {
+    throw new GitHubError(`Listing comments returned ${response.status}`);
+  }
+  const comments = (await response.json()) as { id?: unknown; body?: unknown }[];
+  const found = comments.find((comment) => typeof comment.body === "string" && comment.body.includes(marker));
+  return typeof found?.id === "number" ? found.id : undefined;
 }
 
 export async function getIssue(

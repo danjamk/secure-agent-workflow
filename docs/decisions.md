@@ -433,3 +433,29 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** Claude
 - **Approved by:** None
 - **Evidence:** `orchestrator/wrangler.jsonc`, `orchestrator/src/agents/claude-code.ts`
+
+### 2026-11-06 Add make to the agent image
+
+- **Decision:** The image installs `make`.
+- **Why:** The agent instructions say to run `make check`, and the first agent run couldn't. The agent reported it in its run notes.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** agent-testbed PR #39, run notes
+
+### 2026-11-06 Give GitHub calls from a run 15 seconds, and find a lost status comment
+
+- **Decision:** The limit on the orchestrator's GitHub calls goes from 3 to 15 seconds. A run that ends without its start comment's id finds that comment by the run id and edits it.
+- **Why:** The first agent run posted its result as a second comment. The 3-second limit dates from when the webhook made these calls under GitHub's 10-second limit, and runs now make them from an alarm. The cause isn't confirmed, so the run also recovers on its own.
+- **Rejected:** Posting a second comment, which is what happened.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** agent-testbed #38, `orchestrator/src/github.ts`
+
+### 2026-11-06 Close #9 on one end-to-end run
+
+- **Decision:** #9 (agent CLI in a sandbox) closes after one end-to-end run on the testbed, with the two problems it found fixed in the same PR.
+- **Why:** The run met the issue's acceptance test: a released issue became a tier 1 PR that merged on green. The fixes are small and covered by tests. The next real issue will exercise them.
+- **Rejected:** A second run before closing.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/README.md`, Live results: the first agent run
