@@ -13,6 +13,9 @@
 #   ORCHESTRATOR_URL         optional; the Worker's URL, for /health
 #   EGRESS_HOSTS             optional; JSON, each repo's package registries.
 #                            {"owner/name": ["registry.npmjs.org"]}. Default: none
+#   ACCESS_TEAM, ACCESS_AUD, OPERATOR_EMAIL
+#                            optional; Cloudflare Access for the /api routes. Unset
+#                            refuses every /api request
 #
 # The App id comes from AGENT_APP_ID, or from the Keychain item create-app.py stored.
 # The approver, repos and App id are passed with --var rather than committed, because
@@ -85,6 +88,9 @@ pnpm exec wrangler deploy \
     --var "GITHUB_APP_ID:$APP_ID" \
     --var "APPROVER_LOGIN:$APPROVER_LOGIN" \
     --var "ALLOWED_REPOS:$ALLOWED_REPOS" \
-    --var "EGRESS_HOSTS:${EGRESS_HOSTS:-"{}"}"
+    --var "EGRESS_HOSTS:${EGRESS_HOSTS:-"{}"}" \
+    ${ACCESS_TEAM:+--var "ACCESS_TEAM:$ACCESS_TEAM"} \
+    ${ACCESS_AUD:+--var "ACCESS_AUD:$ACCESS_AUD"} \
+    ${OPERATOR_EMAIL:+--var "OPERATOR_EMAIL:$OPERATOR_EMAIL"}
 
 check_health

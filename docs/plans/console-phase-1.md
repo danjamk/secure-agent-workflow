@@ -27,6 +27,8 @@ They have no `run:*` label, since no agent runs them. Otherwise they follow the 
 
 ### H-1: Add the console to the workspace, the gate and the factory deploy
 
+> Revised 2026-11-06: this is #105, on `workers.dev` behind Worker-level Access with a service binding to the orchestrator, since the factory account has no custom domain (ADR-010, revised).
+
 - **Area:** `area:console`
 - **Expected tier:** 3, because it changes `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `Makefile` and `.github/workflows/`
 - **Author:** the operator
@@ -55,6 +57,8 @@ make check
 **References:** ADR-010, `orchestrator/Makefile`, `.github/workflows/orchestrator-deploy.yml`, `.github/self-tier-map.yml`
 
 ### H-2: Verify the Access identity in the orchestrator and serve the waiting route
+
+> Revised 2026-11-06: the Access verifier was built in #101, with the log route. This issue keeps the waiting route. There's no Workers route: the console forwards `/api/*` over its binding (#105).
 
 - **Area:** `area:orchestrator`
 - **Expected tier:** 3, because it changes `orchestrator/**`
