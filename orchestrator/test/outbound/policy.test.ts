@@ -361,15 +361,33 @@ describe("GraphQL", () => {
 describe("model calls", () => {
   const anthropic = MODEL_HOSTS["api.anthropic.com"]!;
   const openai = MODEL_HOSTS["api.openai.com"]!;
-  const models = ["allowed-model"];
+  const models = ["allowed-model", "unpriced-model"];
+  const price = { input: 1, output: 2, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 };
+  const prices = { "allowed-model": price };
   const decide = (body: unknown, method = "POST", path = "/v1/messages", search = "") =>
-    decideModel(anthropic, method, path, search, body, models);
+    decideModel(anthropic, method, path, search, body, models, prices, 1000);
   const request = { model: "allowed-model", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] };
 
   it("allows an allowed model on an allowed endpoint", () => {
     expect(decide(request).allow).toBe(true);
     expect(decide(request, "POST", "/v1/messages", "?beta=true").allow).toBe(true);
-    expect(decideModel(openai, "POST", "/v1/responses", "", request, models).allow).toBe(true);
+  });
+
+  it("returns what to reserve against for a charged call, and nothing for a free one", () => {
+    expect(decide(request)).toMatchObject({ allow: true, metering: { price, maxTokens: 10 } });
+    const counted = decide({ model: "allowed-model", messages: [] }, "POST", "/v1/messages/count_tokens");
+    expect(counted).toMatchObject({ allow: true, metering: null });
+  });
+
+  it("allows the standard settings of the fields that change the price", () => {
+    expect(decide({ ...request, speed: "standard", inference_geo: "global", service_tier: "standard_only" }).allow).toBe(true);
+  });
+
+  it("denies a vendor whose usage the handler can't read", () => {
+    expect(decideModel(openai, "POST", "/v1/responses", "", request, models, prices, 1000)).toEqual({
+      allow: false,
+      reason: "model: this vendor's calls aren't metered",
+    });
   });
 
   it("allows tools the client runs", () => {
@@ -391,6 +409,13 @@ describe("model calls", () => {
     ["an OpenAI image URL", { ...request, input: [{ role: "user", content: [{ type: "input_image", image_url: "https://evil.example/x.png" }] }] }],
     ["an OpenAI file URL", { ...request, input: [{ role: "user", content: [{ type: "input_file", file_url: "https://evil.example/x.pdf" }] }] }],
     ["a body that isn't an object", [request]],
+    ["an allowed model with no price", { ...request, model: "unpriced-model" }],
+    ["no max_tokens", { model: "allowed-model", messages: [] }],
+    ["a max_tokens over the ceiling", { ...request, max_tokens: 1001 }],
+    ["a max_tokens that isn't a whole number", { ...request, max_tokens: 10.5 }],
+    ["fast mode", { ...request, speed: "fast" }],
+    ["a pinned region", { ...request, inference_geo: "us" }],
+    ["the priority tier", { ...request, service_tier: "auto" }],
   ])("denies %s", (_name, body) => {
     expect(decide(body).allow).toBe(false);
   });
@@ -409,6 +434,6 @@ describe("model calls", () => {
   });
 
   it("allows nothing when no models are configured", () => {
-    expect(decideModel(anthropic, "POST", "/v1/messages", "", request, []).allow).toBe(false);
+    expect(decideModel(anthropic, "POST", "/v1/messages", "", request, [], prices, 1000).allow).toBe(false);
   });
 });

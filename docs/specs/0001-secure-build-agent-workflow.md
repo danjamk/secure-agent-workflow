@@ -182,7 +182,7 @@ The draft PR is the system of record. Slack is the notification and reply channe
 
 | Layer | Limit | Enforced by |
 | --- | --- | --- |
-| Per run | Wall-clock and token budget | The outbound handler counts tokens on every model response and refuses model calls once the budget is spent; the orchestrator ends the run at the wall-clock limit. Either is handled as blocked |
+| Per run | Wall-clock limit, and a dollar budget per run, per release of an issue and per month | The outbound handler reserves each model call's worst-case cost before sending it, refuses a call the budgets can't cover, and settles against the usage in the response; the orchestrator ends the run at the wall-clock limit. Either is handled as blocked (`orchestrator/README.md`, Model spend) |
 | Across runs | Concurrency cap and daily spend budget | The coordinator. Hitting the budget pauses the queue and notifies Dan |
 | Outside this system | Spend limits at each model provider; Cloudflare billing alerts | The provider. The backstop if the orchestrator has a bug |
 

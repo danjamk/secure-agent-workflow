@@ -372,7 +372,12 @@ describe("model hosts", () => {
       body: JSON.stringify({ model: "allowed-model", max_tokens: 1 }),
       headers: { "anthropic-version": "2023-06-01", ...headers },
     });
-  const configured = testEnv({ ALLOWED_MODELS: "allowed-model", ANTHROPIC_API_KEY: "model-key", OPENAI_API_KEY: "openai-key" });
+  const configured = testEnv({
+    ALLOWED_MODELS: "allowed-model",
+    MODEL_PRICES: JSON.stringify({ "allowed-model": { input: 1, output: 1, cacheWrite5m: 1, cacheWrite1h: 1, cacheRead: 1 } }),
+    ANTHROPIC_API_KEY: "model-key",
+    OPENAI_API_KEY: "openai-key",
+  });
 
   it("adds the key, and drops the one the sandbox sent", async () => {
     const { calls } = stubInternet();
@@ -382,14 +387,15 @@ describe("model hosts", () => {
     expect(calls[0]?.headers.get("anthropic-version")).toBe("2023-06-01");
   });
 
-  it("sends OpenAI's key as a bearer token", async () => {
+  it("refuses OpenAI, whose usage the handler can't read yet (#92)", async () => {
     const { calls } = stubInternet();
     const call = new Request("https://api.openai.com/v1/responses", {
       method: "POST",
-      body: JSON.stringify({ model: "allowed-model" }),
+      body: JSON.stringify({ model: "allowed-model", max_tokens: 1 }),
     });
-    await handleOutbound(call, await startRun(), configured);
-    expect(calls[0]?.headers.get("authorization")).toBe("Bearer openai-key");
+    const response = await handleOutbound(call, await startRun(), configured);
+    expect(response.status).toBe(403);
+    expect(calls).toHaveLength(0);
   });
 
   it("fails closed when the key isn't set", async () => {

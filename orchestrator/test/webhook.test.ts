@@ -169,6 +169,23 @@ describe("a release", () => {
     await log.releaseIssue("1234#7", "active-run");
   });
 
+  it("starts the issue's model budget over (#92)", async () => {
+    const calls = stubGitHub();
+    const log = env.DELIVERY_LOG.getByName("global");
+    const limits = { run: 1e12, issue: 8e6, month: 1e12 };
+    const spent = crypto.randomUUID();
+    await log.reserve({ id: spent, run: "earlier", issue: "1234#7", amount: 8e6, limits });
+    await log.settle(spent, { tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 }, cost: 8e6 });
+    const before = await log.reserve({ id: crypto.randomUUID(), run: "earlier", issue: "1234#7", amount: 1, limits });
+    expect(before).toMatchObject({ reserved: false, budget: "issue" });
+
+    expect((await deliver(release())).status).toBe(202);
+    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+    const after = crypto.randomUUID();
+    expect(await log.reserve({ id: after, run: "later", issue: "1234#7", amount: 1, limits })).toEqual({ reserved: true });
+    await log.settle(after, null);
+  });
+
   it("handles one delivery id once", async () => {
     const calls = stubGitHub();
     const delivery = crypto.randomUUID();
