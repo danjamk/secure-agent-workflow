@@ -338,7 +338,7 @@ Added in build order step 4: the planning agent approves or merges a PR.
 
 ## Open decisions
 
-- [ ] Which agent CLIs to support first (suggest Claude Code and Codex).
+- [x] Which agent CLIs to support first: Claude Code (#9). Codex or another CLI is one more runner module.
 - [ ] Builder and reviewer model families: the concrete models behind each run profile class (ADR-008).
 - [ ] AWS account to host the OIDC broker (one account for v1; see Credentials).
 - [ ] Planning agent identity (build order step 4).

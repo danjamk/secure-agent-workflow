@@ -12,16 +12,18 @@ The limits below are enforced outside you. Working around one fails, and attempt
 - GitHub writes are limited to your own branch, issue and PR. You get one PR per run.
 - You can't change `.github/workflows/`, repository settings or rulesets.
 - The merge gate decides whether your PR merges. You can't approve or merge.
+- Make GitHub writes with the `agent-gh` command, which `agent-gh help` describes. The `gh` CLI isn't installed: it makes these writes through GraphQL calls the outbound policy refuses. Plain `git` works for clones and pushes.
+- Web search and web fetch aren't available.
 
 ## Workflow
 
 1. **Read.** Read the issue, everything in its References, and the repo's own instructions (`CLAUDE.md`, `AGENTS.md` or `README.md`).
 2. **Branch.** Work on `agent/<issue-number>-<slug>`, for example `agent/42-coordinator-queue`.
-3. **Open a draft PR on your first push.** Use the description format below. Keep the checklist and the current-step line up to date as you work.
+3. **Open a draft PR on your first push** with `agent-gh pr-create`. Use the description format below. Keep the checklist and the current-step line up to date as you work, with `agent-gh pr-edit`.
 4. **Build.** Small commits, pushed often. Add or update tests for what you change.
 5. **Check.** Run the issue's acceptance commands, `make check` at least. Fix anything that fails. Don't mark the PR ready while a check fails.
 6. **Write run notes and log decisions.** Fill in the PR's `## Run notes` section (below). Add an entry to `docs/decisions.md` for each choice you made that someone might later wonder about, including small ones and any recommendation you rejected (`standards/decision-log.md`). Create the file if it's missing. Write `Approved by: None`, because you can't approve your own decision. You don't need approval to decide, so don't stop to ask for it.
-7. **Finish.** Mark the PR ready for review and turn on auto-merge (squash). Then stop.
+7. **Finish.** Mark the PR ready for review and turn on auto-merge (squash), with `agent-gh pr-ready` and `agent-gh auto-merge`. Then stop.
 
 ## Pull request description
 
@@ -66,11 +68,11 @@ Resumed runs add to the existing notes instead of replacing them.
 If you need a decision, information you can't find, or a change outside your scope:
 
 1. Commit and push your work in progress.
-2. Comment on the PR with a handoff note:
+2. Comment on the PR with a handoff note (`agent-gh comment --pr`):
    - **State:** what is done and what isn't.
    - **Question:** the one thing you need answered, with your recommended answer.
    - **Next steps:** what you'll do once it's answered.
-3. Add the `agent:blocked` label to your issue.
+3. Add the `agent:blocked` label to your issue (`agent-gh blocked`).
 4. Stop. A new run picks up from your branch and your note after the approver replies.
 
 ## Never

@@ -32,7 +32,7 @@
 #             from the production branch; the old dev environment is retired. On
 #             GATE_REPO, also factory from the default branch, with the owner as
 #             required reviewer: it deploys the orchestrator (#75)
-#   labels    agent:ready, agent:stop, agent:blocked, credentials
+#   labels    agent:ready, agent:stop, agent:blocked, agent:probe, credentials
 #   files     files/ templates (CODEOWNERS, the gate callers, the daily
 #             credential check and the Cloudflare deploy, pinned to a
 #             commit of GATE_REPO), written through one PR from the
@@ -444,6 +444,7 @@ labels() {
     label agent:ready   0e8a16 "Released to a build agent"
     label agent:stop    b60205 "Ends the agent run on this issue"
     label agent:blocked fbca04 "Agent is waiting for a reply from the approver"
+    label agent:probe   5319e7 "With agent:ready, runs the outbound probe instead of the agent"
     # The daily credential check files its one issue under this (#55).
     label credentials   d93f0b "A stored credential is failing, expiring or due for rotation"
 }

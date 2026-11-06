@@ -335,3 +335,101 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** Claude
 - **Approved by:** None
 - **Evidence:** `orchestrator/README.md`, Live results: the outbound probe
+
+### 2026-11-05 Use Claude Code as the first agent CLI
+
+- **Decision:** The agent runner is Claude Code, pinned at 2.1.309. Other CLIs follow as more runner modules.
+- **Why:** It was the recommended first CLI in spec 0001, and the approver's own sessions use it.
+- **Rejected:** Codex first, or two CLIs at once.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "use Claude Code as the agent" in the working session
+- **Evidence:** #9 (agent CLI in a sandbox), PR for #9
+
+### 2026-11-05 Post one status comment per run
+
+- **Decision:** The orchestrator posts a comment when a run starts and edits it when the run ends. There's no running label and no board move.
+- **Why:** The issue showed nothing between release and the agent's first push. ADR-005 keeps run state out of labels, and the App can't write to a user-owned project.
+- **Rejected:** An `agent:running` label, and a new comment for each event.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "Add it" in the working session
+- **Evidence:** [#9 comment](https://github.com/danjamk/secure-agent-workflow/issues/9#issuecomment-6672945291)
+
+### 2026-11-05 Keep the model key as a Worker secret, set by hand
+
+- **Decision:** `ANTHROPIC_API_KEY` is a secret on the Worker, set in the Cloudflare dashboard. It isn't in the AWS broker, and the CI deploy never holds it.
+- **Why:** It's a runtime secret, like the App key, and those stay out of the deploy job. The container never gets it: the outbound handler adds it.
+- **Rejected:** The broker, which would put the key in the deploy job's environment. A `wrangler secret put` command, which needs a one-day Cloudflare token for a step the dashboard does directly.
+- **Decided by:** Claude proposed a hand step; danjamk chose the dashboard
+- **Approved by:** danjamk, set the secret in the dashboard
+- **Evidence:** `orchestrator/README.md`, Credentials
+
+### 2026-11-05 Use an API key, not Anthropic's identity federation
+
+- **Decision:** The Worker uses a static Anthropic API key.
+- **Why:** Identity federation takes tokens from GCP, AWS, Azure or GitHub Actions, and a Cloudflare Worker has none of those. Signing our own tokens would make the signing key the static secret instead. Revisit if Cloudflare gains workload identity or Anthropic accepts other issuers.
+- **Rejected:** Identity federation.
+- **Decided by:** Claude
+- **Approved by:** danjamk, by creating the key
+- **Evidence:** The Anthropic Console's key dialog, 2026-11-05
+
+### 2026-11-05 Cap the key's spend and expire it after 90 days
+
+- **Decision:** The organization's monthly spend limit is $50 with an alert at $20. Claude recommended a 90-day expiry for the key.
+- **Why:** $50 covers at least 10 runs at the $5 per-run estimate during the pilot. 90 days makes the hand rotation rare, while a key that never expires can leak unnoticed. Nothing reminds the operator before it expires.
+- **Rejected:** No expiry, and 30 days.
+- **Decided by:** danjamk set the limits; Claude recommended the expiry
+- **Approved by:** danjamk set the spend limit. Which expiry was set isn't recorded
+- **Evidence:** The Anthropic Console
+
+### 2026-11-05 Run Claude Code headless with prompts off and vendor-run tools off
+
+- **Decision:** Claude Code runs with `-p`, stream-json output to a file, `--dangerously-skip-permissions` as a non-root `agent` user, 200 turns, a $5 estimate, and web search and web fetch turned off. Telemetry, error reports, auto-update and feedback are off. The main model is `claude-sonnet-5-5`, and background work uses `claude-haiku-5-5`.
+- **Why:** The container is the control, so prompts would only stall the run. Claude Code refuses to skip prompts as root. Each turned-off feature would try a host the container can't reach.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved" in the working session
+- **Evidence:** `orchestrator/src/agents/claude-code.ts`, `orchestrator/container/run-agent.sh`
+
+### 2026-11-05 Give the agent an agent-gh helper instead of gh
+
+- **Decision:** The image has an `agent-gh` command for the agent's GitHub writes, made as plain REST and GraphQL calls, and no `gh` CLI.
+- **Why:** `gh` makes PR and comment writes through GraphQL mutations the policy refuses. The helper uses only calls the policy allows.
+- **Rejected:** Opening those `gh` mutations in the policy.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved" in the working session
+- **Evidence:** `orchestrator/container/agent-gh`
+
+### 2026-11-05 Keep the probe as a second runner, picked by agent:probe
+
+- **Decision:** CLI-specific code lives in `src/agents/`. The probe stays as a second runner, picked when an issue also has `agent:probe`, which bootstrap now creates.
+- **Why:** Two runners show that adding a CLI touches one module. Keeping the probe lets anyone recheck the policy after a change.
+- **Rejected:** Dropping the probe now that the agent runs.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "approved" in the working session
+- **Evidence:** `orchestrator/src/agents/`
+
+### 2026-11-05 Hold one run per issue in the delivery log
+
+- **Decision:** A table in `DeliveryLog` holds each issue's active run. A second release while one is active is ignored. A claim older than two hours counts as stale and is replaced.
+- **Why:** That object is already the strongly consistent store for releases. The two-hour limit covers a run that died without reaching teardown.
+- **Rejected:** Naming the run's Durable Object by issue, which would carry one run's state into the next.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/src/deliveries.ts`
+
+### 2026-11-05 Pass files into the container as arguments
+
+- **Decision:** The Worker writes each file by passing its content as a base64 argument to `sh`, which decodes it to the path. The issue body is cut at 60,000 characters.
+- **Why:** Nothing in the content reaches a shell as code. An argument is capped at 128 KiB on Linux, and the cut keeps the issue under it.
+- **Rejected:** Streaming the content on stdin, which I couldn't test without the platform.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `writeFile` in `orchestrator/src/run.ts`
+
+### 2026-11-05 Bundle the agent instructions into the Worker
+
+- **Decision:** A wrangler Text rule bundles `standards/agent-instructions.md` into the Worker, which writes it into each container. That reaches across folders, so it's named in the orchestrator's contract.
+- **Why:** The standards README says the orchestrator puts the instructions in the sandbox. Bundling means a run always gets the instructions from the deployed commit.
+- **Rejected:** Copying them into the image, which Docker can't do from outside the `container/` build folder. Fetching them at run time, which adds a call that can fail.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/wrangler.jsonc`, `orchestrator/src/agents/claude-code.ts`

@@ -1,0 +1,131 @@
+#!/bin/bash
+# agent-gh — The GitHub writes a build agent needs, as plain API calls (#9).
+#
+# The gh CLI makes these writes through GraphQL calls that the outbound policy
+# refuses, so it isn't installed. Nothing here holds a credential: the Worker adds
+# the token outside the container, and the policy decides what's allowed.
+#
+# Takes REPO, ISSUE and DEFAULT_BRANCH from the environment.
+
+set -u
+API="https://api.github.com"
+
+usage() {
+    cat <<'EOF'
+agent-gh: GitHub writes for this run. The policy allows only these.
+
+  agent-gh pr-create --title TITLE --body-file FILE   open your draft PR from the current branch
+  agent-gh pr-edit [--title TITLE] [--body-file FILE] update your PR's title or description
+  agent-gh pr-ready                                   mark your PR ready for review
+  agent-gh auto-merge                                 turn on auto-merge (squash) for your PR
+  agent-gh comment --body-file FILE [--pr]            comment on your issue, or on your PR with --pr
+  agent-gh blocked                                    add agent:blocked to your issue
+  agent-gh get PATH                                   read the API, such as /repos/OWNER/NAME/issues/1
+  agent-gh help                                       show this
+
+Reads are limited to this run's repo. Writes are limited to your branch, your issue
+and your PR, and only one PR per run. A refused call prints the policy's reason.
+EOF
+}
+
+fail() { echo "agent-gh: $*" >&2; exit 1; }
+
+# request METHOD URL [JSON]: prints the body; fails on a status of 300 or more.
+request() {
+    local args=(-sS -o /tmp/agent-gh.body -w '%{http_code}' -X "$1" -H 'Accept: application/vnd.github+json')
+    [ $# -ge 3 ] && args+=(-H 'Content-Type: application/json' --data "$3")
+    local status
+    status=$(curl "${args[@]}" "$2") || fail "the request to $2 failed"
+    if [ "$status" -ge 300 ]; then
+        cat /tmp/agent-gh.body >&2
+        echo >&2
+        fail "$1 $2 returned $status"
+    fi
+    cat /tmp/agent-gh.body
+}
+
+branch() { git rev-parse --abbrev-ref HEAD 2>/dev/null || fail "not in the repo checkout"; }
+
+# The open PR from the current branch, as JSON.
+own_pr() {
+    local owner=${REPO%/*}
+    request GET "$API/repos/$REPO/pulls?head=$owner:$(branch)&state=open" | jq -e '.[0]' \
+        || fail "no open PR from $(branch); open one with pr-create"
+}
+
+graphql() { request POST "$API/graphql" "$(jq -cn --arg q "$1" '{query: $q}')"; }
+
+flag() {
+    # flag NAME ARGS...: prints the value after --NAME, if given.
+    local name=$1
+    shift
+    while [ $# -gt 0 ]; do
+        [ "$1" = "--$name" ] && { printf '%s' "${2:-}"; return 0; }
+        shift
+    done
+    return 1
+}
+
+read_body() {
+    local file
+    file=$(flag body-file "$@") || return 1
+    [ -f "$file" ] || fail "no file $file"
+    cat "$file"
+}
+
+command=${1:-help}
+[ $# -gt 0 ] && shift
+
+case "$command" in
+    pr-create)
+        title=$(flag title "$@") || fail "pr-create needs --title"
+        body=$(read_body "$@") || fail "pr-create needs --body-file"
+        payload=$(jq -cn --arg t "$title" --arg b "$body" --arg h "$(branch)" --arg base "$DEFAULT_BRANCH" \
+            '{title: $t, body: $b, head: $h, base: $base, draft: true}')
+        request POST "$API/repos/$REPO/pulls" "$payload" | jq -r '"Opened PR #\(.number): \(.html_url)"'
+        ;;
+    pr-edit)
+        number=$(own_pr | jq -r .number) || exit 1
+        payload=$(jq -cn \
+            --arg t "$(flag title "$@" || true)" \
+            --arg b "$(read_body "$@" || true)" \
+            '{} + (if $t != "" then {title: $t} else {} end) + (if $b != "" then {body: $b} else {} end)')
+        [ "$payload" = "{}" ] && fail "pr-edit needs --title or --body-file"
+        request PATCH "$API/repos/$REPO/pulls/$number" "$payload" | jq -r '"Updated PR #\(.number)"'
+        ;;
+    pr-ready)
+        node=$(own_pr | jq -r .node_id) || exit 1
+        graphql "mutation { markPullRequestReadyForReview(input: {pullRequestId: \"$node\"}) { pullRequest { number } } }" \
+            | jq -e '.errors | not' >/dev/null || fail "GitHub refused marking the PR ready"
+        echo "Marked ready for review."
+        ;;
+    auto-merge)
+        node=$(own_pr | jq -r .node_id) || exit 1
+        graphql "mutation { enablePullRequestAutoMerge(input: {pullRequestId: \"$node\", mergeMethod: SQUASH}) { pullRequest { number } } }" \
+            | jq -e '.errors | not' >/dev/null || fail "GitHub refused auto-merge"
+        echo "Auto-merge is on (squash)."
+        ;;
+    comment)
+        body=$(read_body "$@") || fail "comment needs --body-file"
+        target=$ISSUE
+        for arg in "$@"; do [ "$arg" = "--pr" ] && target=$(own_pr | jq -r .number); done
+        request POST "$API/repos/$REPO/issues/$target/comments" "$(jq -cn --arg b "$body" '{body: $b}')" \
+            | jq -r '"Commented: \(.html_url)"'
+        ;;
+    blocked)
+        request POST "$API/repos/$REPO/issues/$ISSUE/labels" '{"labels":["agent:blocked"]}' >/dev/null
+        echo "Added agent:blocked to #$ISSUE."
+        ;;
+    get)
+        path=${1:-}
+        [ -n "$path" ] || fail "get needs a path"
+        request GET "$API$path"
+        ;;
+    help | --help | -h)
+        usage
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
