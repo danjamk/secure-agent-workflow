@@ -9,6 +9,14 @@ declare namespace Cloudflare {
     GITHUB_WEBHOOK_SECRET?: string;
     /** Comma-separated. Empty means no model call is allowed. */
     ALLOWED_MODELS?: string;
+    /** JSON: {"model": {input, output, cacheWrite5m, cacheWrite1h, cacheRead}}, dollars per million tokens. An unpriced model is refused. */
+    MODEL_PRICES?: string;
+    /** Dollars. Unset or invalid is 0, which refuses every charged model call. */
+    RUN_BUDGET_USD?: string;
+    ISSUE_BUDGET_USD?: string;
+    MONTHLY_BUDGET_USD?: string;
+    /** The largest max_tokens a model call may ask for. */
+    MAX_OUTPUT_TOKENS?: string;
     /** JSON: {"owner/name": ["registry.npmjs.org"]}. Empty means no registries. */
     EGRESS_HOSTS?: string;
     ANTHROPIC_API_KEY?: string;

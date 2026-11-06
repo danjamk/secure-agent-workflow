@@ -1,10 +1,12 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import type { Admission } from "../run";
+import type { DeliveryLog } from "../deliveries";
+import { issueKey, type Admission } from "../run";
 import { decideGit, decidePush, scanCommands } from "./git";
 import { decideGraphql } from "./graphql";
 import { decideModel, MODEL_HOSTS, parseModels, type ModelHost } from "./models";
 import { decideRest } from "./rest";
 import type { Pins, RunScope } from "./scope";
+import { costOf, dollars, limits, parsePrices, readUsage, StreamUsage, worstCase, type Price, type Tokens } from "./spend";
 
 const MAX_PUSH_COMMANDS = 64 * 1024;
 const MAX_API_BODY = 1024 * 1024;
@@ -141,6 +143,87 @@ function replay(head: Uint8Array, reader: ReadableStreamDefaultReader<Uint8Array
   });
 }
 
+const NO_TOKENS: Tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
+
+type Log = DurableObjectStub<DeliveryLog>;
+
+async function settleWith(log: Log, id: string, price: Price, tokens: Tokens | null): Promise<void> {
+  try {
+    await log.settle(id, tokens ? { tokens, cost: costOf(price, tokens) } : null);
+  } catch (error) {
+    // The reservation stays held, which counts the whole worst case.
+    console.error(`Settling a model call failed: ${(error as Error).name}`);
+  }
+}
+
+/**
+ * The response, passed through unchanged, settled against its usage when it ends. A
+ * stream that's cut off, or a body with no usage, keeps the whole reservation.
+ */
+function metered(response: Response, price: Price, log: Log, id: string): Response {
+  const body = response.body;
+  if (!body) {
+    void settleWith(log, id, price, null);
+    return response;
+  }
+  const streamed = (response.headers.get("content-type") ?? "").includes("text/event-stream");
+  const usage = streamed ? new StreamUsage() : null;
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let settled = false;
+  const settle = async (tokens: Tokens | null) => {
+    if (settled) return;
+    settled = true;
+    await settleWith(log, id, price, tokens);
+  };
+  const reader = body.getReader() as ReadableStreamDefaultReader<Uint8Array>;
+  const passed = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let next: ReadableStreamReadResult<Uint8Array>;
+      try {
+        next = await reader.read();
+      } catch (error) {
+        await settle(null);
+        controller.error(error);
+        return;
+      }
+      if (next.done) {
+        await settle(usage ? usage.result() : jsonUsage(chunks, size));
+        controller.close();
+        return;
+      }
+      if (usage) {
+        usage.push(next.value);
+      } else if (size <= MAX_MODEL_BODY) {
+        chunks.push(next.value);
+        size += next.value.byteLength;
+      }
+      controller.enqueue(next.value);
+    },
+    async cancel(reason) {
+      await settle(null);
+      await reader.cancel(reason);
+    },
+  });
+  return new Response(passed, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
+
+function jsonUsage(chunks: Uint8Array[], size: number): Tokens | null {
+  if (size > MAX_MODEL_BODY) return null;
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as { usage?: unknown };
+    return readUsage(parsed.usage);
+  } catch {
+    return null;
+  }
+}
+
 class Route {
   constructor(
     readonly request: Request,
@@ -259,6 +342,7 @@ class Route {
     if (!key) return this.deny(`model: ${host.secret} isn't set`, 503);
     const parsed = await readJson(request, MAX_MODEL_BODY);
     if (!parsed) return this.deny("model: bad body");
+    const budget = limits(env);
     const decision = decideModel(
       host,
       request.method,
@@ -266,12 +350,50 @@ class Route {
       url.search,
       parsed.value,
       parseModels(env.ALLOWED_MODELS),
+      parsePrices(env.MODEL_PRICES),
+      budget.maxOutputTokens,
     );
     if (!decision.allow) return this.deny(decision.reason);
     const headers = pickHeaders(request, host.headers);
     headers.set(host.header, host.header === "authorization" ? `Bearer ${key}` : key);
     headers.set("content-type", "application/json");
-    return respond(await send(this.scope.runId, url, request.method, headers, decision.body), true);
+    if (!decision.metering) {
+      return respond(await send(this.scope.runId, url, request.method, headers, decision.body), true);
+    }
+
+    // The worst case is held before the call is sent, so a call can't spend money
+    // the budgets don't have (#92).
+    const { price, maxTokens } = decision.metering;
+    const log = env.DELIVERY_LOG.getByName("global");
+    const id = crypto.randomUUID();
+    const held = await log.reserve({
+      id,
+      run: this.scope.runId,
+      issue: issueKey(this.scope),
+      amount: worstCase(price, new TextEncoder().encode(decision.body).byteLength, maxTokens),
+      limits: { run: budget.run, issue: budget.issue, month: budget.month },
+    });
+    if (!held.reserved) {
+      const reason = `the ${held.budget}'s ${dollars(held.limit)} model budget is spent`;
+      // A run's budget comes back with a resume. An issue's or the month's doesn't.
+      await this.run.markBlocked(reason, held.budget === "run");
+      return this.deny(`model: ${reason}`);
+    }
+
+    let response: Response;
+    try {
+      response = await send(this.scope.runId, url, request.method, headers, decision.body);
+    } catch (error) {
+      // Whether it was billed isn't known, so the reservation is kept.
+      await log.settle(id, null);
+      throw error;
+    }
+    // Errors aren't billed. Neither is a redirect, which respond() refuses anyway.
+    if (!response.ok) {
+      await log.settle(id, { tokens: NO_TOKENS, cost: 0 });
+      return respond(response, true);
+    }
+    return respond(metered(response, price, log, id), true);
   }
 
   async registry(): Promise<Response> {

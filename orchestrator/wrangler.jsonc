@@ -25,7 +25,16 @@
     "ALLOWED_REPOS": "",
     "EGRESS_HOSTS": "{}",
     // The models the agent runner uses (src/agents/claude-code.ts). Any other is refused.
-    "ALLOWED_MODELS": "claude-sonnet-5-5,claude-haiku-5-5"
+    "ALLOWED_MODELS": "claude-sonnet-5-5,claude-haiku-5-5",
+    // Model spend (#92). Dollars per million tokens; a model with no price is refused.
+    // Haiku is priced at its rate for prompts over 100K tokens, so there's one price.
+    "MODEL_PRICES": "{\"claude-sonnet-5-5\":{\"input\":2,\"output\":10,\"cacheWrite5m\":2.5,\"cacheWrite1h\":4,\"cacheRead\":0.2},\"claude-haiku-5-5\":{\"input\":0.5,\"output\":2.5,\"cacheWrite5m\":0.625,\"cacheWrite1h\":1,\"cacheRead\":0.05}}",
+    // A run, a release with its resumes, and a UTC calendar month, in dollars.
+    "RUN_BUDGET_USD": "5",
+    "ISSUE_BUDGET_USD": "8",
+    "MONTHLY_BUDGET_USD": "15",
+    // The largest max_tokens a call may ask for. Claude Code is told the same.
+    "MAX_OUTPUT_TOKENS": "32000"
   },
 
   // DELIVERY_LOG records webhook deliveries so a redelivery doesn't release an issue

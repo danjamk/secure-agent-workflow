@@ -1,4 +1,5 @@
 import { deny, type Deny } from "./scope";
+import type { Price } from "./spend";
 
 export interface ModelHost {
   paths: string[];
@@ -7,6 +8,13 @@ export interface ModelHost {
   header: "x-api-key" | "authorization";
   /** Headers a client needs that the shared list in handler.ts doesn't carry. */
   headers: string[];
+  /**
+   * The handler can read this vendor's usage, so its calls are metered (#92). A
+   * vendor without it is refused, since its spend couldn't be counted.
+   */
+  metered: boolean;
+  /** Endpoints the vendor doesn't charge for, which aren't metered. */
+  free: string[];
 }
 
 /** Adding a vendor is one entry here. */
@@ -16,12 +24,16 @@ export const MODEL_HOSTS: Record<string, ModelHost> = {
     secret: "ANTHROPIC_API_KEY",
     header: "x-api-key",
     headers: ["anthropic-version", "anthropic-beta"],
+    metered: true,
+    free: ["/v1/messages/count_tokens"],
   },
   "api.openai.com": {
     paths: ["/v1/responses"],
     secret: "OPENAI_API_KEY",
     header: "authorization",
     headers: ["openai-beta"],
+    metered: false,
+    free: [],
   },
 };
 
@@ -54,10 +66,24 @@ function fetchesUrl(value: unknown): boolean {
   return Object.values(object).some(fetchesUrl);
 }
 
+/** Request fields that change the price: fast mode, a pinned region, a priority tier. */
+const PRICED_OPTIONS: Record<string, (value: unknown) => boolean> = {
+  speed: (value) => value === "standard",
+  inference_geo: (value) => value === "global",
+  service_tier: (value) => value === "standard_only",
+};
+
+/** What the handler reserves against before sending a call. Null for a free endpoint. */
+export interface Metering {
+  price: Price;
+  maxTokens: number;
+}
+
 /**
  * A model call: an allowed endpoint and model, with no way to make the vendor reach
- * another host, which would go around the egress allowlist. Output ceilings, spend and
- * concurrency are in #11.
+ * another host, which would go around the egress allowlist. A charged call names a
+ * priced model and a max_tokens under the ceiling, so its worst-case cost is known
+ * before it's sent (#92).
  */
 export function decideModel(
   host: ModelHost,
@@ -66,7 +92,9 @@ export function decideModel(
   search: string,
   body: unknown,
   allowedModels: string[],
-): { allow: true; body: string } | Deny {
+  prices: Record<string, Price>,
+  maxOutputTokens: number,
+): { allow: true; body: string; metering: Metering | null } | Deny {
   if (method !== "POST" || !host.paths.includes(pathname)) return deny("model: endpoint not allowed");
   if (search !== "" && search !== "?beta=true") return deny("model: unexpected query");
   if (typeof body !== "object" || body === null || Array.isArray(body)) return deny("model: bad body");
@@ -84,5 +112,18 @@ export function decideModel(
     }
   }
   if (fetchesUrl(request)) return deny("model: URL inputs aren't allowed");
-  return { allow: true, body: JSON.stringify(request) };
+  for (const [field, allowed] of Object.entries(PRICED_OPTIONS)) {
+    if (request[field] !== undefined && !allowed(request[field])) return deny(`model: ${field} isn't allowed`);
+  }
+
+  if (host.free.includes(pathname)) return { allow: true, body: JSON.stringify(request), metering: null };
+  if (!host.metered) return deny("model: this vendor's calls aren't metered");
+  const price = Object.hasOwn(prices, request.model) ? prices[request.model] : undefined;
+  if (!price) return deny("model: the model has no price");
+  const maxTokens = request.max_tokens;
+  if (typeof maxTokens !== "number" || !Number.isInteger(maxTokens) || maxTokens < 1) {
+    return deny("model: max_tokens is required");
+  }
+  if (maxTokens > maxOutputTokens) return deny("model: max_tokens is over the ceiling");
+  return { allow: true, body: JSON.stringify(request), metering: { price, maxTokens } };
 }

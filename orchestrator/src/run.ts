@@ -12,6 +12,7 @@ import {
   type RunToken,
 } from "./github";
 import type { Pins, PullRequest, RunScope } from "./outbound/scope";
+import { dollars, limits } from "./outbound/spend";
 import { CA_PATH, interceptHosts, scrubOutput } from "./sandbox";
 
 /** Installation tokens last an hour. Replace one before a long push could outlive it. */
@@ -114,9 +115,15 @@ export class RunState extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now());
   }
 
-  /** Called by the outbound policy when the agent's agent:blocked label got through. */
-  async markBlocked(): Promise<void> {
+  /**
+   * Called by the outbound policy when the agent's agent:blocked label got through, or
+   * when a model call was refused for budget. A budget that a resume doesn't renew
+   * isn't resumable.
+   */
+  async markBlocked(reason?: string, resumable = true): Promise<void> {
     await this.ctx.storage.put("blocked", true);
+    if (reason) await this.ctx.storage.put("blockedReason", reason);
+    if (!resumable) await this.ctx.storage.put("notResumable", true);
   }
 
   /**
@@ -243,6 +250,15 @@ export class RunState extends DurableObject<Env> {
     if (!container.running) {
       if (await this.ctx.storage.get<boolean>("started")) {
         return { summary: "The container stopped before the run finished.", output: await this.read(container, LOG_PATH) };
+      }
+      // A run starts only if the month can pay for all of it (#92).
+      const budget = limits(this.env);
+      const left = budget.month - (await this.env.DELIVERY_LOG.getByName("global").monthUsed());
+      if (left < budget.run) {
+        return {
+          summary: `Not started: the month's ${dollars(budget.month)} model budget has ${dollars(Math.max(left, 0))} left, less than a run's ${dollars(budget.run)}.`,
+          output: "",
+        };
       }
       container.start({ image: this.image(container), enableInternet: false, instance: runner.instance });
       await this.ctx.storage.put("started", true);
@@ -375,22 +391,42 @@ export class RunState extends DurableObject<Env> {
 
     const halted = await this.ctx.storage.get<string>("haltedBy");
     const agentBlocked = (await this.ctx.storage.get<boolean>("blocked")) ?? false;
+    const blockedReason = await this.ctx.storage.get<string>("blockedReason");
+    const notResumable = (await this.ctx.storage.get<boolean>("notResumable")) ?? false;
     const blocked = !halted && (report.blocked === true || agentBlocked);
     const runNumber = (await this.ctx.storage.get<number>("runNumber")) ?? 1;
-    const canResume = blocked && runNumber < MAX_RUNS;
+    const canResume = blocked && runNumber < MAX_RUNS && !notResumable;
     const pr = (await this.ctx.storage.get<Pins["pr"]>("pr")) ?? null;
     const branch = (await this.ctx.storage.get<string>("branch"))?.replace(/^refs\/heads\//, "") ?? null;
 
     const notes: string[] = [];
     let summary = report.summary;
-    if (blocked && agentBlocked && !report.blocked) summary = `Blocked: the agent is waiting for a reply. ${summary}`;
+    if (blocked && blockedReason) {
+      summary = `Blocked: ${blockedReason}. ${summary}`;
+    } else if (blocked && agentBlocked && !report.blocked) {
+      summary = `Blocked: the agent is waiting for a reply. ${summary}`;
+    }
     if (canResume) {
       notes.push(`Reply on this issue${pr ? ` or on PR #${pr.number}` : ""} to resume. This was run ${runNumber} of ${MAX_RUNS}.`);
+    } else if (blocked && notResumable) {
+      notes.push("A reply won't resume it, because a resume doesn't renew that budget. Add `agent:ready` to start again.");
     } else if (blocked) {
       notes.push(`This was run ${runNumber} of ${MAX_RUNS}, so a reply won't resume it. Add \`agent:ready\` to start again.`);
     }
 
     const log = this.env.DELIVERY_LOG.getByName("global");
+    try {
+      const usage = await log.runUsage(scope.runId);
+      if (usage) {
+        const n = (value: number) => value.toLocaleString("en-US");
+        notes.push(
+          `Model use: ${usage.calls} ${usage.calls === 1 ? "call" : "calls"}, ${n(usage.input)} input and ${n(usage.output)} output tokens, ` +
+            `${n(usage.cacheRead)} read from cache and ${n(usage.cacheWrite)} written, ${dollars(usage.cost)}.`,
+        );
+      }
+    } catch (error) {
+      console.error(`Reading a run's model use failed: ${(error as Error).name}`);
+    }
     try {
       // With no branch, the agent blocked before pushing, and a resume starts from
       // the default branch with the reply.
@@ -418,7 +454,8 @@ export class RunState extends DurableObject<Env> {
 
     try {
       await this.report(scope, { ...report, summary }, notes, {
-        addBlockedLabel: canResume && !agentBlocked,
+        // The agent adds its own label. A budget refusal sets the same flag but no label.
+        addBlockedLabel: canResume && (!agentBlocked || blockedReason !== undefined),
         halted: halted ?? null,
       });
     } catch (error) {

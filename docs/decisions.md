@@ -602,6 +602,82 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Approved by:** None
 - **Evidence:** `orchestrator/README.md`, Live results: stop, blocked and resume
 
+### 2026-11-06 Reserve a model call's worst case from its byte count
+
+- **Decision:** Before a charged call, the outbound handler reserves the body's bytes at the dearest input rate plus `max_tokens` at the output rate, and refuses the call if the run, the issue or the month can't cover it.
+- **Why:** A token is at least a byte, so the bound can't come in low, and it needs no extra call. R3 asks for spend to be bounded before a call, not observed after.
+- **Rejected:** A `count_tokens` call before each request. It's exact, but adds a round trip per call and another request shape to keep in step with the messages endpoint.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, "recommendataions are good"
+- **Evidence:** `orchestrator/src/outbound/spend.ts`, `orchestrator/README.md` (Model spend)
+
+### 2026-11-06 Cap a release of an issue at $8 across its resumes
+
+- **Decision:** Besides $5 per run and $15 per month, a release and its resumes share an $8 budget. A new `agent:ready` starts it over. A run blocked by the issue's or the month's budget can't be resumed.
+- **Why:** A resume gets a fresh run budget, so three runs could spend $15, the whole month, on one issue.
+- **Rejected:** The monthly budget as the only limit across resumes.
+- **Decided by:** Claude proposed, danjamk chose. Which budget blocks are resumable: Claude
+- **Approved by:** danjamk, "recommendataions are good". The resumable rule: None
+- **Evidence:** `orchestrator/src/deliveries.ts`, `orchestrator/wrangler.jsonc`
+
+### 2026-11-06 Keep the reservation when a call's billing is unknown
+
+- **Decision:** A stream cut off before `message_stop`, a body with no usage, or a send that fails keeps the whole reservation. An error response settles to $0.
+- **Why:** R3 says to keep a conservative charge for a request with ambiguous billing rather than refund it. Error responses aren't billed.
+- **Decided by:** Claude
+- **Approved by:** danjamk, "recommendataions are good"
+- **Evidence:** `orchestrator/src/outbound/handler.ts`, `orchestrator/test/outbound/spend.test.ts`
+
+### 2026-11-06 Refuse model calls the handler can't price
+
+- **Decision:** Refused: a model with no entry in `MODEL_PRICES`, a call with no `max_tokens` or one over 32,000, `speed`, `inference_geo` or `service_tier` set to anything but the standard price, and every OpenAI call. Haiku 5.5 is priced at its rate for prompts over 100K tokens, so each model has one price.
+- **Why:** Each of these would make the reservation wrong. The handler reads only Anthropic's usage format so far.
+- **Decided by:** Claude
+- **Approved by:** danjamk, "recommendataions are good"
+- **Evidence:** `orchestrator/src/outbound/models.ts`, `orchestrator/test/outbound/policy.test.ts`
+
+### 2026-11-06 Check the month's budget when the run starts, not at the webhook
+
+- **Decision:** A run whose month has less than a run's budget left ends before its container starts, and says so in its status comment.
+- **Why:** The run already posts and edits the status comment. Refusing at the webhook would leave the approver with only a line in the App's delivery log.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/src/run.ts`, `orchestrator/test/run.test.ts`
+
+### 2026-11-06 Test the budget block with a $0.50 run budget
+
+- **Decision:** The block test ran at a $0.50 run budget, set in the dashboard and set back to $5 after, where the first call was refused. The run at $1 finished under budget.
+- **Why:** Each call reserves about $0.32 for output plus its bytes, and the testbed is too small for a run's requests to grow past what $1 covers.
+- **Rejected:** A larger task to spend past $1. It costs more and still depends on how the agent works.
+- **Decided by:** Claude
+- **Approved by:** danjamk set both budgets in the dashboard ("Budget set", "set")
+- **Evidence:** `orchestrator/README.md`, Live results: model spend
+
+### 2026-11-06 Add agent:blocked when a budget blocks a run
+
+- **Decision:** A run blocked by its own budget gets `agent:blocked`, like a run that hits its time limit.
+- **Why:** In the live test the run ended blocked with no label. The finish step took the block flag to mean the agent had added the label.
+- **Decided by:** Claude
+- **Approved by:** danjamk, "go" to the fix list in the working session
+- **Evidence:** `orchestrator/src/run.ts`, `orchestrator/test/run.test.ts`
+
+### 2026-11-06 Turn off Claude Code's commit trailer in managed settings
+
+- **Decision:** The image writes `/etc/claude-code/managed-settings.json` with `{"attribution": {"commit": ""}}`, read-only. The PR line Claude Code adds stays.
+- **Why:** An agent commit carried a `Co-Authored-By` trailer, against the standard. Managed settings outrank the repo's own `.claude/settings.json`. That `""` hides the trailer comes from the settings reference's summary, not a tested example, so the next agent run checks it.
+- **Rejected:** The deprecated `includeCoAuthoredBy: false`, which may also drop the PR line.
+- **Decided by:** Claude
+- **Approved by:** danjamk, "go" to the fix list in the working session
+- **Evidence:** `orchestrator/container/Dockerfile`
+
+### 2026-11-06 Close #92 on the live tests
+
+- **Decision:** #92 (meter model spend) closes on one metered run, one blocked run and the fixes in the same PR. The per-run match against the Anthropic console isn't verified, because the console reports by day.
+- **Why:** Each task in the issue works live or is covered by tests under `test:security`.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/README.md`, Live results: model spend
+
 ### 2026-11-06 Test setting changes on a replay set, not live waves
 
 - **Decision:** Spec 0003 proposes that a change to instructions, skills or model settings is tested by replaying 10 to 20 past issues, paired by issue, before it's adopted.
