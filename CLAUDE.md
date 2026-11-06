@@ -7,7 +7,7 @@ writing; the factory account is its own cloud account (Account terms).
 
 ## Stack
 
-`bootstrap/` and `gate/` are built, `deploy/` has the AWS broker, the credential tool and Cloudflare previews and staging, and `orchestrator/` has webhook intake, token minting and the outbound policy; the rest is designed but not built. Stack:
+`bootstrap/` and `gate/` are built, `deploy/` has the AWS broker, the credential tool and Cloudflare previews and staging, and `orchestrator/` runs Claude Code on released issues in a container behind the outbound policy; the rest is designed but not built. Stack:
 
 | Component | Stack | Decision |
 |---|---|---|
@@ -49,7 +49,7 @@ Two things a newcomer gets wrong:
 | `deploy/broker/aws/` | Broker CloudFormation templates and `broker.sh` (run by a human with `AWS_PROFILE`), the broker action deploy jobs run (`action.yml`), plus testbed workflows that check every role's allows and denies |
 | `deploy/cloudflare/` | What the deploy jobs run: `prepare.py` (checks and unpacks the bundle, sanitizes the wrangler config), `deploy.sh`, and the locked wrangler. The consumer's workflow is `bootstrap/files/deploy.yml`. Tests: `python3 -m unittest discover -s deploy/cloudflare` |
 | `deploy/credentials/` | `credentials.py` (`broker.sh setup`, `set` and `status`, and `check` for the daily job), one checker per system in `checks/`, and the example `infra/credentials.yml`. Tests: `python3 -m unittest discover -s deploy/credentials` |
-| `orchestrator/` | The Worker in the factory account: webhook intake, token minting and the outbound policy (`src/outbound/`) so far. `make -C orchestrator check`; `README.md` has the policy, the contract with the sandbox and how to deploy |
+| `orchestrator/` | The Worker in the factory account: webhook intake, token minting, the outbound policy (`src/outbound/`) and a container per run, with Claude Code or the outbound probe as the runner (`src/agents/`). `make -C orchestrator check`; `README.md` has the policy, the contract with the sandbox and how to deploy |
 | `package.json`, `pnpm-workspace.yaml` | At the root so the gate's check job sets up Node and pnpm. The workspace holds only `orchestrator/` |
 
 `redteam/` does not exist yet.

@@ -1,4 +1,6 @@
+import { runnerFor } from "./agents";
 import type { RunScope } from "./outbound/scope";
+import { issueKey } from "./run";
 
 const RELEASE_LABEL = "agent:ready";
 
@@ -8,6 +10,8 @@ export interface Release {
   defaultBranch: string;
   issue: number;
   installationId: number;
+  /** The issue's labels when it was released. agent:probe picks the probe. */
+  labels: string[];
 }
 
 export interface Rules {
@@ -78,15 +82,14 @@ export function decide(event: string | null, payload: any, rules: Rules): Releas
   ) {
     return "payload is missing the issue, installation or repo";
   }
-  return { repo, repoId, defaultBranch, issue, installationId };
+  const labels = Array.isArray(payload?.issue?.labels)
+    ? payload.issue.labels.map((label: { name?: unknown }) => label?.name).filter((name: unknown) => typeof name === "string")
+    : [];
+  return { repo, repoId, defaultBranch, issue, installationId, labels };
 }
 
-/**
- * Starts a run, named by the delivery id. For now the run is the outbound probe
- * (#79). #9 replaces it with the agent CLI.
- */
-async function startRun(release: Release, delivery: string, env: Env): Promise<void> {
-  const scope: RunScope = {
+function scopeOf(release: Release, delivery: string): RunScope {
+  return {
     runId: delivery,
     installationId: release.installationId,
     repoId: release.repoId,
@@ -94,7 +97,6 @@ async function startRun(release: Release, delivery: string, env: Env): Promise<v
     issue: release.issue,
     defaultBranch: release.defaultBranch,
   };
-  await env.RUN_STATE.getByName(delivery).launch(scope);
 }
 
 function json(status: number, body: object): Response {
@@ -138,15 +140,24 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     return json(200, { ignored: "duplicate delivery" });
   }
 
+  // A run is named by its delivery id, and an issue has one active run at a time, so
+  // relabeling while a run is live doesn't start a second.
+  const scope = scopeOf(decision, delivery);
+  if (!(await log.claimIssue(issueKey(scope), delivery))) {
+    return json(200, { ignored: "a run is already active on this issue" });
+  }
+
+  const runner = runnerFor(decision.labels);
   try {
-    await startRun(decision, delivery, env);
+    await env.RUN_STATE.getByName(delivery).launch(scope, runner.name);
   } catch (error) {
-    // Forget the claim so redelivering from GitHub's log tries again. Only the
+    // Forget both claims so redelivering from GitHub's log tries again. Only the
     // error's type is logged.
+    await log.releaseIssue(issueKey(scope), delivery);
     await log.forget(delivery);
     console.error(`Release ${delivery} failed: ${(error as Error).name}`);
     return json(502, { error: "release failed", delivery });
   }
-  console.log(`Released ${decision.repo}#${decision.issue} from delivery ${delivery}`);
-  return json(202, { released: `${decision.repo}#${decision.issue}` });
+  console.log(`Released ${decision.repo}#${decision.issue} to ${runner.name} from delivery ${delivery}`);
+  return json(202, { released: `${decision.repo}#${decision.issue}`, runner: runner.name });
 }

@@ -74,6 +74,12 @@ export function stubGitHub(mint?: () => Response): Call[] {
       );
     }
     if (request.url.endsWith("/comments")) return Response.json({ id: 1 }, { status: 201 });
+    if (request.method === "PATCH" && /\/issues\/comments\/\d+$/.test(request.url)) {
+      return Response.json({ id: 1 });
+    }
+    if (request.method === "GET" && /\/issues\/\d+$/.test(request.url)) {
+      return Response.json({ title: "Add a parser", body: "Parse the config file." });
+    }
     if (request.url.endsWith("/installation/token")) return new Response(null, { status: 204 });
     return new Response("unexpected", { status: 500 });
   });

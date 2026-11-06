@@ -4,21 +4,36 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs the outbound probe | The agent CLI (#9), logs (#10), stop and resume (#11), the coordinator (#13) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run | Logs (#10), stop and resume (#11), the coordinator (#13) |
 
 ## A run
 
-An accepted release starts a run, named by the delivery id. For now a run is the outbound probe (#79): a fixed script, `container/probe.sh`, that tries what an agent might and reports what got through. #9 replaces it with the agent CLI.
+An accepted release starts a run, named by the delivery id. An issue has one active run at a time, so relabeling while a run is live doesn't start a second. A runner module (`src/agents/`) decides what the run does:
+
+| Runner | Picked when | What it runs |
+| --- | --- | --- |
+| `claude-code` | By default | Claude Code 2.1.309, headless, as the `agent` user on a `standard-1` instance. Limited to 60 minutes, 200 turns and its own $5 estimate |
+| `probe` | The issue also has `agent:probe` | `container/probe.sh`, which tries what an agent might and reports what got through (#79). Use it to recheck the policy after changing it. Limited to 12 minutes, on a `lite` instance |
+
+Adding an agent CLI is a new module in `src/agents/` and one line in `RUNNERS`.
 
 The `RunState` Durable Object owns the run, and an alarm checks it every 10 seconds:
 
-1. Register the intercepts, then start the container on a `lite` instance with `enableInternet: false`.
-2. Wait for the platform's CA, which appears once HTTPS is intercepted, then start the probe. Its output goes to a file, because a process with piped output gets `SIGPIPE` when the call that started it ends.
-3. When the probe exits, destroy the container, post its output on the issue, and stop the run, which revokes its token.
+1. Post the run's status comment on the issue.
+2. Register the intercepts, then start the container with `enableInternet: false`.
+3. Wait for the platform's CA, which appears once HTTPS is intercepted. Then write the runner's files and start its command. For the agent, the files are the issue's title and body, and `standards/agent-instructions.md`, which is bundled into the Worker. The command's output goes to a file, because a process with piped output gets `SIGPIPE` when the call that started it ends.
+4. When the command exits, destroy the container, edit the status comment with the result, release the issue and stop the run, which revokes its token.
 
-Every way out goes through step 3: the probe finishing, the container stopping on its own, an error, or the 12-minute limit. The output comes from the container, so it's treated as untrusted: credentials are scrubbed, the length is capped and it can't close its code block.
+Every way out goes through step 4: the command finishing, the container stopping on its own, an error, or the time limit. For the agent, the result is Claude Code's final result event, because it can exit 0 after a failed model request. The output comes from the container, so it's treated as untrusted: credentials are scrubbed, the length is capped and it can't close its code block.
 
-The probe leaves a branch, a draft PR and a comment on the testbed's issue each time. Remove them by hand.
+Inside the container:
+
+- `run-agent.sh` clones the repo, sets the App's bot as the commit author and runs Claude Code with a fixed prompt that points at the files. The issue reaches the agent only as a file.
+- `agent-gh` makes the GitHub writes the agent needs: open its draft PR, edit it, mark it ready, turn on auto-merge, comment, and add `agent:blocked`. The `gh` CLI isn't installed, because it makes these writes through GraphQL calls the policy refuses.
+- Claude Code's web search and web fetch are off, along with its telemetry, error reports, auto-update and feedback, each of which would try a host the container can't reach.
+- A repo's own `.claude/settings.json` hooks and `.mcp.json` servers run too, without a prompt. They stay inside the container, and an MCP server can reach only the allowed hosts.
+
+Each probe run leaves a branch, a PR and a comment on the testbed's issue. Remove them by hand.
 
 ## Outbound policy
 
@@ -69,7 +84,7 @@ If starting the run fails, the Worker returns a 502 and forgets the delivery id,
 
 | | |
 | --- | --- |
-| Goes in | The issue body, `standards/agent-instructions.md`, and a clone over HTTPS |
+| Goes in | The issue's title and body and `standards/agent-instructions.md`, as files in `/workspace/task`, and a clone over HTTPS |
 | Comes out | Commits on `agent/<issue>-<slug>`, a PR, issue and PR comments, the `agent:blocked` label, and the run's log |
 | Never enters | The App private key, the webhook secret, installation tokens and model API keys. The outbound handler adds tokens and keys to each request |
 | Network | Deny by default. HTTPS to the listed hosts reaches the policy. Nothing else resolves or connects |
@@ -90,7 +105,8 @@ If starting the run fails, the Worker returns a 502 and forgets the delivery id,
 | --- | --- | --- |
 | `GITHUB_APP_PRIVATE_KEY` | Worker secret, PKCS#8 | `connect-app.sh` |
 | `GITHUB_WEBHOOK_SECRET` | Worker secret | `connect-app.sh` |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Worker secrets, optional. Added with `wrangler secret put` when #9 chooses the agent CLI | The operator, by hand |
+| `ANTHROPIC_API_KEY` | Worker secret, set in the dashboard: Workers & Pages → `saw-orchestrator` → Settings → Variables and Secrets. Or with `wrangler secret put`. The key is `saw-factory-anthropic-api-key` in the Anthropic Console, expires after 90 days and sits under a monthly spend limit. Nothing reminds you before it expires | The operator, by hand |
+| `OPENAI_API_KEY` | Worker secret, optional and not set. A model host with no key is refused | The operator, by hand |
 | Installation tokens for runs | In memory in `RunState`, and never in storage. Revoked on stop | Minted on demand, replaced with 10 minutes left |
 | `saw-factory-cloudflare-deploy-token` | The broker, read only by the `factory` environment's role | The operator, with `broker.sh set-factory`. This account is never a deploy target for an app, and `broker.sh set` refuses this token |
 
@@ -131,8 +147,8 @@ Tests run in the Workers runtime through `@cloudflare/vitest-plugin`, with a rea
 The plugin turns containers off. `test/run.test.ts` drives a run against a fake container, and the live results below are the proof against the real one. To check the probe script itself, build the image and run it with networking off: every denial should pass and every allowed call should fail.
 
 ```bash
-docker build --platform linux/amd64 -t saw-probe orchestrator/container
-docker run --rm --platform linux/amd64 --network none -e REPO=a/b -e ISSUE=1 -e SLUG=probe-test -e DEFAULT_BRANCH=main saw-probe /probe/probe.sh
+docker build --platform linux/amd64 -t saw-agent orchestrator/container
+docker run --rm --platform linux/amd64 --network none -e REPO=a/b -e ISSUE=1 -e SLUG=probe-test -e DEFAULT_BRANCH=main saw-agent /agent/probe.sh
 ```
 
 ### Live results

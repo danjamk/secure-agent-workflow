@@ -93,16 +93,43 @@ export async function mintRunToken(
   return { value: minted.token, expiresAt };
 }
 
+/** Returns the new comment's id, so it can be edited later. */
 export async function commentOnIssue(
   token: string,
   repo: string,
   issue: number,
   body: string,
-): Promise<void> {
+): Promise<number> {
   const response = await call(`/repos/${repo}/issues/${issue}/comments`, "POST", token, { body });
   if (!response.ok) {
     throw new GitHubError(`Commenting returned ${response.status}`);
   }
+  const created = (await response.json()) as { id?: unknown };
+  if (typeof created.id !== "number") throw new GitHubError("The comment response has no id");
+  return created.id;
+}
+
+export async function editComment(token: string, repo: string, id: number, body: string): Promise<void> {
+  const response = await call(`/repos/${repo}/issues/comments/${id}`, "PATCH", token, { body });
+  if (!response.ok) {
+    throw new GitHubError(`Editing a comment returned ${response.status}`);
+  }
+}
+
+export async function getIssue(
+  token: string,
+  repo: string,
+  issue: number,
+): Promise<{ title: string; body: string }> {
+  const response = await call(`/repos/${repo}/issues/${issue}`, "GET", token);
+  if (!response.ok) {
+    throw new GitHubError(`Reading the issue returned ${response.status}`);
+  }
+  const data = (await response.json()) as { title?: unknown; body?: unknown };
+  return {
+    title: typeof data.title === "string" ? data.title : "",
+    body: typeof data.body === "string" ? data.body : "",
+  };
 }
 
 /** Best effort: an unrevoked token expires within the hour. */

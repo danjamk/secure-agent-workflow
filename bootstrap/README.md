@@ -40,6 +40,7 @@ Each setting is read, compared with what bootstrap wants (`diff.py`), and writte
 | | Dependabot alerts | Turns on the dependency graph, which the gate's dependency review needs. Without it the review fails with "not supported on this repository" |
 | Environments | `preview` from PR runs (`refs/pull/*/merge`), `staging` from the default branch, `production` from the `production` branch. Each has one named-branch policy. An old `dev` environment with no deployments is deleted | The broker's roles trust these environment names (ADR-002), so the policy decides which runs can get which credentials. No secrets are created here |
 | Labels | `agent:ready`, `agent:stop`, `agent:blocked` | How Dan releases, stops and unblocks agent runs. The orchestrator acts on them only when the repo owner applies them |
+| | `agent:probe` | With `agent:ready`, runs the outbound probe instead of the agent, to recheck the policy (`orchestrator/README.md`) |
 | | `credentials` | The daily credential check's one issue (`deploy/README.md`, Daily check) |
 | Files | `.github/CODEOWNERS`: tier 3 paths to the repo owner | Routes tier 3 review requests. The tier check is the control |
 | | `.github/workflows/gate.yml` and `tier-check.yml`: the gate callers, pinned to a commit of `GATE_REPO` | The merge gate (`gate/README.md`). Two files because the tier check re-runs on every review and the scanners don't need to |

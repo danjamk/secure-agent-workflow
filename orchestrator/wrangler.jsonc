@@ -10,6 +10,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  // The agent instructions are bundled as text and written into each run's container.
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   "preview_urls": false,
   "observability": { "enabled": true },
 
@@ -22,7 +24,8 @@
     "APPROVER_LOGIN": "",
     "ALLOWED_REPOS": "",
     "EGRESS_HOSTS": "{}",
-    "ALLOWED_MODELS": ""
+    // The models the agent runner uses (src/agents/claude-code.ts). Any other is refused.
+    "ALLOWED_MODELS": "claude-sonnet-5-5,claude-haiku-5-5"
   },
 
   // DELIVERY_LOG records webhook deliveries so a redelivery doesn't release an issue
@@ -45,7 +48,7 @@
     {
       "class_name": "RunState",
       "scheduling_policy": "durable_object",
-      "images": { "probe": { "dockerfile": "./container/Dockerfile" } }
+      "images": { "agent": { "dockerfile": "./container/Dockerfile" } }
     }
   ]
 

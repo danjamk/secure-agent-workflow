@@ -1,16 +1,27 @@
-# The run's container image (#79). For now it runs only probe.sh, a fixed script
-# that tests the outbound policy. #9 adds the agent CLI.
+# The run's container image. It holds both runners: the agent (run-agent.sh, with
+# Claude Code) and the outbound probe (probe.sh). The Worker picks one per run.
 #
-# The base is pinned by digest. Debian's packages aren't pinned, so a rebuild can
-# pick up newer security updates.
-FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+# The base is pinned by digest, and Claude Code by version, both past the two-week
+# rule. Debian's packages aren't pinned, so a rebuild picks up security updates.
+FROM node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates curl git jq \
     && rm -rf /var/lib/apt/lists/*
 
-COPY probe.sh /probe/probe.sh
-RUN chmod 0555 /probe/probe.sh
+RUN npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.309 \
+    && npm cache clean --force
 
-# The orchestrator starts the probe with exec. This keeps the container up until then.
+# Claude Code won't skip its permission prompts as root. A separate user doesn't
+# limit what the agent can do in the container, which the security docs say plainly:
+# the container is the boundary.
+RUN useradd --create-home --uid 1001 --shell /bin/bash agent \
+    && mkdir -p /workspace/task \
+    && chown -R agent:agent /workspace
+
+COPY probe.sh run-agent.sh agent-gh /agent/
+RUN chmod 0555 /agent/probe.sh /agent/run-agent.sh /agent/agent-gh \
+    && ln -s /agent/agent-gh /usr/local/bin/agent-gh
+
+# The orchestrator starts the runner with exec. This keeps the container up until then.
 CMD ["sleep", "infinity"]
