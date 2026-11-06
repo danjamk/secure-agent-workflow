@@ -50,8 +50,11 @@ export interface Call {
   body: unknown;
 }
 
-/** Stand-in for GitHub. Records calls; `mint` overrides the token response. */
-export function stubGitHub(mint?: () => Response): Call[] {
+/**
+ * Stand-in for GitHub. Records calls; `mint` overrides the token response, and
+ * `comments` is what listing an issue's comments returns.
+ */
+export function stubGitHub(mint?: () => Response, comments: { id: number; body: string }[] = []): Call[] {
   const calls: Call[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const request = new Request(input, init);
@@ -73,6 +76,7 @@ export function stubGitHub(mint?: () => Response): Call[] {
         { status: 201 },
       );
     }
+    if (request.method === "GET" && /\/issues\/\d+\/comments\?/.test(request.url)) return Response.json(comments);
     if (request.url.endsWith("/comments")) return Response.json({ id: 1 }, { status: 201 });
     if (request.method === "PATCH" && /\/issues\/comments\/\d+$/.test(request.url)) {
       return Response.json({ id: 1 });

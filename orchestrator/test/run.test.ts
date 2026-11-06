@@ -184,6 +184,35 @@ describe("a run's container", () => {
     expect(calls.map((c) => c.method).at(-1)).toBe("DELETE");
   });
 
+  it("finds its start comment by run id when it didn't keep the id, and edits it", async () => {
+    const runId = crypto.randomUUID();
+    const calls = stubGitHub(undefined, [
+      { id: 41, body: "Someone else's comment" },
+      { id: 42, body: `Run \`${runId}\` (build \`x\`, runner \`claude-code\`) started.` },
+    ]);
+    const stub = env.RUN_STATE.getByName(runId);
+    const fake = fakeContainer({ files: { [LOG]: "done" } });
+    await runInDurableObject(stub, async (_instance: RunState, state) => {
+      await state.storage.put({
+        scope: { ...SCOPE, runId },
+        runner: "probe",
+        phase: "starting",
+        deadline: Date.now() + 600_000,
+        statusTried: true,
+      });
+    });
+    for (let i = 0; i < 3; i += 1) {
+      await runInDurableObject(stub, async (instance: RunState) => {
+        (instance as unknown as { container: () => unknown }).container = () => fake.container;
+        await instance.alarm();
+      });
+    }
+    expect(posted(calls)).toHaveLength(0);
+    expect(calls.filter((c) => c.method === "PATCH").map((c) => new URL(c.url).pathname)).toEqual([
+      "/repos/the-approver/app/issues/comments/42",
+    ]);
+  });
+
   it("reports an agent that ended with an error", async () => {
     const calls = stubGitHub();
     const result = { type: "result", is_error: true, subtype: "error_max_turns", num_turns: 200 };

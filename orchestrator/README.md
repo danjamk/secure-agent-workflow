@@ -200,6 +200,23 @@ Other findings:
 - **Cost:** a run took about 4 to 5 minutes, judging from the push times and the network checks' timeouts. Container start-up wasn't measured. On a `lite` instance that's well under a cent, by my arithmetic from Cloudflare's pricing, and inside what Workers Paid includes.
 - **Cleanup:** each run leaves a branch, a PR and a comment on the testbed. Runs 1 to 3 were cleaned up by hand.
 
+### Live results: the first agent run
+
+2026-11-06, build `0.1.10+0b1b612`, on agent-testbed #38: add a `## Status` section to the README.
+
+| Step | Result |
+| --- | --- |
+| Release | The approver added `agent:ready`, and the App posted the run's status comment |
+| Agent | Claude Code read the issue and the instructions, made one commit as the App's bot, and opened a draft PR with `agent-gh` |
+| PR | Tier line, current step, `Closes #38`, a ticked checklist and run notes, as the instructions ask. Marked ready, with auto-merge on |
+| Gate | Every check passed, including the tier check for a bot-authored tier 1 PR. The PR squash-merged on its own and closed the issue |
+| Result | 7 turns, about $0.05, about 1.5 minutes from label to merge |
+
+Two problems, fixed after the run:
+
+- **`make` wasn't in the image,** so the agent couldn't run `make check`. It said so in its run notes and read the Makefile instead.
+- **The result arrived as a second comment** instead of an edit to the status comment, so the run didn't have the start comment's id. The likeliest cause is the 3-second limit on GitHub calls, which dated from when the webhook made them. The limit is now 15 seconds. A run that's missing the id finds its start comment by the run id.
+
 ## Other options for a fork
 
 From the [sandbox bake-off](../docs/research/sandbox-bakeoff.md):
