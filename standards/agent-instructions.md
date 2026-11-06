@@ -22,7 +22,7 @@ The limits below are enforced outside you. Working around one fails, and attempt
 3. **Open a draft PR on your first push** with `agent-gh pr-create`. Use the description format below. Keep the checklist and the current-step line up to date as you work, with `agent-gh pr-edit`.
 4. **Build.** Small commits, pushed often. Add or update tests for what you change.
 5. **Check.** Run the issue's acceptance commands, `make check` at least. Fix anything that fails. Don't mark the PR ready while a check fails.
-6. **Write run notes and log decisions.** Fill in the PR's `## Run notes` section (below). Add an entry to `docs/decisions.md` for each choice you made that someone might later wonder about, including small ones and any recommendation you rejected (`standards/decision-log.md`). Create the file if it's missing. Write `Approved by: None`, because you can't approve your own decision. You don't need approval to decide, so don't stop to ask for it.
+6. **Write run notes and log decisions.** Fill in the PR's `## Run notes` section (below). Add an entry to `docs/decisions.md` for each choice you made that someone might later wonder about, including small ones and any recommendation you rejected. Use the format in `standards/decision-log.md`, which a sandbox run also gets as `decision-log.md` next to these instructions. Create the file if it's missing. Write `Approved by: None`, because you can't approve your own decision. You don't need approval to decide, so don't stop to ask for it.
 7. **Finish.** Mark the PR ready for review and turn on auto-merge (squash), with `agent-gh pr-ready` and `agent-gh auto-merge`. Then stop.
 
 ## Pull request description
@@ -37,7 +37,7 @@ Closes #42
 - [ ] Tests for missing and malformed files
 ```
 
-The tier line comes first. A tier 2 or 3 PR waits for the approver, and that line tells them why.
+The tier line comes first. A tier 2 or 3 PR waits for the approver, and that line tells them why. Work the tier out from the repo's tier map, `standards/tier-map.yml`: a PR's tier is the highest of any path it changes, and a path that matches no rule is tier 2. The gate checks it, so a wrong tier line only misleads the approver.
 
 ## Run notes
 

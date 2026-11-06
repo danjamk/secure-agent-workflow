@@ -1,4 +1,5 @@
 import instructions from "../../../standards/agent-instructions.md";
+import decisionLog from "../../../standards/decision-log.md";
 import { caEnv } from "../sandbox";
 import type { Runner } from "./index";
 
@@ -36,6 +37,7 @@ export const claudeCode: Runner = {
     const files: Record<string, string> = {
       [`${TASK}/issue.md`]: `# #${scope.issue}: ${issue.title}\n\n${cut(issue.body)}\n`,
       [`${TASK}/agent-instructions.md`]: instructions,
+      [`${TASK}/decision-log.md`]: decisionLog,
     };
     if (resume) files[`${TASK}/reply.md`] = `${cut(resume.reply)}\n`;
     return files;
@@ -54,6 +56,7 @@ export const claudeCode: Runner = {
         MODEL,
         MAX_TURNS: String(MAX_TURNS),
         MAX_BUDGET_USD: String(MAX_BUDGET_USD),
+        RESUMED: resume ? "1" : "",
         RESUME_BRANCH: resume?.branch ?? "",
         RESUME_PR: resume?.pr ? String(resume.pr) : "",
         HOME: "/home/agent",

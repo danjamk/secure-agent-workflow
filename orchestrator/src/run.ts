@@ -37,7 +37,8 @@ class RunError extends Error {}
 
 /** What a resumed run starts from. */
 export interface ResumeState {
-  branch: string;
+  /** Null if the agent blocked before pushing, so the run starts from the default branch. */
+  branch: string | null;
   pr: PullRequest | null;
   reply: string;
   runNumber: number;
@@ -47,7 +48,7 @@ export interface ResumeState {
 export interface BlockedRecord {
   scope: Omit<RunScope, "runId">;
   runner: string;
-  branch: string;
+  branch: string | null;
   pr: PullRequest | null;
   runNumber: number;
 }
@@ -103,10 +104,11 @@ export class RunState extends DurableObject<Env> {
       runNumber: resume?.runNumber ?? 1,
     });
     if (resume) {
-      await this.ctx.storage.put({
-        resume: { branch: resume.branch, pr: resume.pr?.number ?? null, reply: resume.reply } satisfies Resume,
-        branch: `refs/heads/${resume.branch}`,
-      });
+      await this.ctx.storage.put(
+        "resume",
+        { branch: resume.branch, pr: resume.pr?.number ?? null, reply: resume.reply } satisfies Resume,
+      );
+      if (resume.branch) await this.ctx.storage.put("branch", `refs/heads/${resume.branch}`);
       if (resume.pr) await this.ctx.storage.put("pr", resume.pr);
     }
     await this.ctx.storage.setAlarm(Date.now());
@@ -390,7 +392,9 @@ export class RunState extends DurableObject<Env> {
 
     const log = this.env.DELIVERY_LOG.getByName("global");
     try {
-      if (canResume && branch) {
+      // With no branch, the agent blocked before pushing, and a resume starts from
+      // the default branch with the reply.
+      if (canResume) {
         const record: BlockedRecord = {
           scope: {
             installationId: scope.installationId,

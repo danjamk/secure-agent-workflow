@@ -4,8 +4,8 @@ import { probe } from "./probe";
 
 /** What a resumed run continues from (#11). */
 export interface Resume {
-  /** The branch name, without refs/heads/. */
-  branch: string;
+  /** The branch name, without refs/heads/. Null if the agent blocked before pushing. */
+  branch: string | null;
   pr: number | null;
   /** The approver's reply that resumed the run. */
   reply: string;
