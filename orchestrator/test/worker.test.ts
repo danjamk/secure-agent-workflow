@@ -24,3 +24,14 @@ it("a delivery id can be claimed once, and again after it's forgotten", async ()
   await log.forget("a");
   expect(await log.claim("a")).toBe(true);
 });
+
+it("an issue holds one active run, and only that run can release it", async () => {
+  const log = env.DELIVERY_LOG.getByName("issue-lock-test");
+  expect(await log.claimIssue("1#1", "run-a")).toBe(true);
+  expect(await log.claimIssue("1#1", "run-b")).toBe(false);
+  await log.releaseIssue("1#1", "run-b");
+  expect(await log.claimIssue("1#1", "run-b")).toBe(false);
+  await log.releaseIssue("1#1", "run-a");
+  expect(await log.claimIssue("1#1", "run-b")).toBe(true);
+  expect(await log.claimIssue("2#1", "run-c")).toBe(true);
+});

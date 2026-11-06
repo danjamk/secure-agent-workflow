@@ -248,6 +248,8 @@ class Route {
       }
       await this.run.pinPullRequest(created.number, created.node_id);
     }
+    // The run learns it's blocked from what got through here, not from what the agent says.
+    if (decision.marksBlocked && response.ok) await this.run.markBlocked();
     return respond(response, true);
   }
 
