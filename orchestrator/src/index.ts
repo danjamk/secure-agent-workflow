@@ -1,3 +1,4 @@
+import { handleApi } from "./api";
 import { handleWebhook } from "./webhook";
 
 export { DeliveryLog } from "./deliveries";
@@ -12,6 +13,10 @@ export default {
     }
     if (pathname === "/webhook" && request.method === "POST") {
       return handleWebhook(request, env);
+    }
+    // The operator's routes, behind Cloudflare Access (ADR-010, #101).
+    if (pathname.startsWith("/api/")) {
+      return handleApi(request, env);
     }
     return new Response("Not found", { status: 404 });
   },

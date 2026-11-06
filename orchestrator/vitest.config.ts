@@ -23,6 +23,10 @@ export default defineConfig({
           GITHUB_APP_PRIVATE_KEY: privateKey,
           // Fake values the log's redaction must find (#10), built from parts so the
           // gate's secret scan doesn't flag them. The outbound tests set their own.
+          // The /api routes' Access settings (#101). test/access.test.ts signs its own tokens.
+          ACCESS_TEAM: "test-team",
+          ACCESS_AUD: "test-aud",
+          OPERATOR_EMAIL: "operator@example.com",
           ANTHROPIC_API_KEY: ["test", "anthropic", "key", "0123456789"].join("-"),
           OPENAI_API_KEY: ["test", "openai", "key", "0123456789"].join("-"),
           TEST_PUBLIC_KEY: publicKey,

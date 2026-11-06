@@ -90,7 +90,26 @@ Each run keeps its own log in its `RunState` Durable Object (#10). On every chec
 - **Size.** At most 10 MB per run. After that, the log ends with a line saying it was cut, and the run reads no more.
 - **Retention.** 30 days after the run ends, its Durable Object deletes everything it holds, the log included. It keeps one flag, so the same delivery can't start the run again.
 - **Status comment.** It ends with the number of lines stored, the number of credentials removed, and the date the log will be deleted.
-- **Reading it.** `RunState.readLog()`, over the Durable Object binding only. Nothing serves it over HTTP yet. #101 serves it behind Cloudflare Access, through a console Worker on `workers.dev`, because the factory account has no custom domain.
+- **Reading it.** `GET /api/runs/<run>/log`, for the operator only (Operator routes).
+
+## Operator routes
+
+`/api/*` serves the operator, through the console Worker (#105) on its own `workers.dev` hostname, behind Cloudflare Access (ADR-010, revised for no custom domain). The console forwards each request over a service binding with the `Cf-Access-Jwt-Assertion` header Access added. The orchestrator checks that token itself on every `/api/*` request, before matching the path, so the console holds no authority, and an unauthenticated caller can't tell which paths exist.
+
+| Check | Rule |
+| --- | --- |
+| Signature | RS256 only, against the team's keys from `https://<ACCESS_TEAM>.cloudflareaccess.com/cdn-cgi/access/certs`, cached for 10 minutes. An unknown key id refetches them, at most once a minute |
+| Claims | `aud` includes `ACCESS_AUD`, `iss` is the team's, `exp` hasn't passed, and `nbf` has, within 30 seconds |
+| Identity | `email` equals `OPERATOR_EMAIL`, ignoring case. A service token has no email, so it's refused |
+| Settings | `ACCESS_TEAM`, `ACCESS_AUD` and `OPERATOR_EMAIL` are Worker variables. Any one empty refuses every request. `deploy.sh` passes them when they're set; they aren't committed |
+
+Anything that fails gets a 403 with no reason. The reason goes to the Worker's log, never the token.
+
+| Route | Returns |
+| --- | --- |
+| `GET /api/runs/<run>/log` | The run's stored, redacted log as `text/plain`, with `nosniff`, `default-src 'none'` and `no-store`, so the browser shows it as text and keeps no copy. 404 if the run has none |
+
+The orchestrator's own `workers.dev` hostname has no Access, so `/webhook` stays reachable by GitHub, and `/api/*` there gets 403.
 
 ## Model spend
 

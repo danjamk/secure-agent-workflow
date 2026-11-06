@@ -19,6 +19,12 @@ declare namespace Cloudflare {
     MAX_OUTPUT_TOKENS?: string;
     /** JSON: {"owner/name": ["registry.npmjs.org"]}. Empty means no registries. */
     EGRESS_HOSTS?: string;
+    /** The Access team name, as in <team>.cloudflareaccess.com. Empty refuses every /api request. */
+    ACCESS_TEAM?: string;
+    /** The console's Access application AUD tag. */
+    ACCESS_AUD?: string;
+    /** The only identity the /api routes accept. */
+    OPERATOR_EMAIL?: string;
     ANTHROPIC_API_KEY?: string;
     OPENAI_API_KEY?: string;
     DELIVERY_LOG: DurableObjectNamespace<import("./deliveries").DeliveryLog>;

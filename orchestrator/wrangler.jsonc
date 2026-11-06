@@ -34,7 +34,12 @@
     "ISSUE_BUDGET_USD": "8",
     "MONTHLY_BUDGET_USD": "15",
     // The largest max_tokens a call may ask for. Claude Code is told the same.
-    "MAX_OUTPUT_TOKENS": "32000"
+    "MAX_OUTPUT_TOKENS": "32000",
+    // Cloudflare Access for the /api routes (ADR-010, #101). Empty refuses every
+    // /api request. deploy.sh passes the real values, which aren't committed.
+    "ACCESS_TEAM": "",
+    "ACCESS_AUD": "",
+    "OPERATOR_EMAIL": ""
   },
 
   // DELIVERY_LOG records webhook deliveries so a redelivery doesn't release an issue
