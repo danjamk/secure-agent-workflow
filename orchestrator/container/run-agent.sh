@@ -3,7 +3,9 @@
 #
 # The Worker writes the issue and the agent instructions to /workspace/task first,
 # and passes the rest in the environment: REPO, ISSUE, DEFAULT_BRANCH, BOT_NAME,
-# BOT_EMAIL, MODEL, MAX_TURNS, MAX_BUDGET_USD. The container holds no credentials:
+# BOT_EMAIL, MODEL, MAX_TURNS, MAX_BUDGET_USD. A resumed run (#11) also gets
+# RESUME_BRANCH and RESUME_PR, and the approver's reply in reply.md. The container
+# holds no credentials:
 # ANTHROPIC_API_KEY is a placeholder, and the Worker adds the real key and the
 # GitHub token outside.
 #
@@ -25,13 +27,24 @@ if ! git clone -q "https://github.com/$REPO.git" "$REPO_DIR"; then
 fi
 cd "$REPO_DIR" || exit 2
 
+RESUME_NOTE=""
+if [ -n "${RESUME_BRANCH:-}" ]; then
+    if ! git fetch -q origin "$RESUME_BRANCH" || ! git checkout -q -b "$RESUME_BRANCH" FETCH_HEAD; then
+        echo "Fetching the branch $RESUME_BRANCH failed."
+        exit 2
+    fi
+    RESUME_NOTE=" This run resumes earlier work: your branch $RESUME_BRANCH is checked out\
+${RESUME_PR:+ and your PR is #$RESUME_PR}. Read your handoff note on the PR, then the approver's reply in \
+$TASK/reply.md, and continue from there. Don't open a second PR."
+fi
+
 # Fixed text. The issue reaches the agent only as a file it reads, so nothing in it
 # can change this command line.
 PROMPT="You are the build agent for issue #$ISSUE in $REPO. The issue is in $TASK/issue.md. \
 Your instructions are in $TASK/agent-instructions.md: read them first and follow them. \
 The repository is checked out in $REPO_DIR on $DEFAULT_BRANCH. \
 For GitHub writes, use the agent-gh command; run 'agent-gh help' to see what it does. \
-The gh CLI isn't installed."
+The gh CLI isn't installed.$RESUME_NOTE"
 
 claude -p "$PROMPT" \
     --output-format stream-json --verbose \

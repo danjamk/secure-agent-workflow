@@ -7,87 +7,12 @@ import { BACKGROUND_MODEL, MODEL } from "../src/agents/claude-code";
 import { probeSlug } from "../src/agents/probe";
 import type { RunState } from "../src/run";
 import { interceptHosts, scrubOutput } from "../src/sandbox";
-import { stubGitHub } from "./helpers";
+import { fakeContainer, stubGitHub, type FakeOptions } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
 
 const LOG = "/workspace/task/run.log";
 const RESULT = "/workspace/task/result.json";
-
-interface FakeOptions {
-  /** Checks before the CA file appears. */
-  caAfter?: number;
-  /** The command's exit code, or null while it's still running. */
-  exit?: string | null;
-  /** Files the container holds, by path. */
-  files?: Record<string, string>;
-  /** The container stops on its own after starting. */
-  dies?: boolean;
-}
-
-function fakeContainer(options: FakeOptions = {}) {
-  const state = {
-    running: false,
-    started: [] as ContainerStartupOptions[],
-    intercepted: [] as string[],
-    allHttp: 0,
-    commands: [] as { cmd: string[]; env?: Record<string, string>; user?: string }[],
-    written: {} as Record<string, string>,
-    destroyed: 0,
-    caChecks: 0,
-  };
-  const encode = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
-  const container = {
-    get running() {
-      return state.running;
-    },
-    images: { agent: "registry.example/agent@sha256:abc" },
-    start(startOptions: ContainerStartupOptions) {
-      state.started.push(startOptions);
-      state.running = !options.dies;
-    },
-    async setInactivityTimeout() {},
-    async interceptOutboundHttps(host: string) {
-      state.intercepted.push(host);
-    },
-    async interceptAllOutboundHttp() {
-      state.allHttp += 1;
-    },
-    async interceptOutboundHttp() {
-      state.allHttp += 1;
-    },
-    async destroy() {
-      state.destroyed += 1;
-      state.running = false;
-    },
-    async exec(cmd: string[], execOptions?: ContainerExecOptions) {
-      let exitCode = 0;
-      let stdout = "";
-      if (cmd[0] === "test") {
-        state.caChecks += 1;
-        exitCode = state.caChecks > (options.caAfter ?? 0) ? 0 : 1;
-      } else if (cmd[3] === "write-file") {
-        const bytes = Uint8Array.from(atob(cmd[4] ?? ""), (c) => c.charCodeAt(0));
-        state.written[cmd[5] ?? ""] = new TextDecoder().decode(bytes);
-      } else if (cmd[0] === "/bin/sh") {
-        state.commands.push({ cmd, env: execOptions?.env, user: execOptions?.user });
-      } else if (cmd[0] === "cat") {
-        const exit = options.exit === undefined ? "0" : options.exit;
-        exitCode = exit === null ? 1 : 0;
-        stdout = exit === null ? "" : `${exit}\n`;
-      } else if (cmd[0] === "head") {
-        const content = options.files?.[cmd[3] ?? ""];
-        exitCode = content === undefined ? 1 : 0;
-        stdout = content ?? "";
-      }
-      return {
-        exitCode: Promise.resolve(exitCode),
-        output: async () => ({ stdout: encode(stdout), stderr: encode(""), exitCode }),
-      };
-    },
-  };
-  return { container, state };
-}
 
 const SCOPE = {
   installationId: 99,
@@ -315,6 +240,7 @@ describe("runners", () => {
     const files = RUNNERS["claude-code"]!.files({
       scope: { ...SCOPE, runId: "r" },
       issue: { title: "t", body: "x".repeat(70_000) },
+      resume: null,
       env,
     });
     expect(files["/workspace/task/issue.md"]!.length).toBeLessThan(61_000);

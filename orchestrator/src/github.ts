@@ -136,6 +136,22 @@ export async function findComment(
   return typeof found?.id === "number" ? found.id : undefined;
 }
 
+/** Adds or removes one label. Removing a label that isn't there isn't an error. */
+export async function setLabel(
+  token: string,
+  repo: string,
+  issue: number,
+  label: string,
+  present: boolean,
+): Promise<void> {
+  const response = present
+    ? await call(`/repos/${repo}/issues/${issue}/labels`, "POST", token, { labels: [label] })
+    : await call(`/repos/${repo}/issues/${issue}/labels/${encodeURIComponent(label)}`, "DELETE", token);
+  if (!response.ok && !(response.status === 404 && !present)) {
+    throw new GitHubError(`${present ? "Adding" : "Removing"} a label returned ${response.status}`);
+  }
+}
+
 export async function getIssue(
   token: string,
   repo: string,

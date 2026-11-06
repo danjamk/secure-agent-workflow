@@ -2,15 +2,27 @@ import type { RunScope } from "../outbound/scope";
 import { claudeCode } from "./claude-code";
 import { probe } from "./probe";
 
+/** What a resumed run continues from (#11). */
+export interface Resume {
+  /** The branch name, without refs/heads/. */
+  branch: string;
+  pr: number | null;
+  /** The approver's reply that resumed the run. */
+  reply: string;
+}
+
 /** What a runner gets to build its command. Nothing in it is a credential. */
 export interface RunContext {
   scope: RunScope;
   issue: { title: string; body: string };
+  resume: Resume | null;
   env: Env;
 }
 
 export interface RunReport {
   summary: string;
+  /** The run ended waiting for the approver, not finished or failed. A reply resumes it. */
+  blocked?: boolean;
   /** Shown in a code block under the summary. It comes from the container, so it's scrubbed first. */
   output: string;
 }
