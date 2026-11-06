@@ -4,7 +4,7 @@
 # The Worker writes the issue and the agent instructions to /workspace/task first,
 # and passes the rest in the environment: REPO, ISSUE, DEFAULT_BRANCH, BOT_NAME,
 # BOT_EMAIL, MODEL, MAX_TURNS, MAX_BUDGET_USD. A resumed run (#11) also gets
-# RESUME_BRANCH and RESUME_PR, and the approver's reply in reply.md. The container
+# RESUMED, RESUME_BRANCH and RESUME_PR, and the approver's reply in reply.md. The container
 # holds no credentials:
 # ANTHROPIC_API_KEY is a placeholder, and the Worker adds the real key and the
 # GitHub token outside.
@@ -28,13 +28,17 @@ fi
 cd "$REPO_DIR" || exit 2
 
 RESUME_NOTE=""
-if [ -n "${RESUME_BRANCH:-}" ]; then
+if [ -n "${RESUMED:-}" ] && [ -z "${RESUME_BRANCH:-}" ]; then
+    # Blocked before pushing anything, so there's no branch to continue from.
+    RESUME_NOTE=" This run resumes an earlier run that stopped to ask a question before pushing anything. \
+Read the approver's reply in $TASK/reply.md and start from there."
+elif [ -n "${RESUME_BRANCH:-}" ]; then
     if ! git fetch -q origin "$RESUME_BRANCH" || ! git checkout -q -b "$RESUME_BRANCH" FETCH_HEAD; then
         echo "Fetching the branch $RESUME_BRANCH failed."
         exit 2
     fi
     RESUME_NOTE=" This run resumes earlier work: your branch $RESUME_BRANCH is checked out\
-${RESUME_PR:+ and your PR is #$RESUME_PR}. Read your handoff note on the PR, then the approver's reply in \
+${RESUME_PR:+ and your PR is #$RESUME_PR}. Read your handoff note on the PR, then the approver's reply in \$
 $TASK/reply.md, and continue from there. Don't open a second PR."
 fi
 

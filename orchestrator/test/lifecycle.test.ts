@@ -169,6 +169,27 @@ describe("blocked", () => {
     await log().clearBlocked(KEY);
   });
 
+  it("saves a resume point even when the agent blocked before pushing", async () => {
+    const calls = stubGitHub();
+    const run = await running({ files: { "/workspace/task/result.json": '{"type":"result","num_turns":2}' } });
+    await run.stub.markBlocked();
+    await run.tick();
+    await run.tick();
+    await run.tick();
+    expect(edited(calls).at(-1)).toContain("Reply on this issue to resume. This was run 1 of 3.");
+    expect(await log().findBlocked(1234, 7)).toBe(KEY);
+
+    const before = revocations(calls);
+    const delivery = crypto.randomUUID();
+    const response = await deliver(comment("Go", { issue: { number: 7, state: "open" } }), { event: "issue_comment", delivery });
+    expect(await response.json()).toMatchObject({ run: 2 });
+    await runInDurableObject(env.RUN_STATE.getByName(delivery), async (_instance: RunState, state) => {
+      expect(await state.storage.get("resume")).toEqual({ branch: null, pr: null, reply: "Go" });
+      expect(await state.storage.get("branch")).toBeUndefined();
+    });
+    await runEnded(calls, before);
+  });
+
   it("treats the time limit as blocked, and adds agent:blocked itself", async () => {
     const calls = stubGitHub();
     const { stub, fake, tick } = await running({ exit: null }, { deadline: Date.now() - 1 });
@@ -234,7 +255,7 @@ describe("resume", () => {
     await tick();
     await tick();
     expect(fake.state.written["/workspace/task/reply.md"]).toBe("Use the second option.\n");
-    expect(fake.state.commands[0]?.env).toMatchObject({ RESUME_BRANCH: BRANCH, RESUME_PR: "12" });
+    expect(fake.state.commands[0]?.env).toMatchObject({ RESUMED: "1", RESUME_BRANCH: BRANCH, RESUME_PR: "12" });
     expect(calls.some((c) => c.method === "DELETE" && c.url.includes("/labels/agent%3Ablocked"))).toBe(true);
     await stub.halt("cleanup");
   });

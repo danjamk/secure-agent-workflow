@@ -232,6 +232,26 @@ Two problems, fixed after the run:
 - **`make` wasn't in the image,** so the agent couldn't run `make check`. It said so in its run notes and read the Makefile instead.
 - **The result arrived as a second comment** instead of an edit to the status comment, so the run didn't have the start comment's id. The likeliest cause is the 3-second limit on GitHub calls, which dated from when the webhook made them. The limit is now 15 seconds. A run that's missing the id finds its start comment by the run id.
 
+### Live results: stop, blocked and resume
+
+2026-11-06, build `0.1.12+7086bd5`, on agent-testbed. The approver's actions came from the approver's login.
+
+| Test | Result |
+| --- | --- |
+| Stop, first try (#40) | Not a test: the agent finished in about 35 seconds, before `agent:stop` was added, and the stop found nothing to stop |
+| Stop mid-run (#44) | The agent opened its draft PR, then was told to wait. `agent:stop` at 02:19:40 ended the run: the status comment read "Stopped by danjamk", and the run commented on the PR. The branch holds only the commit from before the stop. Removing `agent:stop` started nothing |
+| Block (#41) | Asked not to choose a license, the agent pushed a branch, opened a draft PR, asked which license to use with a recommendation, and added `agent:blocked`. The status comment said "run 1 of 3", and how to resume |
+| Resume | A reply on the PR started run 2 seven seconds later and removed `agent:blocked`. The agent added the license, marked the PR ready and turned on auto-merge |
+| Merge | The PR conflicted with `main`, because both agent runs had created `docs/decisions.md`. After a hand merge, the gate held it at tier 2 (`LICENSE` matches no rule) for the approver |
+| Earlier fixes | Each run ended with one status comment, edited, and `make check` ran |
+
+Fixed after the tests:
+
+- The agents' decision log entries didn't follow the format, because the container had only the instructions. The format file is now bundled too.
+- The agent called the license PR tier 1. The gate overruled it, and the instructions now say how to work out the tier from the repo's tier map.
+- A block before any push saved no resume point. A resume now starts from the default branch in that case.
+- Agents' decision log entries conflict with each other. #94 moves the log to one file per decision.
+
 ## Other options for a fork
 
 From the [sandbox bake-off](../docs/research/sandbox-bakeoff.md):

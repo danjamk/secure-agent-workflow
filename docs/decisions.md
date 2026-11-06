@@ -560,3 +560,44 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Decided by:** Claude
 - **Approved by:** None
 - **Evidence:** `docs/plans/console-phase-1.md`, W1-2 and W1-5
+
+### 2026-11-06 Bundle the decision log format into each run
+
+- **Decision:** The Worker writes `standards/decision-log.md` into the container next to the agent instructions, and the instructions say where it is.
+- **Why:** In #11's live test, two agents wrote log entries without the format's fields. They had only the instructions, which name a file the consumer repo doesn't have.
+- **Decided by:** Claude
+- **Approved by:** danjamk, replied "go" to the fix list in the working session
+- **Evidence:** `orchestrator/src/agents/claude-code.ts`
+
+### 2026-11-06 Tell the agent how to work out its tier
+
+- **Decision:** The agent instructions say to take the tier from the repo's `standards/tier-map.yml`: the highest tier of any changed path, with an unmatched path at tier 2.
+- **Why:** An agent called a PR that adds `LICENSE` tier 1. The gate overruled it, but the tier line is what the approver reads first.
+- **Decided by:** Claude
+- **Approved by:** danjamk, replied "go" to the fix list in the working session
+- **Evidence:** `standards/agent-instructions.md`, agent-testbed PR #43
+
+### 2026-11-06 Resume from the default branch when the agent blocked before pushing
+
+- **Decision:** A run that ends blocked saves a resume point even without a branch. Its resume starts from the default branch, with the reply.
+- **Why:** The status comment offered a resume either way, and with no branch saved, a reply did nothing.
+- **Decided by:** Claude
+- **Approved by:** danjamk, replied "go" to the fix list in the working session
+- **Evidence:** `orchestrator/src/run.ts`, `orchestrator/test/lifecycle.test.ts`
+
+### 2026-11-06 File one-file-per-decision as its own issue
+
+- **Decision:** The conflicts between agents' decision log entries go to #94, which moves the log to one file per decision.
+- **Why:** It changes the standard and every consumer repo, so it needs its own review. #11's live test showed the conflict blocking an agent PR.
+- **Rejected:** Leaving it to #13's catch-up runs, which would resolve conflicts after the fact, with a run each time.
+- **Decided by:** Claude proposed, danjamk chose
+- **Approved by:** danjamk, replied "go" in the working session
+- **Evidence:** #94
+
+### 2026-11-06 Close #11 on the live tests
+
+- **Decision:** #11 (stop, blocked, resume) closes on one real stop mid-run, one block and one resume on the testbed, with three fixes in the same PR.
+- **Why:** Each behavior the issue lists worked live. The fixes are covered by tests.
+- **Decided by:** Claude
+- **Approved by:** None
+- **Evidence:** `orchestrator/README.md`, Live results: stop, blocked and resume
