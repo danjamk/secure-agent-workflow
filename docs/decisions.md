@@ -518,6 +518,15 @@ The log starts on 2026-11-05 with the decisions behind #8 (outbound handlers). E
 - **Approved by:** None
 - **Evidence:** `orchestrator/container/run-agent.sh`
 
+### 2026-11-06 Stop runs from the console through an orchestrator route
+
+- **Decision:** The console stops a run by calling `POST /api/runs/<repo>/<issue>/stop` on the orchestrator, which verifies the Cloudflare Access JWT itself and runs #11's stop. ADR-010 has the checks and the alternatives.
+- **Why:** The console holds no credential, and the audit trail stays in GitHub as a label event and a PR comment.
+- **Rejected:** A GitHub user token in the console, which spec 0001 rules out.
+- **Decided by:** Claude proposed, following spec 0002's proposal
+- **Approved by:** None
+- **Evidence:** ADR-010, spec 0002 (Stop)
+
 ### 2026-11-06 Track the console's orchestrator routes as human-authored issues
 
 - **Decision:** The console's workspace, deploy and orchestrator routes are four issues (H-1 to H-4 in `docs/plans/console-phase-1.md`), authored by the operator, sub-issues of #35 with no milestone.
