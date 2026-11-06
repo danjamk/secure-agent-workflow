@@ -301,7 +301,18 @@ Fixed after the tests:
 
 - A budget block didn't add `agent:blocked`, because the finish step took the block flag to mean the agent had added the label itself.
 - The agent's first README edit failed because the image had no `python3`. It's installed now.
-- An agent commit had Claude Code's `Co-Authored-By` trailer. The image's managed settings (`/etc/claude-code/managed-settings.json`) turn it off. That isn't verified live yet; the next agent run will show it.
+- An agent commit had Claude Code's `Co-Authored-By` trailer. The image's managed settings (`/etc/claude-code/managed-settings.json`) turn it off. Verified on agent-testbed PR #52: its commit has no trailer, and the agent ran `python3 --version` (3.13.5).
+
+### Live results: run logs
+
+2026-11-06, build `0.1.17+c16ddec`, on agent-testbed #53. The issue had the agent print two fakes generated at random when it ran, one shaped like a GitHub installation token and one like an Anthropic key.
+
+| Check | Result |
+| --- | --- |
+| Status comment | "Log: 26 lines stored, 4 credentials removed, kept until 2026-12-06." Two removals per fake. My guess is that the event stream carries each command's output twice, but I didn't confirm it |
+| GitHub | Neither fake appears in the status comment, testbed PR #54's description, commits or diff, or the PR's comments |
+| Stored text | Not read live: nothing serves the log until #101. The tests cover it, including every credential the Worker holds |
+| Decision log | The agent wrote its entry as a file in `docs/decisions/`, the layout from #94 |
 
 ## Other options for a fork
 
