@@ -138,14 +138,16 @@ describe("a release", () => {
     await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
     expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
       "POST /app/installations/99/access_tokens",
+      // Whether the repo is public decides how the log is linked (#105).
+      "GET /repos/the-approver/app",
       "POST /repos/the-approver/app/issues/7/comments",
       "PATCH /repos/the-approver/app/issues/comments/1",
       "DELETE /installation/token",
     ]);
     expect(calls[0]?.body).toEqual({ repository_ids: [1234] });
-    expect(calls[1]?.authorization).toBe("Bearer minted-token");
-    expect(JSON.stringify(calls[1]?.body)).toContain(delivery);
-    expect(JSON.stringify(calls[2]?.body)).toContain("no container is configured");
+    expect(calls[2]?.authorization).toBe("Bearer minted-token");
+    expect(JSON.stringify(calls[2]?.body)).toContain(delivery);
+    expect(JSON.stringify(calls[3]?.body)).toContain("no container is configured");
     const run = env.RUN_STATE.getByName(delivery);
     expect(await run.admit()).toEqual({ admitted: false, reason: "the run is stopped" });
   });

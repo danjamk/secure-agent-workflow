@@ -21,7 +21,8 @@ inputs:
     description: >-
       <target>/<exposure>/<name>, one per line, such as
       dev/preview/cloudflare-deploy-token. Each becomes the variable <NAME>
-      (upper case, dashes as underscores).
+      (upper case, dashes as underscores). A trailing ? makes one optional:
+      if it isn't stored, the variable is left unset.
     required: true
 
 runs:

@@ -48,6 +48,9 @@ ACCOUNT_STACK=saw-broker
 FACTORY_STACK=saw-broker-factory
 FACTORY_TOKEN=cloudflare-deploy-token
 FACTORY_SETTINGS="cloudflare-account-id approver-login allowed-repos orchestrator-url agent-app-id egress-hosts"
+# Stored when .env.local has them; the deploy reads them as optional, so a deploy
+# works before the operator console is set up (#105).
+FACTORY_OPTIONAL="access-team access-aud operator-email console-url"
 
 CMD="${1:-}"
 shift || true
@@ -238,6 +241,10 @@ factory_setting() {
         approver-login)        env_local APPROVER_LOGIN ;;
         allowed-repos)         env_local ALLOWED_REPOS ;;
         orchestrator-url)      env_local ORCHESTRATOR_URL ;;
+        access-team)           env_local ACCESS_TEAM ;;
+        access-aud)            env_local ACCESS_AUD ;;
+        operator-email)        env_local OPERATOR_EMAIL ;;
+        console-url)           env_local CONSOLE_URL ;;
         # Parameter Store has no empty values, and {} means no registries.
         egress-hosts)
             local hosts
@@ -279,14 +286,18 @@ cmd_factory() {
     for setting in $FACTORY_SETTINGS; do
         store_factory "$setting" "$(factory_setting "$setting")"
     done
+    for setting in $FACTORY_OPTIONAL; do
+        value="$(factory_setting "$setting")"
+        if [ -n "$value" ]; then store_factory "$setting" "$value"; else echo "Skipped $setting: optional, and not in .env.local."; fi
+    done
     echo "Next: broker.sh set-factory $REPO $FACTORY_TOKEN"
 }
 
 cmd_set_factory() {
     [[ "$REPO" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] && [ -n "$NAME" ] || usage
-    case " $FACTORY_TOKEN $FACTORY_SETTINGS " in
+    case " $FACTORY_TOKEN $FACTORY_SETTINGS $FACTORY_OPTIONAL " in
         *" $NAME "*) ;;
-        *) echo "$NAME isn't a factory deploy setting: $FACTORY_TOKEN $FACTORY_SETTINGS"; exit 1 ;;
+        *) echo "$NAME isn't a factory deploy setting: $FACTORY_TOKEN $FACTORY_SETTINGS $FACTORY_OPTIONAL"; exit 1 ;;
     esac
 
     if [ "$NAME" = "$FACTORY_TOKEN" ]; then

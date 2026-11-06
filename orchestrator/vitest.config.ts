@@ -27,6 +27,7 @@ export default defineConfig({
           ACCESS_TEAM: "test-team",
           ACCESS_AUD: "test-aud",
           OPERATOR_EMAIL: "operator@example.com",
+          CONSOLE_URL: "https://console.example",
           ANTHROPIC_API_KEY: ["test", "anthropic", "key", "0123456789"].join("-"),
           OPENAI_API_KEY: ["test", "openai", "key", "0123456789"].join("-"),
           TEST_PUBLIC_KEY: publicKey,

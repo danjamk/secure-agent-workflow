@@ -50,8 +50,9 @@ Two things a newcomer gets wrong:
 | `deploy/cloudflare/` | What the deploy jobs run: `prepare.py` (checks and unpacks the bundle, sanitizes the wrangler config), `deploy.sh`, and the locked wrangler. The consumer's workflow is `bootstrap/files/deploy.yml`. Tests: `python3 -m unittest discover -s deploy/cloudflare` |
 | `deploy/credentials/` | `credentials.py` (`broker.sh setup`, `set` and `status`, and `check` for the daily job), one checker per system in `checks/`, and the example `infra/credentials.yml`. Tests: `python3 -m unittest discover -s deploy/credentials` |
 | `orchestrator/` | The Worker in the factory account: webhook intake, token minting, the outbound policy (`src/outbound/`) and a container per run, with Claude Code or the outbound probe as the runner (`src/agents/`). `make -C orchestrator check`; `README.md` has the policy, the contract with the sandbox and how to deploy |
-| `console/` | The operator console (spec 0002). Not built yet: `console/design/` has the design system and the Phase 1 screens |
-| `package.json`, `pnpm-workspace.yaml` | At the root so the gate's check job sets up Node and pnpm. The workspace holds only `orchestrator/` |
+| `console/` | The operator console (spec 0002): a Worker on `workers.dev` behind Cloudflare Access, which forwards `/api/*` to the orchestrator. `make -C console check`; `console/README.md` has the operator's Access setup. The screens aren't built yet: `console/design/` has the design system and the Phase 1 screens |
+| `.github/workflows/console-deploy.yml` | Deploys `console/` to the factory account on merge, through the `factory` environment. Runs on this repo only |
+| `package.json`, `pnpm-workspace.yaml` | At the root so the gate's check job sets up Node and pnpm. The workspace holds `orchestrator/` and `console/` |
 
 `redteam/` does not exist yet.
 

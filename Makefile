@@ -6,6 +6,7 @@ check:
 	python3 -m unittest discover -s deploy/credentials
 	python3 -m unittest discover -s deploy/cloudflare
 	$(MAKE) -C orchestrator check
+	$(MAKE) -C console check
 	@for f in $$(git ls-files '*.sh'); do bash -n "$$f" || exit 1; done
 	@echo "Shell syntax OK."
 

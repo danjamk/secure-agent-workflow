@@ -1,0 +1,30 @@
+{
+  // The operator console (spec 0002) on its own workers.dev hostname, behind
+  // Cloudflare Access for the whole Worker (ADR-010, revised; #105). It holds no
+  // secrets. /api/* goes to the orchestrator over the service binding, which
+  // verifies the operator's Access token itself.
+  //
+  // No account_id: wrangler reads CLOUDFLARE_ACCOUNT_ID, so the account stays out
+  // of this public repo.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "saw-console",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  // Preview URLs would be more hostnames to keep behind Access.
+  "preview_urls": false,
+  "observability": { "enabled": true },
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // Everything else is a static file, served without running the Worker.
+    "run_worker_first": ["/api/*", "/health"]
+  },
+
+  "services": [{ "binding": "ORCHESTRATOR", "service": "saw-orchestrator" }],
+
+  "vars": {
+    "BUILD_ID": "0.0.0+dev"
+  }
+}

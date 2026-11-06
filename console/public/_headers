@@ -1,0 +1,4 @@
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer

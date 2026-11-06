@@ -244,10 +244,15 @@ All the values are `SecureString` parameters under `/<repo>/factory/deploy/`, ev
 | `orchestrator-url` | `ORCHESTRATOR_URL` in `.env.local` |
 | `agent-app-id` | The Keychain item `create-app.py` stored |
 | `egress-hosts` | `EGRESS_HOSTS` in `.env.local`, or `{}` if unset |
+| `access-team`, `access-aud`, `operator-email`, `console-url` | `ACCESS_TEAM`, `ACCESS_AUD`, `OPERATOR_EMAIL` and `CONSOLE_URL` in `.env.local`. Optional: `broker.sh factory` skips them when unset, and the deploy reads them as optional (#105). `console/README.md` has where to find each |
 
 `egress-hosts` lists the package registries each repo's agent may read, as JSON: `{"owner/name": ["registry.npmjs.org"]}`. It's kept here because a list in the repo would be one the agent can edit. A repo with `infra/` also needs `registry.opentofu.org` and its providers' download hosts (ADR-006). Listing `github.com` allows release downloads there and nothing more on that host.
 
 To change one, such as adding a repo to `allowed-repos`, run `set-factory <owner>/<repo> <name>`, then run the workflow from the Actions tab.
+
+**Optional settings.** The broker action reads a name ending in `?` as optional: if that parameter doesn't exist, its variable stays unset and the step goes on. Any other failure to read it, such as access denied, still fails the step. The orchestrator's deploy reads the four console settings this way, so it works before the console is set up.
+
+`console-deploy.yml` deploys `console/` the same way, through the same `factory` environment, and reads only the token and the account id. The console holds no secrets.
 
 ### Results
 

@@ -90,6 +90,7 @@ Each run keeps its own log in its `RunState` Durable Object (#10). On every chec
 - **Size.** At most 10 MB per run. After that, the log ends with a line saying it was cut, and the run reads no more.
 - **Retention.** 30 days after the run ends, its Durable Object deletes everything it holds, the log included. It keeps one flag, so the same delivery can't start the run again.
 - **Status comment.** It ends with the number of lines stored, the number of credentials removed, and the date the log will be deleted.
+- **Link.** With `CONSOLE_URL` set, the status comment links the log when the run starts and when it ends, and the run's PR gets one comment with the link when the run ends. On a private repo, that's the full URL. On a public repo, it's only the path, `/api/runs/<run>/log` on the operator console, because the console's hostname would also give away the orchestrator's. The orchestrator asks GitHub whether the repo is private once per run, and counts an unknown answer as public.
 - **Reading it.** `GET /api/runs/<run>/log`, for the operator only (Operator routes).
 
 ## Operator routes
@@ -101,7 +102,7 @@ Each run keeps its own log in its `RunState` Durable Object (#10). On every chec
 | Signature | RS256 only, against the team's keys from `https://<ACCESS_TEAM>.cloudflareaccess.com/cdn-cgi/access/certs`, cached for 10 minutes. An unknown key id refetches them, at most once a minute |
 | Claims | `aud` includes `ACCESS_AUD`, `iss` is the team's, `exp` hasn't passed, and `nbf` has, within 30 seconds |
 | Identity | `email` equals `OPERATOR_EMAIL`, ignoring case. A service token has no email, so it's refused |
-| Settings | `ACCESS_TEAM`, `ACCESS_AUD` and `OPERATOR_EMAIL` are Worker variables. Any one empty refuses every request. `deploy.sh` passes them when they're set; they aren't committed |
+| Settings | `ACCESS_TEAM`, `ACCESS_AUD` and `OPERATOR_EMAIL` are Worker variables. Any one empty refuses every request. They're optional broker settings, which `deploy.sh` passes when set, and aren't committed. `console/README.md` has where to find each |
 
 Anything that fails gets a 403 with no reason. The reason goes to the Worker's log, never the token.
 

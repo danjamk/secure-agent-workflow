@@ -107,7 +107,7 @@ describe("stop", () => {
     expect(edited(calls).at(-1)).toContain("Stopped by the-approver");
     expect(posted(calls).at(-1)).toEqual({
       path: "/repos/the-approver/app/issues/12/comments",
-      body: `Run \`${runId}\` was stopped by the-approver.`,
+      body: `Run \`${runId}\` was stopped by the-approver. Log: \`/api/runs/${runId}/log\` on the operator console.`,
     });
     expect(await log().activeRun(KEY)).toBeNull();
     expect(calls.filter((c) => c.method === "DELETE" && c.url.endsWith("/installation/token")).length).toBeGreaterThan(0);

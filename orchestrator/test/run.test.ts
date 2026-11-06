@@ -229,6 +229,44 @@ describe("a run's container", () => {
   });
 });
 
+describe("a run's log link", () => {
+  const LINK = (runId: string) => `https://console.example/api/runs/${runId}/log`;
+
+  it("links the log in full on a private repo: the status comment, its end, and the PR", async () => {
+    const calls = stubGitHub(undefined, [], { private: true });
+    const { runId, stub, tick } = await prepare({ files: { [LOG]: "done\n" } });
+    await stub.pinPullRequest(12, "PR_own");
+    await tick();
+    await tick();
+    await tick();
+    expect(posted(calls)[0]).toContain(`Log: ${LINK(runId)}.`);
+    expect(edited(calls).at(-1)).toContain(LINK(runId));
+    const onPr = calls.filter((c) => c.method === "POST" && c.url.endsWith("/issues/12/comments"));
+    expect((onPr.at(-1)?.body as { body: string }).body).toBe(`Run \`${runId}\` ended. Log: ${LINK(runId)}.`);
+  });
+
+  it("gives only the path on a public repo, so the console's hostname stays out of public comments", async () => {
+    const calls = stubGitHub(undefined, [], { private: false });
+    const { runId, stub, tick } = await prepare({ files: { [LOG]: "done\n" } });
+    await stub.pinPullRequest(12, "PR_own");
+    await tick();
+    await tick();
+    await tick();
+    const everything = JSON.stringify(calls.map((c) => c.body));
+    expect(everything).not.toContain("console.example");
+    expect(posted(calls)[0]).toContain(`Log: \`/api/runs/${runId}/log\` on the operator console.`);
+  });
+
+  it("treats a repo GitHub can't describe as public", async () => {
+    const calls = stubGitHub(undefined, [], null);
+    const { runId, tick } = await prepare({ exit: null });
+    await tick();
+    expect(calls.some((c) => c.method === "GET" && c.url.endsWith("/repos/the-approver/app"))).toBe(true);
+    expect(posted(calls)[0]).toContain(`Log: \`/api/runs/${runId}/log\` on the operator console.`);
+    expect(JSON.stringify(calls.map((c) => c.body))).not.toContain("console.example");
+  });
+});
+
 describe("a run's model budget", () => {
   const log = () => env.DELIVERY_LOG.getByName("global");
   const NONE = { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
