@@ -153,6 +153,37 @@ docker run --rm --platform linux/amd64 --network none -e REPO=a/b -e ISSUE=1 -e 
 
 The Worker never exposes the token, so the live test didn't observe its scope or its revocation. Tests cover both. The comment was posted, and the Worker only reaches that step after checking the token lists exactly one repo.
 
+### Live results: the outbound probe
+
+2026-11-05, three runs on agent-testbed #34. Each run's full output is in its comment on that issue.
+
+| Run | Build | Result |
+| --- | --- | --- |
+| 1 | `0.1.7+67a171a` | 40 of 42. Opening the draft PR waited 10.3 seconds and got a bare 502, so marking it ready failed too. GitHub accepted the same PR in 1.7 seconds when sent directly |
+| 2 | `0.1.7+67a171a` | 42 of 42, on the same build |
+| 3 | `0.1.8+42ec012` | 42 of 42, after intercepts were registered once per container |
+
+What run 3 showed:
+
+| Area | Checks | Result |
+| --- | --- | --- |
+| Network | A blocked host over HTTPS and HTTP, a bare IP over both, the metadata address, raw TCP to port 22, DNS for an unlisted name, plain HTTP to `github.com`, another GitHub host | All failed. Unlisted names timed out, and `github.com` resolved to a placeholder address |
+| Git | Clone and two pushes to the run's branch | Worked |
+| Git | Clone another repo, push to `main`, a second branch, another issue's branch, a tag, delete the branch | Refused by the policy with a 403 |
+| Git | Force-push the run's branch | Refused by GitHub: "push declined due to repository rule violations". The testbed's ruleset log names `agent-branches`, "Cannot force-push to this branch" |
+| GitHub API | Read the issue, open the draft PR, comment on the issue, mark the PR ready, a GraphQL read | Worked |
+| GitHub API | Comment on another issue, a review, a merge, closing a blocker from the PR body, removing `agent:stop`, adding `agent:ready`, closing the issue, moving a ref, reading the installation or another repo, merging or removing a label by GraphQL, a GraphQL batch, a model call with no key | All refused with "Blocked by the outbound policy" and the reason |
+| Credentials | The environment, every process's environment, files under `/etc`, `/root`, `/home`, `/tmp`, `/var`, `/opt`, `/usr/local`, and `.git/config` | No credential found |
+
+The cause of run 1's 502 isn't confirmed. Run 2 passed on the same build, so the failure comes and goes. Re-registering intercepts on every check, while a request was in flight, is the likeliest cause, and no failure has occurred since that changed. The handler now logs any upstream 5xx, so a repeat would show where it came from.
+
+Other findings:
+
+- **Deploy token:** it needs Containers Edit. Without it, the first Containers API call failed with no reason, and the live Worker didn't change.
+- **Plan:** the deploy and runs worked, so the factory account's plan supports containers.
+- **Cost:** a run took about 4 to 5 minutes, judging from the push times and the network checks' timeouts. Container start-up wasn't measured. On a `lite` instance that's well under a cent, by my arithmetic from Cloudflare's pricing, and inside what Workers Paid includes.
+- **Cleanup:** each run leaves a branch, a PR and a comment on the testbed. Runs 1 to 3 were cleaned up by hand.
+
 ## Other options for a fork
 
 From the [sandbox bake-off](../docs/research/sandbox-bakeoff.md):
