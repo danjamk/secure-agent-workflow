@@ -4,11 +4,11 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets, a redacted log per run | Serving the logs (#101), the coordinator (#13) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets, a redacted log per run served to the operator, the coordinator's queue, cap, area locks and dependency gating | Reconciling missed webhooks (#110), catch-up runs (#111), the daily spend pause (#112) |
 
 ## A run
 
-An accepted release starts a run, named by the delivery id. An issue has one active run at a time, so relabeling while a run is live doesn't start a second. A runner module (`src/agents/`) decides what the run does:
+An accepted release enters the coordinator's queue (Coordinator), which starts it as a run, named by the delivery id. An issue has one active or queued run at a time, so relabeling doesn't start a second. A runner module (`src/agents/`) decides what the run does:
 
 | Runner | Picked when | What it runs |
 | --- | --- | --- |
@@ -42,11 +42,11 @@ Only the approver's login, on a user account, can do any of these. The agent App
 
 | Event | What happens |
 | --- | --- |
-| The approver adds `agent:stop` or removes `agent:ready` | The run writes its stop flag first, so the outbound policy refuses every request after that. Then it revokes its token, destroys the container, edits the status comment and comments on the PR. Requests already in flight, such as a streaming model response or a push, can finish, and their charges stand. A stop is final: removing the label restarts nothing. It also clears a blocked issue |
+| The approver adds `agent:stop` or removes `agent:ready` | A queued issue leaves the queue. A running one writes its stop flag first, so the outbound policy refuses every request after that. Then it revokes its token, destroys the container, edits the status comment and comments on the PR. Requests already in flight, such as a streaming model response or a push, can finish, and their charges stand. A stop is final: removing the label restarts nothing. It also clears a blocked issue |
 | The agent adds `agent:blocked` and exits | The policy records the label when it gets through. The run ends as blocked and saves the branch and PR |
 | The run hits its time limit | It ends as blocked, and the orchestrator adds `agent:blocked`. Work it didn't push is lost |
 | A model call would go over a budget | The policy refuses it and the run ends as blocked, with the budget named. A reply resumes a run that spent its own budget. One that spent the issue's or the month's can't be resumed (Model spend) |
-| The approver comments on a blocked issue or its PR | A fresh run starts with the branch and PR pinned, removes `agent:blocked`, and gets the reply as `reply.md` |
+| The approver comments on a blocked issue or its PR | A fresh run is queued ahead of new issues. It starts with the branch and PR pinned, removes `agent:blocked`, and gets the reply as `reply.md` |
 | Anyone removes `agent:blocked` | Nothing. Only a reply resumes a run |
 | A new `agent:ready` | Starts over, and a blocked run from before can't be resumed |
 
@@ -145,7 +145,30 @@ The Worker acts on a webhook only if all of these hold. Anything else gets a 200
 
 An empty `APPROVER_LOGIN` or `ALLOWED_REPOS` means nothing is released, and a missing webhook secret means every webhook gets a 500.
 
-If starting the run fails, the Worker returns a 502 and forgets the delivery id, so redelivering it from the App's delivery log tries again. A failure after that is reported on the issue.
+If reading the issue's blockers fails, the Worker returns a 502 and forgets the delivery id, so redelivering it from the App's delivery log tries again. A run that fails to start goes back to the front of the queue. A failure after that is reported on the issue.
+
+## Coordinator
+
+The coordinator (ADR-005) decides when a released issue starts. Its state is in `DeliveryLog`, the one global Durable Object, which already holds the active runs, blocked runs and the spend ledger. So every decision about a slot or a lock is made in one place, one request at a time.
+
+- **The queue.** A release or a resume enters it. Each release, resume, stop, closed PR, closed issue and run end starts a pass over it: resumes first, then issues in the order they were released. Each issue that can start does, and one that can't keeps its reason (`queueState()`) and doesn't hold up the issues behind it.
+- **The cap.** `MAX_CONCURRENT_RUNS`, a Worker variable, default 1, across every repo. The coordinator never raises it.
+- **The snapshot.** At release, the issue's title, body and `area:*` labels come from the webhook, and its blockers from GitHub's issue dependencies. The run works from that body, and later edits to the issue change nothing until the approver releases it again. Each release counts a generation, and a stop moves it on, so an entry from before a stop can't start the work again.
+- **Dependencies.** An issue waits until every blocker is done. A blocker is done only when the PR its run opened merged into the default branch, or the approver closed it as completed. An issue closed by the agent App, or by another PR's `Fixes #`, isn't done, because the App has `issues: write` (design review R5). A blocker closed before the coordinator existed doesn't count: the approver reopens and closes it.
+- **Touch areas.** A run locks its issue's `area:*` labels in its repo from the moment it starts. No label locks every area of the repo. The lock is held while the run's PR is open or the issue waits for a reply, and freed when the PR merges or closes, the issue is stopped, or the run ends with neither. Two issues in the same area never run side by side.
+
+| Event | What the coordinator does |
+| --- | --- |
+| `agent:ready` added by the approver | Snapshots the issue and queues it |
+| The approver's reply on a blocked issue | Queues a resume, ahead of new issues |
+| `agent:stop` added or `agent:ready` removed by the approver | Takes it out of the queue, stops its run, frees its areas |
+| A run ends | Frees its slot, and its areas unless its PR is open or it's blocked |
+| A run's PR closes (`pull_request.closed`, from anyone) | Frees the issue's areas. If it merged into the default branch, the issue is done |
+| The approver closes an issue | Takes it out of the queue. If closed as completed, it's done |
+
+Not built yet: reconciling against GitHub for missed webhooks (#110), catch-up runs for conflicting PRs (#111), and the daily spend pause (#112).
+
+**Backstop outside this system.** If the orchestrator has a bug, two limits still hold: the spend limit on the model provider's workspace (Credentials), and billing notifications on the factory account, which the operator sets in Cloudflare's dashboard. Whether they're set isn't recorded here.
 
 ## Contract with the sandbox
 

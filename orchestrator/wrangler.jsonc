@@ -40,6 +40,8 @@
     "ACCESS_TEAM": "",
     "ACCESS_AUD": "",
     "OPERATOR_EMAIL": "",
+    // Runs at once across every repo (ADR-005, #13). The coordinator never raises it.
+    "MAX_CONCURRENT_RUNS": "1",
     // The console's URL, for each run's log link (#105). Empty posts no link.
     "CONSOLE_URL": ""
   },

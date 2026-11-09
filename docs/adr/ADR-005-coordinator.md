@@ -1,6 +1,6 @@
 # ADR-005: One Durable Object coordinates runs, with GitHub as the source of truth
 
-Status: Proposed · Date: 2026-10-31
+Status: Proposed · Date: 2026-10-31 · Revised: 2026-11-09 (#13: the coordinator lives in `DeliveryLog`; dependency completion on evidence the agent can't fake; the snapshot includes the body)
 
 ## Context
 
@@ -10,18 +10,18 @@ Two constraints shape it. The coordinator must hold no state the agent can chang
 
 ## Decision
 
-One coordinator Durable Object per orchestrator deployment holds the queue, the run slots and the touch-area locks. GitHub stays the source of truth: the coordinator acts on webhooks and also reconciles against GitHub on an alarm every 5 minutes, so a missed webhook delays a run but never loses one.
+One coordinator Durable Object per orchestrator deployment holds the queue, the run slots and the touch-area locks. It's `DeliveryLog`, the global object that already holds active runs, blocked runs and the spend ledger, so the slots and their records live in one place. GitHub stays the source of truth: the coordinator acts on webhooks and also reconciles against GitHub on an alarm every 5 minutes, so a missed webhook delays a run but never loses one.
 
 **Entering the queue**
 
 - An issue enters when `agent:ready` is added and the webhook's `sender` is Dan's login. A label added by anyone else is ignored and reported in the digest.
-- At entry the coordinator snapshots the issue's "blocked by" links and its `area:*` label. Later edits to those are ignored until Dan re-dispatches (removes and re-adds `agent:ready`). A running agent therefore can't unblock other issues or move them out of its area.
+- At entry the coordinator snapshots the issue's title and body, its "blocked by" links and its `area:*` label. The run works from that body. Later edits to those are ignored until Dan re-dispatches (removes and re-adds `agent:ready`). A running agent therefore can't unblock other issues or move them out of its area.
 - Removing `agent:ready` or adding `agent:stop` takes the issue out of the queue, or stops its run (spec 0001, Stop).
 
 **Starting a run.** On every webhook and alarm, the coordinator walks the queue in order of entry and starts each issue that passes all four checks:
 
 1. A run slot is free. Slots in use are below the concurrency cap.
-2. Every issue in its dependency snapshot is closed as `completed`. A blocker closed as `not_planned` keeps the issue waiting and is flagged in the digest for Dan.
+2. Every issue in its dependency snapshot is done: the PR the coordinator recorded for it merged into the default branch, or Dan closed it as `completed`. An issue closed by the agent App, or by another PR's `Fixes #`, isn't done, because the App has `issues: write` and the outbound filter can't read commit messages (design review R5). A blocker closed as `not_planned` keeps the issue waiting.
 3. No other issue holds its touch-area lock.
 4. The queue isn't paused for spend.
 
@@ -59,3 +59,4 @@ A blocked issue frees its slot but keeps its area, so no sandbox idles while it 
 - Re-dispatching is the only way to change an issue's dependencies or area after release. The `/dispatch` skill should handle a re-dispatch.
 - The orchestrator needs Dan's GitHub login and two settings (`MAX_CONCURRENT_RUNS`, `DAILY_SPEND_LIMIT_USD`). The backstop outside this system is still the provider spend limits and Cloudflare billing alerts.
 - Spec 0001's coordinator rule changes from rebase to merge for catch-up runs. This PR updates the spec to match.
+- It's built in steps: the queue, cap, area locks and dependency gating in #13; reconciliation against GitHub in #110; catch-up runs in #111; the daily spend pause in #112.

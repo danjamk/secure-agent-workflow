@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import type { Launch, QueueEntry } from "./coordinator";
 import type { Tokens } from "./outbound/spend";
 
 /** Longer than GitHub keeps a delivery available for redelivery. */
@@ -6,6 +7,11 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Longer than any run's limit, so only a run that never reached teardown goes stale. */
 const ACTIVE_RUN_MS = 2 * 60 * 60 * 1000;
+
+/** The areas a queue entry locks: its area labels, or every area if it has none. */
+function areasOf(entry: QueueEntry): string[] {
+  return entry.snapshot.areas.length ? entry.snapshot.areas : ["*"];
+}
 
 function monthKey(now: number): string {
   return `month:${new Date(now).toISOString().slice(0, 7)}`;
@@ -55,6 +61,22 @@ export class DeliveryLog extends DurableObject<Env> {
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS reservations (id TEXT PRIMARY KEY, run TEXT NOT NULL, issue TEXT NOT NULL, month TEXT NOT NULL, amount INTEGER NOT NULL, at INTEGER NOT NULL)",
     );
+    // The coordinator (ADR-005, #13). `queue` holds released issues waiting for a
+    // slot; `generations` counts releases, so a stop invalidates a queued entry;
+    // `area_locks` holds each repo's touch areas ('*' for all of them);
+    // `issue_prs` maps a run's PR to its issue; `completed` holds issues that count
+    // as done for dependency gating.
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS queue (issue TEXT PRIMARY KEY, kind TEXT NOT NULL, generation INTEGER NOT NULL, entry TEXT NOT NULL, entered INTEGER NOT NULL, waiting TEXT)",
+    );
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS generations (issue TEXT PRIMARY KEY, generation INTEGER NOT NULL)");
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS area_locks (repo_id INTEGER NOT NULL, area TEXT NOT NULL, issue TEXT NOT NULL, PRIMARY KEY (repo_id, area))",
+    );
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS issue_prs (repo_id INTEGER NOT NULL, pr INTEGER NOT NULL, issue TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (repo_id, pr))",
+    );
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS completed (name TEXT PRIMARY KEY, how TEXT NOT NULL, at INTEGER NOT NULL)");
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS run_usage (run TEXT PRIMARY KEY, calls INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, cost INTEGER NOT NULL)",
     );
@@ -164,6 +186,180 @@ export class DeliveryLog extends DurableObject<Env> {
   /** A new release starts the issue's budget over. Its runs' spend still counts for the month. */
   clearIssueSpend(issue: string): void {
     this.ctx.storage.sql.exec("DELETE FROM spend WHERE key = ?", `issue:${issue}`);
+  }
+
+  /**
+   * Adds a released or resumed issue to the queue. Refused while the issue is
+   * queued or has an active run, so relabeling can't start a second.
+   */
+  enqueue(entry: QueueEntry): { queued: true; generation: number } | { queued: false; reason: string } {
+    const sql = this.ctx.storage.sql;
+    const refused = this.refusal(entry.issue);
+    if (refused) return { queued: false, reason: refused };
+    const generation = this.nextGeneration(entry.issue);
+    sql.exec(
+      "INSERT INTO queue (issue, kind, generation, entry, entered, waiting) VALUES (?, ?, ?, ?, ?, NULL)",
+      entry.issue,
+      entry.kind,
+      generation,
+      JSON.stringify(entry),
+      Date.now(),
+    );
+    return { queued: true, generation };
+  }
+
+  /** Why a release would be refused now, so the webhook can skip reading blockers. */
+  refusal(issue: string): string | null {
+    if (this.ctx.storage.sql.exec("SELECT 1 FROM queue WHERE issue = ?", issue).toArray().length) {
+      return "the issue is already queued";
+    }
+    return this.activeRun(issue) ? "a run is already active on this issue" : null;
+  }
+
+  private nextGeneration(issue: string): number {
+    const row = this.ctx.storage.sql
+      .exec<{ generation: number }>(
+        "INSERT INTO generations (issue, generation) VALUES (?, 1) ON CONFLICT(issue) DO UPDATE SET generation = generation + 1 RETURNING generation",
+        issue,
+      )
+      .toArray()[0];
+    return row?.generation ?? 1;
+  }
+
+  /** Takes an issue out of the queue on a stop, and frees its areas. True if it was queued. */
+  dequeue(issue: string): boolean {
+    const sql = this.ctx.storage.sql;
+    const removed = sql.exec("DELETE FROM queue WHERE issue = ?", issue).rowsWritten > 0;
+    // A stop also invalidates any entry an older delivery might still add.
+    this.nextGeneration(issue);
+    this.releaseAreas(issue);
+    return removed;
+  }
+
+  /**
+   * Hands out every queued issue that may start now, oldest first with resumes
+   * ahead, and reserves its slot and areas. One that can't start is skipped, not a
+   * barrier, and keeps the reason it's waiting.
+   */
+  pump(maxRuns: number, now = Date.now()): Launch[] {
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM active_runs WHERE at < ?", now - ACTIVE_RUN_MS);
+    const rows = sql
+      .exec<{ issue: string; generation: number; entry: string }>(
+        "SELECT issue, generation, entry FROM queue ORDER BY kind = 'resume' DESC, entered, issue",
+      )
+      .toArray();
+    let running = sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM active_runs").toArray()[0]?.n ?? 0;
+    const launches: Launch[] = [];
+    for (const row of rows) {
+      const entry = JSON.parse(row.entry) as QueueEntry;
+      const current = sql
+        .exec<{ generation: number }>("SELECT generation FROM generations WHERE issue = ?", row.issue)
+        .toArray()[0]?.generation;
+      if (current !== row.generation) {
+        sql.exec("DELETE FROM queue WHERE issue = ?", row.issue);
+        continue;
+      }
+      const reason = running >= maxRuns ? "no free slot" : this.blockedReason(entry);
+      if (reason) {
+        sql.exec("UPDATE queue SET waiting = ? WHERE issue = ?", reason, row.issue);
+        continue;
+      }
+      sql.exec("DELETE FROM queue WHERE issue = ?", row.issue);
+      sql.exec("INSERT OR REPLACE INTO active_runs (issue, run, at) VALUES (?, ?, ?)", row.issue, entry.run, now);
+      for (const area of areasOf(entry)) {
+        sql.exec("INSERT OR REPLACE INTO area_locks (repo_id, area, issue) VALUES (?, ?, ?)", entry.scope.repoId, area, row.issue);
+      }
+      running += 1;
+      launches.push({ entry, generation: row.generation });
+    }
+    return launches;
+  }
+
+  /** Why an issue can't start, apart from slots, or null if it can. */
+  private blockedReason(entry: QueueEntry): string | null {
+    const sql = this.ctx.storage.sql;
+    for (const blocker of entry.snapshot.blockers) {
+      if (!sql.exec("SELECT 1 FROM completed WHERE name = ?", blocker).toArray().length) return `blocked by ${blocker}`;
+    }
+    const held = sql
+      .exec<{ area: string; issue: string }>("SELECT area, issue FROM area_locks WHERE repo_id = ? AND issue != ?", entry.scope.repoId, entry.issue)
+      .toArray();
+    const wanted = areasOf(entry);
+    for (const lock of held) {
+      if (lock.area === "*" || wanted.includes("*") || wanted.includes(lock.area)) {
+        return lock.area === "*" ? `the repo is locked by ${lock.issue}` : `${lock.area} is held by ${lock.issue}`;
+      }
+    }
+    return null;
+  }
+
+  /** A run that failed to start goes back to the front of the queue. */
+  unlaunch(entry: QueueEntry, generation: number): void {
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM active_runs WHERE issue = ? AND run = ?", entry.issue, entry.run);
+    this.releaseAreas(entry.issue);
+    sql.exec(
+      "INSERT OR IGNORE INTO queue (issue, kind, generation, entry, entered, waiting) VALUES (?, ?, ?, ?, 0, 'the last start failed')",
+      entry.issue,
+      entry.kind,
+      generation,
+      JSON.stringify(entry),
+    );
+  }
+
+  /**
+   * A run ended: its slot is free. Its areas stay locked while its PR is open or
+   * it's blocked waiting for the operator, and are freed otherwise.
+   */
+  runEnded(issue: string, run: string, keepAreas: boolean): void {
+    this.releaseIssue(issue, run);
+    if (!keepAreas) this.releaseAreas(issue);
+  }
+
+  releaseAreas(issue: string): void {
+    this.ctx.storage.sql.exec("DELETE FROM area_locks WHERE issue = ?", issue);
+  }
+
+  /** The PR a run opened, so its merge can complete the issue and free its areas. */
+  recordPullRequest(issue: string, name: string, repoId: number, pr: number): void {
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO issue_prs (repo_id, pr, issue, name) VALUES (?, ?, ?, ?)",
+      repoId,
+      pr,
+      issue,
+      name,
+    );
+  }
+
+  /**
+   * A PR closed. If it's a run's PR, the issue's areas are freed, and a merge into
+   * the default branch completes the issue. Returns the issue, or null for a PR no
+   * run opened.
+   */
+  pullRequestClosed(repoId: number, pr: number, mergedIntoDefault: boolean): string | null {
+    const row = this.ctx.storage.sql
+      .exec<{ issue: string; name: string }>("SELECT issue, name FROM issue_prs WHERE repo_id = ? AND pr = ?", repoId, pr)
+      .toArray()[0];
+    if (!row) return null;
+    this.releaseAreas(row.issue);
+    if (mergedIntoDefault) this.markCompleted(row.name, `PR #${pr} merged`);
+    return row.issue;
+  }
+
+  /** An issue that now counts as done for the issues it blocks. */
+  markCompleted(name: string, how: string): void {
+    this.ctx.storage.sql.exec("INSERT OR IGNORE INTO completed (name, how, at) VALUES (?, ?, ?)", name, how, Date.now());
+  }
+
+  /** The queue with each issue's reason for waiting, oldest first, for the digest and tests. */
+  queueState(): { issue: string; run: string; kind: string; waiting: string | null }[] {
+    return this.ctx.storage.sql
+      .exec<{ issue: string; kind: string; entry: string; waiting: string | null }>(
+        "SELECT issue, kind, entry, waiting FROM queue ORDER BY kind = 'resume' DESC, entered, issue",
+      )
+      .toArray()
+      .map((row) => ({ issue: row.issue, run: (JSON.parse(row.entry) as QueueEntry).run, kind: row.kind, waiting: row.waiting }));
   }
 
   /** The issue's active run, if any. */
