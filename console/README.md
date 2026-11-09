@@ -28,7 +28,8 @@ Do these in the factory account, once. Cloudflare has renamed some of these menu
 2. **Deploy the console.** `console-deploy.yml` runs when a change to `console/` merges. You can also run it from the Actions tab.
 3. **Protect it.**
    - **Workers & Pages** → `saw-console` → **Access** → **Protect this Worker behind Access** → **All traffic** → policy **Cloudflare account** → **Apply Access**.
-   - Then, in **Zero Trust** → **Access** → **Applications**, edit that application's policy so its only **Include** rule is **Emails** = your email.
+   - **Cloudflare account members** is enough while you're the factory account's only member. The orchestrator also requires your email (`OPERATOR_EMAIL`) on every `/api` request, so a member who isn't you could open the placeholder page and nothing else. Before adding anyone to the account, tighten the policy to your email in **Zero Trust** → **Access** → **Applications**.
+   - The Access tab also shows the **AUD tag**, and the **JWKS** URL, whose host is `<team>.cloudflareaccess.com`.
 4. **Give the orchestrator its settings.** Put these in `.env.local`, then store each one with `broker.sh set-factory`:
 
    | `.env.local` | Broker setting | Where to find it |
@@ -42,13 +43,27 @@ Do these in the factory account, once. Cloudflare has renamed some of these menu
    AWS_PROFILE=saw bash deploy/broker/aws/broker.sh set-factory <owner>/<repo> access-team
    ```
 
-   Then run `orchestrator-deploy` from the Actions tab. All four settings are optional in the deploy, so the orchestrator deploys without them. Until they're set, it refuses every `/api` request and posts no log link.
+   Then run `orchestrator-deploy` from the Actions tab. Its rollout takes several minutes: the orchestrator runs containers, and Cloudflare moves traffic to a new version gradually. All four settings are optional in the deploy, so the orchestrator deploys without them. Until they're set, it refuses every `/api` request and posts no log link.
 5. **Check it.**
    - Open `<console URL>/api/runs/<run>/log` for a recent run. You should see its log after signing in.
    - A browser that isn't signed in should get Access's sign-in page.
    - The orchestrator's own URL should return 403 for the same path.
 
 **Log links and public repos.** On a private repo, a run's status comment and PR link the log in full. On a public repo they give only the path, because the console's hostname would also give away the orchestrator's, and neither goes into public comments.
+
+## Live results
+
+2026-11-09, build `0.1.20+2dc5a5b`, with Access set up as above on the Zero Trust Free plan.
+
+| Check | Result |
+| --- | --- |
+| Signed in, a run's log through the console | The log from the #10 test on agent-testbed #53, as plain text, with the 4 removed tokens shown as `[removed]`. So Access's token reached the orchestrator through the binding, and passed its checks |
+| Signed out, the console's log URL and `/health` | 302 to Access's sign-in page |
+| The orchestrator's own URL, the same log path | 403 |
+| The orchestrator's `/webhook`, unsigned | 401, from its own signature check |
+| First deploy with the settings | `access-team` was skipped as optional, because it hadn't been stored. The new version took about 7 minutes to get traffic, so the 30-second `/health` check failed a deploy that worked. The check now waits up to 15 minutes |
+
+Not yet checked: whether the token arrives as the header or only as the cookie. Either way works. And the log itself is the agent's raw event stream, one JSON object per line, which is complete but hard to read. #108 adds a readable view.
 
 ## Contracts with other components
 

@@ -33,7 +33,8 @@ jobs:
   deploy:
     name: deploy-orchestrator
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The build and push, plus up to 15 minutes for the rollout's /health check.
+    timeout-minutes: 25
     # One deploy at a time, in merge order; none is cancelled.
     concurrency:
       group: orchestrator-deploy

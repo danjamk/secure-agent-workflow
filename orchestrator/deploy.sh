@@ -44,23 +44,30 @@ export WRANGLER_SEND_METRICS=false
 VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/package.json")
 BUILD_ID="$VERSION+$(git -C "$ROOT" rev-parse --short HEAD)"
 
+# How long to wait for the new version. Override for a quick --health check.
+HEALTH_WAIT_S="${HEALTH_WAIT_S:-900}"
+
 check_health() {
     if [ -z "${ORCHESTRATOR_URL:-}" ]; then
         echo "ORCHESTRATOR_URL isn't set in .env.local, so /health wasn't checked." >&2
         return 2
     fi
-    local live=""
-    # A new version can take a few seconds to reach every location. No -S: curl's
-    # errors name the host, and the URL stays out of a public repo's logs.
-    for _ in 1 2 3 4 5 6; do
+    local live="" waited=0
+    # A Worker with containers rolls out gradually: on 2026-11-09 the new version
+    # took about 7 minutes to get traffic (#105). No -S: curl's errors name the
+    # host, and the URL stays out of a public repo's logs.
+    while :; do
         live=$(curl -s --max-time 5 "$ORCHESTRATOR_URL/health" || true)
         if [ "$live" = "$BUILD_ID" ]; then
-            echo "/health reports $live, matching this checkout."
+            echo "/health reports $live, matching this checkout, after ${waited}s."
             return 0
         fi
-        sleep 5
+        if [ "$waited" -ge "$HEALTH_WAIT_S" ]; then break; fi
+        [ "$waited" -eq 0 ] && echo "Waiting up to $((HEALTH_WAIT_S / 60)) minutes for the new version to get traffic."
+        sleep 15
+        waited=$((waited + 15))
     done
-    echo "FAILED  /health reports '$live'; this checkout is $BUILD_ID." >&2
+    echo "FAILED  /health reports '$live' after ${waited}s; this checkout is $BUILD_ID." >&2
     return 1
 }
 
