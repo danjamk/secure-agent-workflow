@@ -230,7 +230,7 @@ describe("resume", () => {
     const before = revocations(calls);
     const response = await deliver(comment("Use the second option."), { event: "issue_comment", delivery });
     expect(response.status).toBe(202);
-    expect(await response.json()).toEqual({ resumed: "the-approver/app#7", run: 2 });
+    expect(await response.json()).toEqual({ resumed: "the-approver/app#7", run: 2, started: true });
     await runInDurableObject(env.RUN_STATE.getByName(delivery), async (_instance: RunState, state) => {
       expect(await state.storage.get("resume")).toEqual({ branch: BRANCH, pr: PR.number, reply: "Use the second option." });
       expect(await state.storage.get("branch")).toBe(`refs/heads/${BRANCH}`);

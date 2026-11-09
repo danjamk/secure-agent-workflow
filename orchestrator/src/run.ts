@@ -13,6 +13,7 @@ import {
   type RunToken,
 } from "./github";
 import type { Pins, PullRequest, RunScope } from "./outbound/scope";
+import { nameKey, pumpQueue, type Snapshot } from "./coordinator";
 import { dollars, limits } from "./outbound/spend";
 import { credentialValues, redact } from "./redact";
 import { CA_PATH, interceptHosts, scrubOutput } from "./sandbox";
@@ -71,6 +72,15 @@ export interface BlockedRecord {
   branch: string | null;
   pr: PullRequest | null;
   runNumber: number;
+  /** What was released, so a resume works from the same assignment (#13). */
+  snapshot?: Snapshot;
+}
+
+/** The issue as released: a run works from this, not from the issue as it is now (#13). */
+export interface ReleasedIssue {
+  title: string;
+  body: string;
+  snapshot?: Snapshot;
 }
 
 /** The key for "one run per issue", by the repo's immutable id. */
@@ -114,7 +124,7 @@ export class RunState extends DurableObject<Env> {
    * Starts a run. Returns at once, because GitHub gives up on a webhook after 10
    * seconds. A resumed run starts with the branch and PR already pinned.
    */
-  async launch(scope: RunScope, runner: string, resume?: ResumeState): Promise<void> {
+  async launch(scope: RunScope, runner: string, resume?: ResumeState, issue?: ReleasedIssue): Promise<void> {
     if (await this.ctx.storage.get<RunScope>("scope")) return;
     // A run whose log has been purged keeps this, so its delivery can't start it again.
     if (await this.ctx.storage.get<boolean>("purged")) return;
@@ -127,6 +137,7 @@ export class RunState extends DurableObject<Env> {
       deadline: Date.now() + chosen.limitMs,
       runNumber: resume?.runNumber ?? 1,
     });
+    if (issue) await this.ctx.storage.put("issue", issue);
     if (resume) {
       await this.ctx.storage.put(
         "resume",
@@ -197,6 +208,23 @@ export class RunState extends DurableObject<Env> {
 
   async pinPullRequest(number: number, nodeId: string): Promise<void> {
     await this.ctx.storage.put("pr", { number, nodeId });
+    // The coordinator learns which PR completes the issue and frees its areas (#13).
+    const scope = await this.ctx.storage.get<RunScope>("scope");
+    if (scope) {
+      await this.env.DELIVERY_LOG.getByName("global").recordPullRequest(
+        issueKey(scope),
+        nameKey(scope.repo, scope.issue),
+        scope.repoId,
+        number,
+      );
+    }
+  }
+
+  /** The issue as released, or as it is now for a run started before the queue. */
+  private async releasedIssue(scope: RunScope): Promise<{ title: string; body: string }> {
+    const issue = await this.ctx.storage.get<ReleasedIssue>("issue");
+    if (issue) return { title: issue.title, body: issue.body };
+    return getIssue(await this.accessToken(), scope.repo, scope.issue);
   }
 
   async stop(): Promise<void> {
@@ -298,7 +326,7 @@ export class RunState extends DurableObject<Env> {
       if ((await this.run(container, ["test", "-s", CA_PATH])).exitCode !== 0) return null;
       const context: RunContext = {
         scope,
-        issue: await getIssue(await this.accessToken(), scope.repo, scope.issue),
+        issue: await this.releasedIssue(scope),
         resume: (await this.ctx.storage.get<Resume>("resume")) ?? null,
         env: this.env,
       };
@@ -588,6 +616,7 @@ export class RunState extends DurableObject<Env> {
           branch,
           pr,
           runNumber,
+          snapshot: (await this.ctx.storage.get<ReleasedIssue>("issue"))?.snapshot,
         };
         await log.markBlocked(issueKey(scope), scope.repoId, pr?.number ?? null, JSON.stringify(record));
       } else {
@@ -608,11 +637,18 @@ export class RunState extends DurableObject<Env> {
       console.error(`Reporting a run failed: ${reason}`);
     }
     try {
-      await log.releaseIssue(issueKey(scope), scope.runId);
+      // The slot is free. The areas stay locked while the PR is open or the issue
+      // waits for a reply, and a stop frees them (ADR-005).
+      await log.runEnded(issueKey(scope), scope.runId, !halted && (pr !== null || canResume));
     } catch (error) {
       console.error(`Releasing a run's issue failed: ${(error as Error).name}`);
     }
     await this.stop();
+    try {
+      await pumpQueue(this.env);
+    } catch (error) {
+      console.error(`Starting the next queued run failed: ${(error as Error).name}`);
+    }
     await this.ctx.storage.put("purgeAt", purgeAt);
     await this.ctx.storage.setAlarm(purgeAt);
   }

@@ -1,5 +1,6 @@
 import { runnerFor } from "./agents";
-import { GitHubError } from "./github";
+import { nameKey, pumpQueue, type QueueEntry } from "./coordinator";
+import { getBlockers, GitHubError, mintRunToken, revokeToken } from "./github";
 import type { RunScope } from "./outbound/scope";
 import { issueKey, MAX_RUNS, type BlockedRecord } from "./run";
 
@@ -16,13 +17,20 @@ export interface Target {
   installationId: number;
   /** The issue's labels when the event happened. agent:probe picks the probe. */
   labels: string[];
+  /** The issue's title and body when the event happened: what a release approves. */
+  title: string;
+  body: string;
 }
 
 /** What the approver did, which the orchestrator acts on. */
 export type Action =
   | { kind: "release"; target: Target }
   | { kind: "stop"; target: Target; by: string }
-  | { kind: "reply"; target: Target; by: string; body: string };
+  | { kind: "reply"; target: Target; by: string; body: string }
+  /** The approver closed an issue: done for the issues it blocks if completed (#13). */
+  | { kind: "closed"; target: Target; completed: boolean }
+  /** A PR closed. Trusted for what GitHub says happened, whoever sent it (#13). */
+  | { kind: "pr-closed"; repo: string; repoId: number; pr: number; mergedIntoDefault: boolean };
 
 export interface Rules {
   approver: string;
@@ -72,7 +80,11 @@ function classify(event: string | null, payload: any): Action["kind"] | string {
       // included, does nothing: only the approver's reply resumes a run (#11).
       return label === RELEASE_LABEL ? "stop" : "another label";
     }
+    if (payload?.action === "closed") return "closed";
     return `action ${payload?.action}`;
+  }
+  if (event === "pull_request") {
+    return payload?.action === "closed" ? "pr-closed" : `action ${payload?.action}`;
   }
   if (event === "issue_comment") {
     return payload?.action === "created" ? "reply" : `action ${payload?.action}`;
@@ -86,7 +98,8 @@ function classify(event: string | null, payload: any): Action["kind"] | string {
  */
 export function decide(event: string | null, payload: any, rules: Rules): Action | string {
   const kind = classify(event, payload);
-  if (kind !== "release" && kind !== "stop" && kind !== "reply") return kind;
+  if (kind === "pr-closed") return decidePullRequest(payload, rules);
+  if (kind !== "release" && kind !== "stop" && kind !== "reply" && kind !== "closed") return kind;
 
   const sender = payload?.sender;
   if (!rules.approver || sender?.login?.toLowerCase() !== rules.approver.toLowerCase()) {
@@ -115,7 +128,14 @@ export function decide(event: string | null, payload: any, rules: Rules): Action
   const labels = Array.isArray(payload?.issue?.labels)
     ? payload.issue.labels.map((label: { name?: unknown }) => label?.name).filter((name: unknown) => typeof name === "string")
     : [];
-  const target: Target = { repo, repoId, defaultBranch, number, installationId, labels };
+  const title = typeof payload?.issue?.title === "string" ? payload.issue.title : "";
+  const issueBody = typeof payload?.issue?.body === "string" ? payload.issue.body : "";
+  const target: Target = { repo, repoId, defaultBranch, number, installationId, labels, title, body: issueBody };
+  if (kind === "closed") {
+    // A PR is an issue too, but its closing comes through pull_request events.
+    if (payload?.issue?.pull_request) return "a PR, not an issue";
+    return { kind, target, completed: payload?.issue?.state_reason === "completed" };
+  }
   if (kind === "reply") {
     const body = payload?.comment?.body;
     if (typeof body !== "string") return "comment has no body";
@@ -123,6 +143,21 @@ export function decide(event: string | null, payload: any, rules: Rules): Action
   }
   if (kind === "stop") return { kind, target, by: sender.login };
   return { kind, target };
+}
+
+/**
+ * A closed PR in an allowed repo. Anyone can send this: what counts is GitHub's own
+ * record that it merged, and the coordinator acts only on PRs its runs opened.
+ */
+function decidePullRequest(payload: any, rules: Rules): Action | string {
+  const repo = payload?.repository?.full_name;
+  if (typeof repo !== "string" || !rules.allowedRepos.includes(repo.toLowerCase())) return "repo isn't allowed";
+  const repoId = payload?.repository?.id;
+  const pr = payload?.pull_request?.number;
+  if (typeof repoId !== "number" || typeof pr !== "number") return "payload is missing the PR or repo";
+  const merged = payload?.pull_request?.merged === true;
+  const intoDefault = payload?.pull_request?.base?.ref === payload?.repository?.default_branch;
+  return { kind: "pr-closed", repo, repoId, pr, mergedIntoDefault: merged && intoDefault };
 }
 
 function scopeOf(target: Target, runId: string): RunScope {
@@ -143,67 +178,120 @@ function json(status: number, body: object): Response {
 type Log = DurableObjectStub<import("./deliveries").DeliveryLog>;
 
 async function release(target: Target, delivery: string, env: Env, log: Log): Promise<Response> {
-  // A run is named by its delivery id, and an issue has one active run at a time, so
-  // relabeling while a run is live doesn't start a second.
+  // A run is named by its delivery id. The issue enters the queue, which starts it
+  // when a slot, its areas and its blockers allow (ADR-005).
   const scope = scopeOf(target, delivery);
-  if (!(await log.claimIssue(issueKey(scope), delivery))) {
-    return json(200, { ignored: "a run is already active on this issue" });
+  const runner = runnerFor(target.labels);
+  const refused = await log.refusal(issueKey(scope));
+  if (refused) return json(200, { ignored: refused });
+  const token = await mintRunToken(env, target.installationId, target.repoId);
+  let blockers: string[];
+  try {
+    blockers = await getBlockers(token.value, target.repo, target.number);
+  } finally {
+    await revokeToken(token.value);
   }
+  const entry: QueueEntry = {
+    issue: issueKey(scope),
+    run: delivery,
+    kind: "new",
+    scope: withoutRunId(scope),
+    runner: runner.name,
+    resume: null,
+    snapshot: {
+      title: target.title,
+      body: target.body,
+      blockers,
+      areas: target.labels.filter((label) => label.startsWith("area:")),
+    },
+  };
+  const queued = await log.enqueue(entry);
+  if (!queued.queued) return json(200, { ignored: queued.reason });
   // A new release starts over, so an older blocked run can't be resumed after it, and
   // the issue's model budget is whole again.
   await log.clearBlocked(issueKey(scope));
   await log.clearIssueSpend(issueKey(scope));
-  const runner = runnerFor(target.labels);
-  try {
-    await env.RUN_STATE.getByName(delivery).launch(scope, runner.name);
-  } catch (error) {
-    await log.releaseIssue(issueKey(scope), delivery);
-    throw error;
-  }
-  console.log(`Released ${target.repo}#${target.number} to ${runner.name} from delivery ${delivery}`);
-  return json(202, { released: `${target.repo}#${target.number}`, runner: runner.name });
+  const started = (await pumpQueue(env)).includes(delivery);
+  const waiting = started ? null : ((await log.queueState()).find((row) => row.issue === entry.issue)?.waiting ?? null);
+  console.log(`Released ${target.repo}#${target.number} to ${runner.name} from delivery ${delivery}${started ? "" : ", queued"}`);
+  return json(202, { released: `${target.repo}#${target.number}`, runner: runner.name, started, waiting });
+}
+
+function withoutRunId(scope: RunScope): Omit<RunScope, "runId"> {
+  const { runId: _runId, ...rest } = scope;
+  return rest;
 }
 
 /**
- * Stops the issue's active run, and clears a blocked one so a later reply can't
- * resume it. The run writes its stop flag before anything else.
+ * Stops the issue: takes it out of the queue, stops its active run, and clears a
+ * blocked one so a later reply can't resume it. Its areas are freed (ADR-005). The
+ * run writes its stop flag before anything else.
  */
 async function stop(target: Target, by: string, env: Env, log: Log): Promise<Response> {
   const key = `${target.repoId}#${target.number}`;
+  const dequeued = await log.dequeue(key);
   const run = await log.activeRun(key);
   const wasBlocked = (await log.takeBlocked(key)) !== null;
   const stopped = run ? await env.RUN_STATE.getByName(run).halt(by) : false;
-  if (!stopped && !wasBlocked) return json(200, { ignored: "nothing to stop on this issue" });
+  if (!stopped && !wasBlocked && !dequeued) return json(200, { ignored: "nothing to stop on this issue" });
   console.log(`Stopped ${target.repo}#${target.number}${run ? ` (run ${run})` : ""} for ${by}`);
-  return json(202, { stopped: `${target.repo}#${target.number}`, run: stopped ? run : null, cleared: wasBlocked });
+  // Freed areas can let a queued issue start.
+  await pumpQueue(env);
+  return json(202, { stopped: `${target.repo}#${target.number}`, run: stopped ? run : null, cleared: wasBlocked, dequeued });
 }
 
-/** The approver's reply on a blocked issue, or on its PR, starts a fresh run from the branch. */
+/**
+ * The approver's reply on a blocked issue, or on its PR, queues a fresh run from the
+ * branch, ahead of new issues.
+ */
 async function resume(target: Target, reply: string, delivery: string, env: Env, log: Log): Promise<Response> {
   const key = await log.findBlocked(target.repoId, target.number);
   if (!key) return json(200, { ignored: "no blocked run to resume" });
   const raw = await log.takeBlocked(key);
   if (!raw) return json(200, { ignored: "no blocked run to resume" });
   const record = JSON.parse(raw) as BlockedRecord;
-  const scope: RunScope = { ...record.scope, runId: delivery };
-  if (!(await log.claimIssue(issueKey(scope), delivery))) {
+  const entry: QueueEntry = {
+    issue: key,
+    run: delivery,
+    kind: "resume",
+    scope: record.scope,
+    runner: record.runner,
+    resume: { branch: record.branch, pr: record.pr, reply, runNumber: record.runNumber + 1 },
+    // A run blocked before the queue existed has no snapshot. Its issue is read
+    // when the run starts, and it locks every area of the repo.
+    snapshot: record.snapshot ?? { title: "", body: "", blockers: [], areas: [] },
+  };
+  const queued = await log.enqueue(entry);
+  if (!queued.queued) {
     await log.markBlocked(key, record.scope.repoId, record.pr?.number ?? null, raw);
-    return json(200, { ignored: "a run is already active on this issue" });
+    return json(200, { ignored: queued.reason });
   }
-  try {
-    await env.RUN_STATE.getByName(delivery).launch(scope, record.runner, {
-      branch: record.branch,
-      pr: record.pr,
-      reply,
-      runNumber: record.runNumber + 1,
-    });
-  } catch (error) {
-    await log.releaseIssue(issueKey(scope), delivery);
-    await log.markBlocked(key, record.scope.repoId, record.pr?.number ?? null, raw);
-    throw error;
-  }
-  console.log(`Resumed ${scope.repo}#${scope.issue}, run ${record.runNumber + 1} of ${MAX_RUNS}, from delivery ${delivery}`);
-  return json(202, { resumed: `${scope.repo}#${scope.issue}`, run: record.runNumber + 1 });
+  const started = (await pumpQueue(env)).includes(delivery);
+  console.log(`Resumed ${record.scope.repo}#${record.scope.issue}, run ${record.runNumber + 1} of ${MAX_RUNS}, from delivery ${delivery}`);
+  return json(202, { resumed: `${record.scope.repo}#${record.scope.issue}`, run: record.runNumber + 1, started });
+}
+
+/**
+ * The approver closed an issue. Closed as completed, it's done for the issues it
+ * blocks. Either way it leaves the queue.
+ */
+async function closed(target: Target, completed: boolean, env: Env, log: Log): Promise<Response> {
+  const dequeued = await log.dequeue(`${target.repoId}#${target.number}`);
+  if (completed) await log.markCompleted(nameKey(target.repo, target.number), "closed by the approver");
+  await pumpQueue(env);
+  return json(202, { closed: `${target.repo}#${target.number}`, completed, dequeued });
+}
+
+/** A run's PR closed: its areas are free, and a merge completes its issue. */
+async function pullRequestClosed(
+  action: Extract<Action, { kind: "pr-closed" }>,
+  env: Env,
+  log: Log,
+): Promise<Response> {
+  const issue = await log.pullRequestClosed(action.repoId, action.pr, action.mergedIntoDefault);
+  if (!issue) return json(200, { ignored: "not a run's PR" });
+  await pumpQueue(env);
+  return json(202, { pr: `${action.repo}#${action.pr}`, issue, completed: action.mergedIntoDefault });
 }
 
 export async function handleWebhook(request: Request, env: Env): Promise<Response> {
@@ -246,6 +334,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   try {
     if (action.kind === "release") return await release(action.target, delivery, env, log);
     if (action.kind === "stop") return await stop(action.target, action.by, env, log);
+    if (action.kind === "closed") return await closed(action.target, action.completed, env, log);
+    if (action.kind === "pr-closed") return await pullRequestClosed(action, env, log);
     return await resume(action.target, action.body, delivery, env, log);
   } catch (error) {
     // Forget the claim so redelivering from GitHub's log tries again. GitHubError

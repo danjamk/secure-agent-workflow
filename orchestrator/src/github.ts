@@ -169,6 +169,21 @@ export async function getIssue(
 }
 
 /** Best effort: an unrevoked token expires within the hour. */
+/**
+ * The issues blocking this one, from GitHub's issue dependencies, as
+ * "owner/name#number" in lower case. They can be in other repos.
+ */
+export async function getBlockers(token: string, repo: string, issue: number): Promise<string[]> {
+  const response = await call(`/repos/${repo}/issues/${issue}/dependencies/blocked_by?per_page=100`, "GET", token);
+  if (!response.ok) throw new GitHubError(`Reading the issue's blockers returned ${response.status}`);
+  const data = (await response.json()) as { number?: unknown; repository_url?: unknown }[];
+  if (!Array.isArray(data)) throw new GitHubError("The issue's blockers weren't a list");
+  return data.flatMap((blocker) => {
+    const repoName = typeof blocker.repository_url === "string" ? /\/repos\/([^/]+\/[^/]+)$/.exec(blocker.repository_url)?.[1] : undefined;
+    return typeof blocker.number === "number" && repoName ? [`${repoName.toLowerCase()}#${blocker.number}`] : [];
+  });
+}
+
 /** True only if GitHub says the repo is private. Anything else counts as public. */
 export async function isPrivateRepo(token: string, repo: string): Promise<boolean> {
   const response = await call(`/repos/${repo}`, "GET", token);

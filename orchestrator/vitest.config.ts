@@ -28,6 +28,9 @@ export default defineConfig({
           ACCESS_AUD: "test-aud",
           OPERATOR_EMAIL: "operator@example.com",
           CONSOLE_URL: "https://console.example",
+          // Tests share one coordinator, so the cap doesn't serialize them. The cap's
+          // own tests pass one to the queue directly.
+          MAX_CONCURRENT_RUNS: "100",
           ANTHROPIC_API_KEY: ["test", "anthropic", "key", "0123456789"].join("-"),
           OPENAI_API_KEY: ["test", "openai", "key", "0123456789"].join("-"),
           TEST_PUBLIC_KEY: publicKey,

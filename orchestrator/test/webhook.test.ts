@@ -3,7 +3,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleWebhook } from "../src/webhook";
-import { deliver, release, sign, stubGitHub, testEnv } from "./helpers";
+import { deliver, release, runFinished, sign, stubGitHub, testEnv } from "./helpers";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -110,7 +110,7 @@ describe("what counts as a release", () => {
     );
     expect(response.status).toBe(202);
     // Wait for the run to finish, so none of it reaches the network after the stub goes.
-    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+    await runFinished(calls);
   });
 
   it("ignores a payload with no repo id or default branch", async () => {
@@ -135,8 +135,14 @@ describe("a release", () => {
     const response = await deliver(release(), { delivery });
     expect(response.status).toBe(202);
     expect(await response.json()).toMatchObject({ runner: "claude-code" });
-    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+    await runFinished(calls);
     expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
+      // The release reads the issue's blockers for its snapshot, then revokes that
+      // token (#13).
+      "POST /app/installations/99/access_tokens",
+      "GET /repos/the-approver/app/issues/7/dependencies/blocked_by",
+      "DELETE /installation/token",
+      // The run.
       "POST /app/installations/99/access_tokens",
       // Whether the repo is public decides how the log is linked (#105).
       "GET /repos/the-approver/app",
@@ -145,9 +151,10 @@ describe("a release", () => {
       "DELETE /installation/token",
     ]);
     expect(calls[0]?.body).toEqual({ repository_ids: [1234] });
-    expect(calls[2]?.authorization).toBe("Bearer minted-token");
-    expect(JSON.stringify(calls[2]?.body)).toContain(delivery);
-    expect(JSON.stringify(calls[3]?.body)).toContain("no container is configured");
+    expect(calls[3]?.body).toEqual({ repository_ids: [1234] });
+    expect(calls[5]?.authorization).toBe("Bearer minted-token");
+    expect(JSON.stringify(calls[5]?.body)).toContain(delivery);
+    expect(JSON.stringify(calls[6]?.body)).toContain("no container is configured");
     const run = env.RUN_STATE.getByName(delivery);
     expect(await run.admit()).toEqual({ admitted: false, reason: "the run is stopped" });
   });
@@ -157,7 +164,7 @@ describe("a release", () => {
     const labels = [{ name: "agent:ready" }, { name: "agent:probe" }];
     const response = await deliver(release({ issue: { number: 7, state: "open", labels } }));
     expect(await response.json()).toMatchObject({ runner: "probe" });
-    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+    await runFinished(calls);
   });
 
   it("refuses a second run on an issue while one is active", async () => {
@@ -182,7 +189,7 @@ describe("a release", () => {
     expect(before).toMatchObject({ reserved: false, budget: "issue" });
 
     expect((await deliver(release())).status).toBe(202);
-    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+    await runFinished(calls);
     const after = crypto.randomUUID();
     expect(await log.reserve({ id: after, run: "later", issue: "1234#7", amount: 1, limits })).toEqual({ reserved: true });
     await log.settle(after, null);
@@ -195,8 +202,9 @@ describe("a release", () => {
     const second = await deliver(release(), { delivery });
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({ ignored: "duplicate delivery" });
-    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
-    expect(calls.filter((c) => c.url.endsWith("/access_tokens"))).toHaveLength(1);
+    await runFinished(calls);
+    // One for the release's blocker lookup and one for its run: the duplicate made neither.
+    expect(calls.filter((c) => c.url.endsWith("/access_tokens"))).toHaveLength(2);
   });
 
   it("never puts a credential in a response or a log", async () => {
@@ -208,7 +216,7 @@ describe("a release", () => {
     }
     const calls = stubGitHub();
     const response = await deliver(release());
-    await vi.waitFor(() => expect(calls.map((c) => c.method)).toContain("DELETE"));
+    await runFinished(calls);
     const text = `${await response.text()} ${logged.join(" ")}`;
     expect(text).not.toContain("minted-token");
     expect(text).not.toContain("PRIVATE KEY");

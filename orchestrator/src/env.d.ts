@@ -25,6 +25,8 @@ declare namespace Cloudflare {
     ACCESS_AUD?: string;
     /** The only identity the /api routes accept. */
     OPERATOR_EMAIL?: string;
+    /** Runs at once across every repo (ADR-005). Anything but a whole number from 1 is 1. */
+    MAX_CONCURRENT_RUNS?: string;
     /** The console's URL, for each run's log link (#105). Empty posts no link. */
     CONSOLE_URL?: string;
     ANTHROPIC_API_KEY?: string;

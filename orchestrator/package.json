@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:security": "vitest run test/webhook.test.ts test/lifecycle.test.ts test/redact.test.ts test/access.test.ts test/outbound",
+    "test:security": "vitest run test/webhook.test.ts test/lifecycle.test.ts test/redact.test.ts test/access.test.ts test/coordinator.test.ts test/outbound",
     "typecheck": "tsc --noEmit",
     "check": "pnpm typecheck && pnpm test"
   },

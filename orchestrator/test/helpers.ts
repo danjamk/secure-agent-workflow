@@ -1,5 +1,5 @@
 import { env, SELF } from "cloudflare:test";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 
 export const SECRET = "test-webhook-secret";
 
@@ -53,12 +53,14 @@ export interface Call {
 /**
  * Stand-in for GitHub. Records calls; `mint` overrides the token response,
  * `comments` is what listing an issue's comments returns, and `repo` is what
- * reading the repo returns, or null for an error.
+ * reading the repo returns, or null for an error. `blockers` is the issue's
+ * "blocked by" list.
  */
 export function stubGitHub(
   mint?: () => Response,
   comments: { id: number; body: string }[] = [],
   repo: { private: boolean } | null = { private: false },
+  blockers: { number: number; repository_url: string }[] = [],
 ): Call[] {
   const calls: Call[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
@@ -81,6 +83,7 @@ export function stubGitHub(
         { status: 201 },
       );
     }
+    if (request.method === "GET" && /\/issues\/\d+\/dependencies\/blocked_by/.test(request.url)) return Response.json(blockers);
     if (request.method === "GET" && /\/issues\/\d+\/comments\?/.test(request.url)) return Response.json(comments);
     if (request.url.endsWith("/comments")) return Response.json({ id: 1 }, { status: 201 });
     if (/\/issues\/\d+\/labels/.test(request.url)) return Response.json([]);
@@ -185,3 +188,16 @@ export function fakeContainer(options: FakeOptions = {}) {
   return { container, state };
 }
 
+
+/**
+ * A webhook-started run has ended: it edited its status comment, then revoked its
+ * token. A release also revokes the token it read blockers with, so a DELETE alone
+ * isn't the run's end.
+ */
+export async function runFinished(calls: Call[]): Promise<void> {
+  await vi.waitFor(() => {
+    const edit = calls.findIndex((c) => c.method === "PATCH");
+    expect(edit).toBeGreaterThanOrEqual(0);
+    expect(calls.slice(edit).some((c) => c.method === "DELETE")).toBe(true);
+  });
+}
