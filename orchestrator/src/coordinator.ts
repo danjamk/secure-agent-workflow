@@ -6,6 +6,8 @@
  * queue hands out.
  */
 
+import { runnerFor } from "./agents";
+import { getBlockers, mintRunToken, revokeToken } from "./github";
 import type { RunScope } from "./outbound/scope";
 import type { ResumeState } from "./run";
 
@@ -72,4 +74,76 @@ export async function pumpQueue(env: Env): Promise<string[]> {
     }
   }
   return started;
+}
+
+/** What a release needs: the issue, its repo and labels as the approver released it. */
+export interface ReleaseTarget {
+  repo: string;
+  repoId: number;
+  defaultBranch: string;
+  number: number;
+  installationId: number;
+  labels: string[];
+  title: string;
+  body: string;
+}
+
+export type Released =
+  | { queued: false; reason: string }
+  | { queued: true; runner: string; started: boolean; waiting: string | null };
+
+/**
+ * Queues a release: snapshots the issue, with its blockers from GitHub's issue
+ * dependencies, and starts it if it can start now. Used by the webhook and by the
+ * reconciler for a release it missed (#110).
+ */
+export async function queueRelease(target: ReleaseTarget, runId: string, env: Env): Promise<Released> {
+  const log = env.DELIVERY_LOG.getByName("global");
+  const issue = `${target.repoId}#${target.number}`;
+  const refused = await log.refusal(issue);
+  if (refused) {
+    await log.markReleased(issue);
+    return { queued: false, reason: refused };
+  }
+  const runner = runnerFor(target.labels);
+  // A token for this one call, revoked straight after.
+  const token = await mintRunToken(env, target.installationId, target.repoId);
+  let blockers: string[];
+  try {
+    blockers = await getBlockers(token.value, target.repo, target.number);
+  } finally {
+    await revokeToken(token.value);
+  }
+  const entry: QueueEntry = {
+    issue,
+    run: runId,
+    kind: "new",
+    scope: {
+      installationId: target.installationId,
+      repoId: target.repoId,
+      repo: target.repo,
+      issue: target.number,
+      defaultBranch: target.defaultBranch,
+    },
+    runner: runner.name,
+    resume: null,
+    snapshot: {
+      title: target.title,
+      body: target.body,
+      blockers,
+      areas: target.labels.filter((label) => label.startsWith("area:")),
+    },
+  };
+  const queued = await log.enqueue(entry);
+  if (!queued.queued) {
+    await log.markReleased(issue);
+    return queued;
+  }
+  // A new release starts over, so an older blocked run can't be resumed after it, and
+  // the issue's model budget is whole again.
+  await log.clearBlocked(issue);
+  await log.clearIssueSpend(issue);
+  const started = (await pumpQueue(env)).includes(runId);
+  const waiting = started ? null : ((await log.queueState()).find((row) => row.issue === issue)?.waiting ?? null);
+  return { queued: true, runner: runner.name, started, waiting };
 }

@@ -10,7 +10,7 @@ Two constraints shape it. The coordinator must hold no state the agent can chang
 
 ## Decision
 
-One coordinator Durable Object per orchestrator deployment holds the queue, the run slots and the touch-area locks. It's `DeliveryLog`, the global object that already holds active runs, blocked runs and the spend ledger, so the slots and their records live in one place. GitHub stays the source of truth: the coordinator acts on webhooks and also reconciles against GitHub on an alarm every 5 minutes, so a missed webhook delays a run but never loses one.
+One coordinator Durable Object per orchestrator deployment holds the queue, the run slots and the touch-area locks. It's `DeliveryLog`, the global object that already holds active runs, blocked runs and the spend ledger, so the slots and their records live in one place. GitHub stays the source of truth: the coordinator acts on webhooks and also reconciles against GitHub every 5 minutes, so a missed webhook delays a run but never loses one. The timer is the Worker's cron trigger, not a Durable Object alarm (#110).
 
 **Entering the queue**
 

@@ -14,6 +14,8 @@
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   "preview_urls": false,
   "observability": { "enabled": true },
+  // The coordinator reconciles against GitHub, for webhooks it missed (#110).
+  "triggers": { "crons": ["*/5 * * * *"] },
 
   // Empty values fail closed: with no approver or no repos, every release is
   // ignored. deploy.sh passes the real values from .env.local with --var. They

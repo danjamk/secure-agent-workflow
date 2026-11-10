@@ -1,8 +1,6 @@
-import { runnerFor } from "./agents";
-import { nameKey, pumpQueue, type QueueEntry } from "./coordinator";
-import { getBlockers, GitHubError, mintRunToken, revokeToken } from "./github";
-import type { RunScope } from "./outbound/scope";
-import { issueKey, MAX_RUNS, type BlockedRecord } from "./run";
+import { nameKey, pumpQueue, queueRelease, type QueueEntry } from "./coordinator";
+import { GitHubError } from "./github";
+import { MAX_RUNS, type BlockedRecord } from "./run";
 
 const RELEASE_LABEL = "agent:ready";
 const STOP_LABEL = "agent:stop";
@@ -160,66 +158,24 @@ function decidePullRequest(payload: any, rules: Rules): Action | string {
   return { kind: "pr-closed", repo, repoId, pr, mergedIntoDefault: merged && intoDefault };
 }
 
-function scopeOf(target: Target, runId: string): RunScope {
-  return {
-    runId,
-    installationId: target.installationId,
-    repoId: target.repoId,
-    repo: target.repo,
-    issue: target.number,
-    defaultBranch: target.defaultBranch,
-  };
-}
-
 function json(status: number, body: object): Response {
   return Response.json(body, { status });
 }
 
 type Log = DurableObjectStub<import("./deliveries").DeliveryLog>;
 
-async function release(target: Target, delivery: string, env: Env, log: Log): Promise<Response> {
+async function release(target: Target, delivery: string, env: Env): Promise<Response> {
   // A run is named by its delivery id. The issue enters the queue, which starts it
   // when a slot, its areas and its blockers allow (ADR-005).
-  const scope = scopeOf(target, delivery);
-  const runner = runnerFor(target.labels);
-  const refused = await log.refusal(issueKey(scope));
-  if (refused) return json(200, { ignored: refused });
-  const token = await mintRunToken(env, target.installationId, target.repoId);
-  let blockers: string[];
-  try {
-    blockers = await getBlockers(token.value, target.repo, target.number);
-  } finally {
-    await revokeToken(token.value);
-  }
-  const entry: QueueEntry = {
-    issue: issueKey(scope),
-    run: delivery,
-    kind: "new",
-    scope: withoutRunId(scope),
-    runner: runner.name,
-    resume: null,
-    snapshot: {
-      title: target.title,
-      body: target.body,
-      blockers,
-      areas: target.labels.filter((label) => label.startsWith("area:")),
-    },
-  };
-  const queued = await log.enqueue(entry);
-  if (!queued.queued) return json(200, { ignored: queued.reason });
-  // A new release starts over, so an older blocked run can't be resumed after it, and
-  // the issue's model budget is whole again.
-  await log.clearBlocked(issueKey(scope));
-  await log.clearIssueSpend(issueKey(scope));
-  const started = (await pumpQueue(env)).includes(delivery);
-  const waiting = started ? null : ((await log.queueState()).find((row) => row.issue === entry.issue)?.waiting ?? null);
-  console.log(`Released ${target.repo}#${target.number} to ${runner.name} from delivery ${delivery}${started ? "" : ", queued"}`);
-  return json(202, { released: `${target.repo}#${target.number}`, runner: runner.name, started, waiting });
-}
-
-function withoutRunId(scope: RunScope): Omit<RunScope, "runId"> {
-  const { runId: _runId, ...rest } = scope;
-  return rest;
+  const released = await queueRelease(target, delivery, env);
+  if (!released.queued) return json(200, { ignored: released.reason });
+  console.log(`Released ${target.repo}#${target.number} to ${released.runner} from delivery ${delivery}${released.started ? "" : ", queued"}`);
+  return json(202, {
+    released: `${target.repo}#${target.number}`,
+    runner: released.runner,
+    started: released.started,
+    waiting: released.waiting,
+  });
 }
 
 /**
@@ -330,9 +286,20 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   if (!(await log.claim(delivery))) {
     return json(200, { ignored: "duplicate delivery" });
   }
+  // The reconciler covers the repos webhooks came from (#110).
+  const repository = (payload as { repository?: { id?: unknown; full_name?: unknown; default_branch?: unknown } }).repository;
+  const installation = (payload as { installation?: { id?: unknown } }).installation;
+  if (
+    typeof repository?.id === "number" &&
+    typeof repository.full_name === "string" &&
+    typeof repository.default_branch === "string" &&
+    typeof installation?.id === "number"
+  ) {
+    await log.recordRepo(repository.id, repository.full_name, installation.id, repository.default_branch);
+  }
 
   try {
-    if (action.kind === "release") return await release(action.target, delivery, env, log);
+    if (action.kind === "release") return await release(action.target, delivery, env);
     if (action.kind === "stop") return await stop(action.target, action.by, env, log);
     if (action.kind === "closed") return await closed(action.target, action.completed, env, log);
     if (action.kind === "pr-closed") return await pullRequestClosed(action, env, log);

@@ -179,6 +179,11 @@ export class RunState extends DurableObject<Env> {
     return true;
   }
 
+  /** Where the run is, or null if it was never started (#110). */
+  async status(): Promise<Phase | null> {
+    return (await this.ctx.storage.get<Phase>("phase")) ?? null;
+  }
+
   /** Used by tests that drive the run without the alarm. */
   async begin(scope: RunScope): Promise<void> {
     await this.ctx.storage.put("scope", scope);

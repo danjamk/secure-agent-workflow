@@ -184,6 +184,92 @@ export async function getBlockers(token: string, repo: string, issue: number): P
   });
 }
 
+/** An open issue as the reconciler sees it (#110). */
+export interface OpenIssue {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+}
+
+async function getJson(token: string, path: string, what: string): Promise<unknown> {
+  const response = await call(path, "GET", token);
+  if (!response.ok) throw new GitHubError(`Reading ${what} returned ${response.status}`);
+  return response.json();
+}
+
+/** Open issues labeled agent:ready. PRs, which the issues API also lists, are left out. */
+export async function listReadyIssues(token: string, repo: string): Promise<OpenIssue[]> {
+  const data = await getJson(token, `/repos/${repo}/issues?labels=agent%3Aready&state=open&per_page=100`, "the ready issues");
+  if (!Array.isArray(data)) throw new GitHubError("The ready issues weren't a list");
+  return data.flatMap((item: Record<string, unknown>) => {
+    if (item.pull_request || typeof item.number !== "number") return [];
+    const labels = Array.isArray(item.labels)
+      ? item.labels.map((label: { name?: unknown }) => label?.name).filter((name): name is string => typeof name === "string")
+      : [];
+    return [{ number: item.number, title: typeof item.title === "string" ? item.title : "", body: typeof item.body === "string" ? item.body : "", labels }];
+  });
+}
+
+/**
+ * Who added agent:ready most recently, and when, from the issue's events. Null if
+ * it was never added. An issue with more than 100 events is read from its first
+ * 100 only.
+ */
+export async function lastReadyLabel(
+  token: string,
+  repo: string,
+  issue: number,
+): Promise<{ login: string; type: string; at: number } | null> {
+  const data = await getJson(token, `/repos/${repo}/issues/${issue}/events?per_page=100`, "the issue's events");
+  if (!Array.isArray(data)) throw new GitHubError("The issue's events weren't a list");
+  let last: { login: string; type: string; at: number } | null = null;
+  for (const event of data as { event?: unknown; label?: { name?: unknown }; actor?: { login?: unknown; type?: unknown }; created_at?: unknown }[]) {
+    if (event.event !== "labeled" || event.label?.name !== "agent:ready") continue;
+    const at = Date.parse(typeof event.created_at === "string" ? event.created_at : "");
+    if (Number.isNaN(at) || (last && at < last.at)) continue;
+    last = {
+      login: typeof event.actor?.login === "string" ? event.actor.login : "",
+      type: typeof event.actor?.type === "string" ? event.actor.type : "",
+      at,
+    };
+  }
+  return last;
+}
+
+/** A PR's state: whether it's closed, and whether it merged into which branch. */
+export async function getPullState(
+  token: string,
+  repo: string,
+  pr: number,
+): Promise<{ closed: boolean; merged: boolean; base: string }> {
+  const data = (await getJson(token, `/repos/${repo}/pulls/${pr}`, "the PR")) as {
+    state?: unknown;
+    merged?: unknown;
+    base?: { ref?: unknown };
+  };
+  return { closed: data.state === "closed", merged: data.merged === true, base: typeof data.base?.ref === "string" ? data.base.ref : "" };
+}
+
+/** How an issue was closed, and by whom, or null while it's open. */
+export async function getClosure(
+  token: string,
+  repo: string,
+  issue: number,
+): Promise<{ reason: string; login: string; type: string } | null> {
+  const data = (await getJson(token, `/repos/${repo}/issues/${issue}`, "the issue")) as {
+    state?: unknown;
+    state_reason?: unknown;
+    closed_by?: { login?: unknown; type?: unknown } | null;
+  };
+  if (data.state !== "closed") return null;
+  return {
+    reason: typeof data.state_reason === "string" ? data.state_reason : "",
+    login: typeof data.closed_by?.login === "string" ? data.closed_by.login : "",
+    type: typeof data.closed_by?.type === "string" ? data.closed_by.type : "",
+  };
+}
+
 /** True only if GitHub says the repo is private. Anything else counts as public. */
 export async function isPrivateRepo(token: string, repo: string): Promise<boolean> {
   const response = await call(`/repos/${repo}`, "GET", token);
