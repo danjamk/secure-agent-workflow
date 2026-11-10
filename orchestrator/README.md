@@ -357,6 +357,21 @@ Fixed after the tests:
 | Stored text | Not read live: nothing serves the log until #101. The tests cover it, including every credential the Worker holds |
 | Decision log | The agent wrote its entry as a file in `docs/decisions/`, the layout from #94 |
 
+### Live results: coordinator
+
+2026-11-10, build `0.1.22+1f36665`, on agent-testbed, with `MAX_CONCURRENT_RUNS` at 1. Three issues were released a few seconds apart: #55 and #56 in `area:docs`, and #57 in `area:tests`, blocked by #55.
+
+| Time (UTC) | Event |
+| --- | --- |
+| 00:38:12 | All three released |
+| 00:38:26 | #55 started, the only one with a free slot, a free area and no blockers |
+| 00:38:48 | #55's run ended. #56 stayed queued for `area:docs`, which #55's open PR held, and #57 for #55, which wasn't done |
+| 00:40:16 | #55's PR merged. Its area was freed, and #55 counted as done |
+| 00:40:39 | #56 started, ahead of #57, because it was released first and the cap is 1 |
+| 00:41:24 | #57 started as soon as #56's run ended, while #56's PR still held `area:docs`, because #57 is in `area:tests` |
+
+The times come from polling every 20 seconds. Not checked live: the waiting reasons themselves, since nothing serves the queue yet. The tests cover them. #57's PR waited for the approver, because `tests/` matches no rule in the testbed's tier map, which makes it tier 2. That's the gate, not the coordinator.
+
 ## Other options for a fork
 
 From the [sandbox bake-off](../docs/research/sandbox-bakeoff.md):
