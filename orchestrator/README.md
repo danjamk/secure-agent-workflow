@@ -171,12 +171,12 @@ The coordinator (ADR-005) decides when a released issue starts. Its state is in 
 
 | It finds | How it knows |
 | --- | --- |
-| A release it missed | An open issue labeled `agent:ready`, not queued, running, blocked or labeled `agent:stop`, whose most recent `agent:ready` event was added by the approver, from a user account, after the issue's last handled release. Who added the label decides, never the label's presence (design review R5) |
+| A release it missed | An open issue labeled `agent:ready`, not queued, running, blocked or labeled `agent:stop`, whose most recent `agent:ready` event was added by the approver, from a user account, after the issue's last handled release and after the coordinator first heard from the repo. Who added the label decides, never the label's presence (design review R5) |
 | A run's PR that closed | Each locked issue's recorded PRs, read from GitHub. A merge into the default branch completes the issue |
 | A blocker the approver closed | Each queued issue's blockers that aren't done: closed as completed, with `closed_by` the approver |
 | A slot whose run is gone | An active run whose `RunState` has ended or never started, after a 2-minute grace for a run that's still starting. Its areas stay until its PR is checked |
 
-Every release the webhook handles is recorded with its time, even one refused because the issue was queued or running. So a label already acted on, or re-added while a run was active, doesn't start a run later. An issue with more than 100 events is judged by its first 100.
+A label from before the coordinator first heard from the repo is never acted on: on its first pass, the reconciler released an issue whose `agent:ready` was days old (Live results: reconciling). Every release the webhook handles is recorded with its time, even one refused because the issue was queued or running. So a label already acted on, or re-added while a run was active, doesn't start a run later. An issue with more than 100 events is judged by its first 100.
 
 Not built yet: catch-up runs for conflicting PRs (#111), and the daily spend pause (#112).
 
@@ -383,6 +383,16 @@ Fixed after the tests:
 | 00:41:24 | #57 started as soon as #56's run ended, while #56's PR still held `area:docs`, because #57 is in `area:tests` |
 
 The times come from polling every 20 seconds. Not checked live: the waiting reasons themselves, since nothing serves the queue yet. The tests cover them. #57's PR waited for the approver, because `tests/` matches no rule in the testbed's tier map, which makes it tier 2. That's the gate, not the coordinator.
+
+### Live results: reconciling
+
+2026-11-10, build `0.1.24+8b5465d`, on agent-testbed. The deploy set the cron trigger (`schedule: */5 * * * *`) with the factory deploy token as it is.
+
+| Check | Result |
+| --- | --- |
+| A missed release | With the App's webhook turned off, `agent:ready` went on #61 at 13:55:25. The next pass started its run at 14:00:27. The run's id was a random UUID, where a webhook's run is named by GitHub's delivery id |
+| Not released twice | Not tested live: #61's PR merged at 14:02 and closed the issue before the next pass. The tests cover it |
+| **A bug** | The 14:05 pass also released testbed #34, whose `agent:ready` was added on 2026-11-05, before the coordinator recorded releases. The agent's PR, a decision file, auto-merged and closed #34. The reconciler now ignores any label from before the coordinator first heard from the repo, and repos already recorded count from when that rule was deployed. #34 was reopened and its label removed |
 
 ## Other options for a fork
 
