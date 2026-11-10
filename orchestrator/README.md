@@ -4,7 +4,7 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets, a redacted log per run served to the operator, the coordinator's queue, cap, area locks and dependency gating | Reconciling missed webhooks (#110), catch-up runs (#111), the daily spend pause (#112) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets, a redacted log per run served to the operator, the coordinator's queue, cap, area locks and dependency gating, reconciling against GitHub every 5 minutes | Catch-up runs (#111), the daily spend pause (#112) |
 
 ## A run
 
@@ -165,8 +165,20 @@ The coordinator (ADR-005) decides when a released issue starts. Its state is in 
 | A run ends | Frees its slot, and its areas unless its PR is open or it's blocked |
 | A run's PR closes (`pull_request.closed`, from anyone) | Frees the issue's areas. If it merged into the default branch, the issue is done |
 | The approver closes an issue | Takes it out of the queue. If closed as completed, it's done |
+| Every 5 minutes | Reconciles against GitHub (below) |
 
-Not built yet: reconciling against GitHub for missed webhooks (#110), catch-up runs for conflicting PRs (#111), and the daily spend pause (#112).
+**Reconciling (#110).** GitHub doesn't redeliver a webhook on its own, so a cron trigger runs `reconcile()` every 5 minutes. It covers each repo a webhook has come from, with one installation token per repo per pass, revoked afterwards:
+
+| It finds | How it knows |
+| --- | --- |
+| A release it missed | An open issue labeled `agent:ready`, not queued, running, blocked or labeled `agent:stop`, whose most recent `agent:ready` event was added by the approver, from a user account, after the issue's last handled release. Who added the label decides, never the label's presence (design review R5) |
+| A run's PR that closed | Each locked issue's recorded PRs, read from GitHub. A merge into the default branch completes the issue |
+| A blocker the approver closed | Each queued issue's blockers that aren't done: closed as completed, with `closed_by` the approver |
+| A slot whose run is gone | An active run whose `RunState` has ended or never started, after a 2-minute grace for a run that's still starting. Its areas stay until its PR is checked |
+
+Every release the webhook handles is recorded with its time, even one refused because the issue was queued or running. So a label already acted on, or re-added while a run was active, doesn't start a run later. An issue with more than 100 events is judged by its first 100.
+
+Not built yet: catch-up runs for conflicting PRs (#111), and the daily spend pause (#112).
 
 **Backstop outside this system.** If the orchestrator has a bug, two limits still hold: the spend limit on the model provider's workspace (Credentials), and billing notifications on the factory account, which the operator sets in Cloudflare's dashboard. Whether they're set isn't recorded here.
 

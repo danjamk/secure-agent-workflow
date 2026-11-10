@@ -1,4 +1,5 @@
 import { handleApi } from "./api";
+import { reconcile } from "./reconcile";
 import { handleWebhook } from "./webhook";
 
 export { DeliveryLog } from "./deliveries";
@@ -19,5 +20,14 @@ export default {
       return handleApi(request, env);
     }
     return new Response("Not found", { status: 404 });
+  },
+
+  // Every 5 minutes: catch up on webhooks GitHub didn't deliver (#110).
+  async scheduled(_controller, env, ctx): Promise<void> {
+    ctx.waitUntil(
+      reconcile(env).catch((error: unknown) => {
+        console.error(`Reconciling failed: ${(error as Error).name}`);
+      }),
+    );
   },
 } satisfies ExportedHandler<Env>;

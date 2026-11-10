@@ -77,6 +77,12 @@ export class DeliveryLog extends DurableObject<Env> {
       "CREATE TABLE IF NOT EXISTS issue_prs (repo_id INTEGER NOT NULL, pr INTEGER NOT NULL, issue TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (repo_id, pr))",
     );
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS completed (name TEXT PRIMARY KEY, how TEXT NOT NULL, at INTEGER NOT NULL)");
+    // For reconciling against GitHub (#110): each repo a webhook came from, and when
+    // each issue was last released, so a label already acted on isn't acted on again.
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS repos (repo_id INTEGER PRIMARY KEY, name TEXT NOT NULL, installation_id INTEGER NOT NULL, default_branch TEXT NOT NULL)",
+    );
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS released (issue TEXT PRIMARY KEY, at INTEGER NOT NULL)");
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS run_usage (run TEXT PRIMARY KEY, calls INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, cost INTEGER NOT NULL)",
     );
@@ -197,6 +203,9 @@ export class DeliveryLog extends DurableObject<Env> {
     const refused = this.refusal(entry.issue);
     if (refused) return { queued: false, reason: refused };
     const generation = this.nextGeneration(entry.issue);
+    if (entry.kind === "new") {
+      sql.exec("INSERT OR REPLACE INTO released (issue, at) VALUES (?, ?)", entry.issue, Date.now());
+    }
     sql.exec(
       "INSERT INTO queue (issue, kind, generation, entry, entered, waiting) VALUES (?, ?, ?, ?, ?, NULL)",
       entry.issue,
@@ -350,6 +359,78 @@ export class DeliveryLog extends DurableObject<Env> {
   /** An issue that now counts as done for the issues it blocks. */
   markCompleted(name: string, how: string): void {
     this.ctx.storage.sql.exec("INSERT OR IGNORE INTO completed (name, how, at) VALUES (?, ?, ?)", name, how, Date.now());
+  }
+
+  /** A repo a webhook came from, kept up to date, so the reconciler can reach it (#110). */
+  recordRepo(repoId: number, name: string, installationId: number, defaultBranch: string): void {
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO repos (repo_id, name, installation_id, default_branch) VALUES (?, ?, ?, ?)",
+      repoId,
+      name,
+      installationId,
+      defaultBranch,
+    );
+  }
+
+  repos(): { repoId: number; name: string; installationId: number; defaultBranch: string }[] {
+    return this.ctx.storage.sql
+      .exec<{ repo_id: number; name: string; installation_id: number; default_branch: string }>(
+        "SELECT repo_id, name, installation_id, default_branch FROM repos ORDER BY repo_id",
+      )
+      .toArray()
+      .map((row) => ({ repoId: row.repo_id, name: row.name, installationId: row.installation_id, defaultBranch: row.default_branch }));
+  }
+
+  /**
+   * Records that a release was handled, even one refused because the issue was
+   * queued or running, so the reconciler doesn't act on that label later.
+   */
+  markReleased(issue: string): void {
+    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO released (issue, at) VALUES (?, ?)", issue, Date.now());
+  }
+
+  /** When the issue was last released, or null if never. */
+  releasedAt(issue: string): number | null {
+    return this.ctx.storage.sql.exec<{ at: number }>("SELECT at FROM released WHERE issue = ?", issue).toArray()[0]?.at ?? null;
+  }
+
+  /** True if the issue has a blocked run waiting for a reply. */
+  isBlocked(issue: string): boolean {
+    return this.ctx.storage.sql.exec("SELECT 1 FROM blocked WHERE issue = ?", issue).toArray().length > 0;
+  }
+
+  /** Each locked issue in a repo, with the PRs its runs opened. */
+  lockedIssues(repoId: number): { issue: string; prs: number[] }[] {
+    const sql = this.ctx.storage.sql;
+    return sql
+      .exec<{ issue: string }>("SELECT DISTINCT issue FROM area_locks WHERE repo_id = ? ORDER BY issue", repoId)
+      .toArray()
+      .map((row) => ({
+        issue: row.issue,
+        prs: sql
+          .exec<{ pr: number }>("SELECT pr FROM issue_prs WHERE repo_id = ? AND issue = ? ORDER BY pr", repoId, row.issue)
+          .toArray()
+          .map((pr) => pr.pr),
+      }));
+  }
+
+  /** Blockers of queued issues that aren't done yet, as "owner/name#number". */
+  pendingBlockers(): string[] {
+    const sql = this.ctx.storage.sql;
+    const names = new Set<string>();
+    for (const row of sql.exec<{ entry: string }>("SELECT entry FROM queue").toArray()) {
+      for (const blocker of (JSON.parse(row.entry) as QueueEntry).snapshot.blockers) {
+        if (!sql.exec("SELECT 1 FROM completed WHERE name = ?", blocker).toArray().length) names.add(blocker);
+      }
+    }
+    return [...names].sort();
+  }
+
+  /** The active runs, with when each took its slot. */
+  activeRuns(): { issue: string; run: string; at: number }[] {
+    return this.ctx.storage.sql
+      .exec<{ issue: string; run: string; at: number }>("SELECT issue, run, at FROM active_runs ORDER BY at")
+      .toArray();
   }
 
   /** The queue with each issue's reason for waiting, oldest first, for the digest and tests. */
