@@ -237,18 +237,46 @@ export async function lastReadyLabel(
   return last;
 }
 
-/** A PR's state: whether it's closed, and whether it merged into which branch. */
-export async function getPullState(
-  token: string,
-  repo: string,
-  pr: number,
-): Promise<{ closed: boolean; merged: boolean; base: string }> {
+export interface PullState {
+  closed: boolean;
+  merged: boolean;
+  /** The branch it merges into. */
+  base: string;
+  /** "dirty" when it conflicts with its base. GitHub works this out lazily, so it can be "unknown". */
+  mergeableState: string;
+  /** Its branch, without refs/heads/. */
+  head: string;
+  nodeId: string;
+}
+
+/** A PR's state: closed or merged, into which branch, and whether it conflicts. */
+export async function getPullState(token: string, repo: string, pr: number): Promise<PullState> {
   const data = (await getJson(token, `/repos/${repo}/pulls/${pr}`, "the PR")) as {
     state?: unknown;
     merged?: unknown;
     base?: { ref?: unknown };
+    head?: { ref?: unknown };
+    mergeable_state?: unknown;
+    node_id?: unknown;
   };
-  return { closed: data.state === "closed", merged: data.merged === true, base: typeof data.base?.ref === "string" ? data.base.ref : "" };
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  return {
+    closed: data.state === "closed",
+    merged: data.merged === true,
+    base: text(data.base?.ref),
+    mergeableState: text(data.mergeable_state) || "unknown",
+    head: text(data.head?.ref),
+    nodeId: text(data.node_id),
+  };
+}
+
+/** The commit a branch points at. */
+export async function getBranchHead(token: string, repo: string, branch: string): Promise<string> {
+  const data = (await getJson(token, `/repos/${repo}/branches/${encodeURIComponent(branch)}`, "the branch")) as {
+    commit?: { sha?: unknown };
+  };
+  if (typeof data.commit?.sha !== "string") throw new GitHubError("The branch has no commit");
+  return data.commit.sha;
 }
 
 /** How an issue was closed, and by whom, or null while it's open. */

@@ -4,7 +4,7 @@ A Cloudflare Worker in the factory account that starts a sandbox per released is
 
 | Built | Not built yet |
 | --- | --- |
-| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets, a redacted log per run served to the operator, the coordinator's queue, cap, area locks and dependency gating, reconciling against GitHub every 5 minutes | Catch-up runs (#111), the daily spend pause (#112) |
+| `/health`, webhook intake, the release checks, delivery dedupe, installation tokens, the outbound policy, a container per run that runs Claude Code or the outbound probe, one status comment per run, stop, blocked and resume, model spend budgets, a redacted log per run served to the operator, the coordinator's queue, cap, area locks and dependency gating, reconciling against GitHub every 5 minutes, catch-up runs for conflicting PRs | The daily spend pause (#112) |
 
 ## A run
 
@@ -165,7 +165,8 @@ The coordinator (ADR-005) decides when a released issue starts. Its state is in 
 | A run ends | Frees its slot, and its areas unless its PR is open or it's blocked |
 | A run's PR closes (`pull_request.closed`, from anyone) | Frees the issue's areas. If it merged into the default branch, the issue is done |
 | The approver closes an issue | Takes it out of the queue. If closed as completed, it's done |
-| Every 5 minutes | Reconciles against GitHub (below) |
+| Every 5 minutes | Reconciles against GitHub, and checks for conflicting PRs (below) |
+| A PR merges into the default branch | Checks the open PRs runs opened for conflicts, 20 seconds later (below) |
 
 **Reconciling (#110).** GitHub doesn't redeliver a webhook on its own, so a cron trigger runs `reconcile()` every 5 minutes. It covers each repo a webhook has come from, with one installation token per repo per pass, revoked afterwards:
 
@@ -178,7 +179,13 @@ The coordinator (ADR-005) decides when a released issue starts. Its state is in 
 
 A label from before the coordinator first heard from the repo is never acted on: on its first pass, the reconciler released an issue whose `agent:ready` was days old (Live results: reconciling). Every release the webhook handles is recorded with its time, even one refused because the issue was queued or running. So a label already acted on, or re-added while a run was active, doesn't start a run later. An issue with more than 100 events is judged by its first 100.
 
-Not built yet: catch-up runs for conflicting PRs (#111), and the daily spend pause (#112).
+**Catch-up runs (#111).** An open PR a run opened that now conflicts with the default branch (`mergeable_state` is `dirty`) gets a catch-up run on its own branch.
+
+- **When it's checked:** 20 seconds after any PR merges into the default branch, through the webhook, and on every reconciler pass, which catches merges the webhook didn't report. There's no `push` event: a merge is when another PR starts to conflict. GitHub works out mergeability after a merge, so a check that comes too soon finds `unknown`, and the next one catches it.
+- **The run:** a queue entry ahead of new issues, with resumes. Claude Code runs on the PR's branch with the branch and PR pinned, and fixed text in `run-agent.sh` tells it to merge the default branch in (merge, not rebase, never force-push), resolve the conflicts so both changes still work, run `make check`, push, and comment on the PR. It runs inside the areas its issue holds, and doesn't use up one of the release's 3 runs. Its status comment says "catch-up".
+- **Limits:** one catch-up per PR per default branch commit, and two in all. If the PR still conflicts after that, its issue gets `agent:blocked` and the PR a comment handing it to the approver, once. A PR that can't be read is skipped until the next check, without holding up the others.
+
+Not built yet: the daily spend pause (#112).
 
 **Backstop outside this system.** If the orchestrator has a bug, two limits still hold: the spend limit on the model provider's workspace (Credentials), and billing notifications on the factory account, which the operator sets in Cloudflare's dashboard. Whether they're set isn't recorded here.
 

@@ -8,6 +8,9 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 /** Longer than any run's limit, so only a run that never reached teardown goes stale. */
 const ACTIVE_RUN_MS = 2 * 60 * 60 * 1000;
 
+/** Catch-ups a PR gets before it's handed to the operator (ADR-005). */
+const MAX_CATCH_UPS = 2;
+
 /** The areas a queue entry locks: its area labels, or every area if it has none. */
 function areasOf(entry: QueueEntry): string[] {
   return entry.snapshot.areas.length ? entry.snapshot.areas : ["*"];
@@ -91,6 +94,11 @@ export class DeliveryLog extends DurableObject<Env> {
     }
     ctx.storage.sql.exec("UPDATE repos SET first_seen = ? WHERE first_seen IS NULL", Date.now());
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS released (issue TEXT PRIMARY KEY, at INTEGER NOT NULL)");
+    // Catch-up runs (#111): the default branch commit each PR's last catch-up ran
+    // against, and how many it has had.
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS catchups (repo_id INTEGER NOT NULL, pr INTEGER NOT NULL, base TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (repo_id, pr))",
+    );
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS run_usage (run TEXT PRIMARY KEY, calls INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, cost INTEGER NOT NULL)",
     );
@@ -263,7 +271,7 @@ export class DeliveryLog extends DurableObject<Env> {
     sql.exec("DELETE FROM active_runs WHERE at < ?", now - ACTIVE_RUN_MS);
     const rows = sql
       .exec<{ issue: string; generation: number; entry: string }>(
-        "SELECT issue, generation, entry FROM queue ORDER BY kind = 'resume' DESC, entered, issue",
+        "SELECT issue, generation, entry FROM queue ORDER BY kind != 'new' DESC, entered, issue",
       )
       .toArray();
     let running = sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM active_runs").toArray()[0]?.n ?? 0;
@@ -361,7 +369,48 @@ export class DeliveryLog extends DurableObject<Env> {
     if (!row) return null;
     this.releaseAreas(row.issue);
     if (mergedIntoDefault) this.markCompleted(row.name, `PR #${pr} merged`);
+    // A closed PR needs no more catch-ups.
+    this.ctx.storage.sql.exec("DELETE FROM issue_prs WHERE repo_id = ? AND pr = ?", repoId, pr);
+    this.ctx.storage.sql.exec("DELETE FROM catchups WHERE repo_id = ? AND pr = ?", repoId, pr);
     return row.issue;
+  }
+
+  /** The open PRs runs opened in a repo, with their issues. */
+  recordedPullRequests(repoId: number): { pr: number; issue: string; name: string }[] {
+    return this.ctx.storage.sql
+      .exec<{ pr: number; issue: string; name: string }>("SELECT pr, issue, name FROM issue_prs WHERE repo_id = ? ORDER BY pr", repoId)
+      .toArray();
+  }
+
+  /**
+   * Whether a conflicting PR gets a catch-up against this default branch commit:
+   * one per commit, two in all, then it's handed to the operator once (#111).
+   */
+  catchUp(repoId: number, pr: number, base: string): "run" | "already" | "give up" | "given up" {
+    const sql = this.ctx.storage.sql;
+    const row = sql.exec<{ base: string; count: number }>("SELECT base, count FROM catchups WHERE repo_id = ? AND pr = ?", repoId, pr).toArray()[0];
+    if (row?.base === base) return "already";
+    if ((row?.count ?? 0) > MAX_CATCH_UPS) return "given up";
+    if ((row?.count ?? 0) === MAX_CATCH_UPS) {
+      sql.exec("UPDATE catchups SET count = count + 1, base = ? WHERE repo_id = ? AND pr = ?", base, repoId, pr);
+      return "give up";
+    }
+    sql.exec(
+      "INSERT INTO catchups (repo_id, pr, base, count) VALUES (?, ?, ?, 1) ON CONFLICT(repo_id, pr) DO UPDATE SET base = excluded.base, count = count + 1",
+      repoId,
+      pr,
+      base,
+    );
+    return "run";
+  }
+
+  /** The areas an issue holds now, so its catch-up runs inside them. */
+  areasHeld(issue: string): string[] {
+    return this.ctx.storage.sql
+      .exec<{ area: string }>("SELECT area FROM area_locks WHERE issue = ? ORDER BY area", issue)
+      .toArray()
+      .map((row) => row.area)
+      .filter((area) => area !== "*");
   }
 
   /** An issue that now counts as done for the issues it blocks. */
@@ -454,7 +503,7 @@ export class DeliveryLog extends DurableObject<Env> {
   queueState(): { issue: string; run: string; kind: string; waiting: string | null }[] {
     return this.ctx.storage.sql
       .exec<{ issue: string; kind: string; entry: string; waiting: string | null }>(
-        "SELECT issue, kind, entry, waiting FROM queue ORDER BY kind = 'resume' DESC, entered, issue",
+        "SELECT issue, kind, entry, waiting FROM queue ORDER BY kind != 'new' DESC, entered, issue",
       )
       .toArray()
       .map((row) => ({ issue: row.issue, run: (JSON.parse(row.entry) as QueueEntry).run, kind: row.kind, waiting: row.waiting }));

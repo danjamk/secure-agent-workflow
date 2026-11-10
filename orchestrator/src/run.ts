@@ -58,6 +58,8 @@ class RunError extends Error {}
 
 /** What a resumed run starts from. */
 export interface ResumeState {
+  /** A catch-up run: merge the default branch into the PR's branch (#111). */
+  catchup?: boolean;
   /** Null if the agent blocked before pushing, so the run starts from the default branch. */
   branch: string | null;
   pr: PullRequest | null;
@@ -141,7 +143,7 @@ export class RunState extends DurableObject<Env> {
     if (resume) {
       await this.ctx.storage.put(
         "resume",
-        { branch: resume.branch, pr: resume.pr?.number ?? null, reply: resume.reply } satisfies Resume,
+        { branch: resume.branch, pr: resume.pr?.number ?? null, reply: resume.reply, catchup: resume.catchup } satisfies Resume,
       );
       if (resume.branch) await this.ctx.storage.put("branch", `refs/heads/${resume.branch}`);
       if (resume.pr) await this.ctx.storage.put("pr", resume.pr);
@@ -504,7 +506,8 @@ export class RunState extends DurableObject<Env> {
 
   private async describe(scope: RunScope): Promise<string> {
     const runner = (await this.ctx.storage.get<string>("runner")) ?? "unknown";
-    return `Run \`${scope.runId}\` (build \`${this.env.BUILD_ID}\`, runner \`${runner}\`)`;
+    const catchUp = (await this.ctx.storage.get<Resume>("resume"))?.catchup ? ", catch-up" : "";
+    return `Run \`${scope.runId}\` (build \`${this.env.BUILD_ID}\`, runner \`${runner}\`${catchUp})`;
   }
 
   /** The run's one status comment, posted on the first check. A failure here doesn't stop the run. */

@@ -1,5 +1,5 @@
-import { nameKey, pumpQueue, queueRelease, type QueueEntry } from "./coordinator";
-import { GitHubError } from "./github";
+import { nameKey, pumpQueue, queueCatchUps, queueRelease, type KnownRepo, type QueueEntry } from "./coordinator";
+import { GitHubError, mintRunToken, revokeToken } from "./github";
 import { MAX_RUNS, type BlockedRecord } from "./run";
 
 const RELEASE_LABEL = "agent:ready";
@@ -28,7 +28,15 @@ export type Action =
   /** The approver closed an issue: done for the issues it blocks if completed (#13). */
   | { kind: "closed"; target: Target; completed: boolean }
   /** A PR closed. Trusted for what GitHub says happened, whoever sent it (#13). */
-  | { kind: "pr-closed"; repo: string; repoId: number; pr: number; mergedIntoDefault: boolean };
+  | {
+      kind: "pr-closed";
+      repo: string;
+      repoId: number;
+      pr: number;
+      mergedIntoDefault: boolean;
+      installationId: number | null;
+      defaultBranch: string;
+    };
 
 export interface Rules {
   approver: string;
@@ -154,8 +162,10 @@ function decidePullRequest(payload: any, rules: Rules): Action | string {
   const pr = payload?.pull_request?.number;
   if (typeof repoId !== "number" || typeof pr !== "number") return "payload is missing the PR or repo";
   const merged = payload?.pull_request?.merged === true;
-  const intoDefault = payload?.pull_request?.base?.ref === payload?.repository?.default_branch;
-  return { kind: "pr-closed", repo, repoId, pr, mergedIntoDefault: merged && intoDefault };
+  const defaultBranch = typeof payload?.repository?.default_branch === "string" ? payload.repository.default_branch : "";
+  const intoDefault = defaultBranch !== "" && payload?.pull_request?.base?.ref === defaultBranch;
+  const installationId = typeof payload?.installation?.id === "number" ? payload.installation.id : null;
+  return { kind: "pr-closed", repo, repoId, pr, mergedIntoDefault: merged && intoDefault, installationId, defaultBranch };
 }
 
 function json(status: number, body: object): Response {
@@ -243,14 +253,39 @@ async function pullRequestClosed(
   action: Extract<Action, { kind: "pr-closed" }>,
   env: Env,
   log: Log,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
+  // Any merge into the default branch can make a run's open PR conflict. GitHub
+  // works out mergeability after the merge, so the check waits a little (#111).
+  if (action.mergedIntoDefault && action.installationId !== null && ctx) {
+    const repo = { name: action.repo, repoId: action.repoId, defaultBranch: action.defaultBranch, installationId: action.installationId };
+    ctx.waitUntil(checkCatchUps(env, repo));
+  }
   const issue = await log.pullRequestClosed(action.repoId, action.pr, action.mergedIntoDefault);
   if (!issue) return json(200, { ignored: "not a run's PR" });
   await pumpQueue(env);
   return json(202, { pr: `${action.repo}#${action.pr}`, issue, completed: action.mergedIntoDefault });
 }
 
-export async function handleWebhook(request: Request, env: Env): Promise<Response> {
+/** How long after a merge to check for conflicts. The reconciler catches anything later. */
+const CATCH_UP_DELAY_MS = 20_000;
+
+async function checkCatchUps(env: Env, repo: KnownRepo): Promise<void> {
+  try {
+    await scheduler.wait(CATCH_UP_DELAY_MS);
+    const token = await mintRunToken(env, repo.installationId, repo.repoId);
+    try {
+      await queueCatchUps(env, repo, token.value);
+    } finally {
+      await revokeToken(token.value);
+    }
+    await pumpQueue(env);
+  } catch (error) {
+    console.error(`Checking for catch-ups failed: ${error instanceof GitHubError ? error.message : (error as Error).name}`);
+  }
+}
+
+export async function handleWebhook(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   if (!env.GITHUB_WEBHOOK_SECRET) {
     console.error("GITHUB_WEBHOOK_SECRET is not set");
     return json(500, { error: "not configured" });
@@ -302,7 +337,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     if (action.kind === "release") return await release(action.target, delivery, env);
     if (action.kind === "stop") return await stop(action.target, action.by, env, log);
     if (action.kind === "closed") return await closed(action.target, action.completed, env, log);
-    if (action.kind === "pr-closed") return await pullRequestClosed(action, env, log);
+    if (action.kind === "pr-closed") return await pullRequestClosed(action, env, log, ctx);
     return await resume(action.target, action.body, delivery, env, log);
   } catch (error) {
     // Forget the claim so redelivering from GitHub's log tries again. GitHubError

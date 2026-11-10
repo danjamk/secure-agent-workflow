@@ -7,7 +7,7 @@
  */
 
 import { runnerFor } from "./agents";
-import { getBlockers, mintRunToken, revokeToken } from "./github";
+import { commentOnIssue, getBlockers, getBranchHead, getPullState, mintRunToken, revokeToken, setLabel } from "./github";
 import type { RunScope } from "./outbound/scope";
 import type { ResumeState } from "./run";
 
@@ -26,7 +26,7 @@ export interface QueueEntry {
   issue: string;
   /** The run id it starts as: the delivery id of the release or the reply. */
   run: string;
-  kind: "new" | "resume";
+  kind: "new" | "resume" | "catchup";
   scope: Omit<RunScope, "runId">;
   runner: string;
   resume: ResumeState | null;
@@ -146,4 +146,70 @@ export async function queueRelease(target: ReleaseTarget, runId: string, env: En
   const started = (await pumpQueue(env)).includes(runId);
   const waiting = started ? null : ((await log.queueState()).find((row) => row.issue === issue)?.waiting ?? null);
   return { queued: true, runner: runner.name, started, waiting };
+}
+
+/** A repo the coordinator knows, as the conflict check needs it. */
+export interface KnownRepo {
+  name: string;
+  repoId: number;
+  defaultBranch: string;
+  installationId: number;
+}
+
+/**
+ * Queues a catch-up run for each open PR a run opened that now conflicts with the
+ * default branch: one per default branch commit, two in all. After that, the
+ * issue is marked agent:blocked and the PR says why (#111, ADR-005). Returns the
+ * PRs it queued catch-ups for.
+ */
+export async function queueCatchUps(env: Env, repo: KnownRepo, token: string): Promise<number[]> {
+  const log = env.DELIVERY_LOG.getByName("global");
+  const recorded = await log.recordedPullRequests(repo.repoId);
+  if (!recorded.length) return [];
+  const base = await getBranchHead(token, repo.name, repo.defaultBranch);
+  const queued: number[] = [];
+  for (const { pr, issue } of recorded) {
+    let state;
+    try {
+      state = await getPullState(token, repo.name, pr);
+    } catch (error) {
+      // One PR that can't be read doesn't stop the others. The next check tries again.
+      console.error(`Reading ${repo.name}#${pr} for a catch-up failed: ${(error as Error).message}`);
+      continue;
+    }
+    if (state.closed || state.mergeableState !== "dirty" || state.base !== repo.defaultBranch || !state.head) continue;
+    // An issue with a run active or queued gets checked again next time.
+    if (await log.refusal(issue)) continue;
+    const number = Number(issue.split("#")[1]);
+    const decision = await log.catchUp(repo.repoId, pr, base);
+    if (decision === "run") {
+      const entry: QueueEntry = {
+        issue,
+        run: crypto.randomUUID(),
+        kind: "catchup",
+        scope: {
+          installationId: repo.installationId,
+          repoId: repo.repoId,
+          repo: repo.name,
+          issue: number,
+          defaultBranch: repo.defaultBranch,
+        },
+        runner: "claude-code",
+        // A catch-up doesn't use up one of the release's runs.
+        resume: { branch: state.head, pr: { number: pr, nodeId: state.nodeId }, reply: "", runNumber: 1, catchup: true },
+        // It runs inside the areas its issue already holds.
+        snapshot: { title: "", body: "", blockers: [], areas: await log.areasHeld(issue) },
+      };
+      if ((await log.enqueue(entry)).queued) queued.push(pr);
+    } else if (decision === "give up") {
+      await setLabel(token, repo.name, number, "agent:blocked", true);
+      await commentOnIssue(
+        token,
+        repo.name,
+        pr,
+        `This PR still conflicts with \`${repo.defaultBranch}\` after two catch-up runs, so it's handed to the approver: merge \`${repo.defaultBranch}\` into it by hand, or close it.`,
+      );
+    }
+  }
+  return queued;
 }
