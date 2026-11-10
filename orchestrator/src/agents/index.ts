@@ -7,8 +7,10 @@ export interface Resume {
   /** The branch name, without refs/heads/. Null if the agent blocked before pushing. */
   branch: string | null;
   pr: number | null;
-  /** The approver's reply that resumed the run. */
+  /** The approver's reply that resumed the run. Empty for a catch-up. */
   reply: string;
+  /** A catch-up run: merge the default branch into the PR's branch (#111). */
+  catchup?: boolean;
 }
 
 /** What a runner gets to build its command. Nothing in it is a credential. */

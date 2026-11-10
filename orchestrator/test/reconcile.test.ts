@@ -98,8 +98,9 @@ describe("missed releases", () => {
       events: { 80: [labeled("the-approver", "User", new Date(Date.now() - 60_000).toISOString())] },
     });
     expect((await reconcile(env)).released).toEqual([`${REPO}#80`]);
-    expect(await log().activeRun("1234#80")).not.toBeNull();
     await runFinished(calls);
+    // The run started: it posted its status comment.
+    expect(calls.some((call) => call === `POST /repos/${REPO}/issues/80/comments`)).toBe(true);
     // The label is still there after the run, but it was acted on.
     expect((await reconcile(env)).released).toEqual([]);
   });

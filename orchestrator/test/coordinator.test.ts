@@ -81,7 +81,10 @@ describe("dependencies", () => {
     await log.recordPullRequest("1234#5", "the-approver/app#5", 1234, 41);
     expect(await log.pullRequestClosed(1234, 41, false)).toBe("1234#5");
     expect(started(await log.pump(5))).toEqual([]);
-    expect(await log.pullRequestClosed(1234, 41, true)).toBe("1234#5");
+    // A closed PR's record is gone. A second run's PR merging completes the issue.
+    expect(await log.pullRequestClosed(1234, 41, true)).toBeNull();
+    await log.recordPullRequest("1234#5", "the-approver/app#5", 1234, 42);
+    expect(await log.pullRequestClosed(1234, 42, true)).toBe("1234#5");
     expect(started(await log.pump(5))).toEqual(["1234#1"]);
   });
 });

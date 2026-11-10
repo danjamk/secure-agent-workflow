@@ -43,7 +43,7 @@ export const claudeCode: Runner = {
       // The format, and where each decision goes: one file in docs/decisions/ (#94).
       [`${TASK}/decision-log.md`]: decisionLog,
     };
-    if (resume) files[`${TASK}/reply.md`] = `${cut(resume.reply)}\n`;
+    if (resume && !resume.catchup) files[`${TASK}/reply.md`] = `${cut(resume.reply)}\n`;
     return files;
   },
 
@@ -61,6 +61,7 @@ export const claudeCode: Runner = {
         MAX_TURNS: String(MAX_TURNS),
         MAX_BUDGET_USD: String(MAX_BUDGET_USD),
         RESUMED: resume ? "1" : "",
+        CATCHUP: resume?.catchup ? "1" : "",
         RESUME_BRANCH: resume?.branch ?? "",
         RESUME_PR: resume?.pr ? String(resume.pr) : "",
         HOME: "/home/agent",

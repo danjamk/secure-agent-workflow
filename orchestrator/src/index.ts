@@ -7,13 +7,13 @@ export { RunState } from "./run";
 export { Outbound } from "./outbound/handler";
 
 export default {
-  async fetch(request, env): Promise<Response> {
+  async fetch(request, env, ctx): Promise<Response> {
     const { pathname } = new URL(request.url);
     if (pathname === "/health" && request.method === "GET") {
       return new Response(env.BUILD_ID);
     }
     if (pathname === "/webhook" && request.method === "POST") {
-      return handleWebhook(request, env);
+      return handleWebhook(request, env, ctx);
     }
     // The operator's routes, behind Cloudflare Access (ADR-010, #101).
     if (pathname.startsWith("/api/")) {

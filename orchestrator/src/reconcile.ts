@@ -8,7 +8,7 @@
  * records, never the current presence of a label (design review R5).
  */
 
-import { nameKey, pumpQueue, queueRelease } from "./coordinator";
+import { nameKey, pumpQueue, queueCatchUps, queueRelease } from "./coordinator";
 import { getClosure, getPullState, GitHubError, lastReadyLabel, listReadyIssues, mintRunToken, revokeToken } from "./github";
 import { parseRepos } from "./webhook";
 
@@ -19,13 +19,14 @@ export interface Reconciled {
   released: string[];
   prsClosed: string[];
   blockersDone: string[];
+  catchUps: string[];
   slotsFreed: string[];
   failed: string[];
 }
 
 export async function reconcile(env: Env, now = Date.now()): Promise<Reconciled> {
   const log = env.DELIVERY_LOG.getByName("global");
-  const result: Reconciled = { released: [], prsClosed: [], blockersDone: [], slotsFreed: [], failed: [] };
+  const result: Reconciled = { released: [], prsClosed: [], blockersDone: [], catchUps: [], slotsFreed: [], failed: [] };
   const allowed = parseRepos(env.ALLOWED_REPOS);
   const approver = env.APPROVER_LOGIN.toLowerCase();
   const pending = await log.pendingBlockers();
@@ -69,6 +70,9 @@ export async function reconcile(env: Env, now = Date.now()): Promise<Reconciled>
           result.prsClosed.push(`${repo.name}#${pr}`);
         }
       }
+
+      // Open PRs that now conflict with the default branch get a catch-up run (#111).
+      for (const pr of await queueCatchUps(env, repo, token)) result.catchUps.push(`${repo.name}#${pr}`);
 
       // Blocker closes it missed: closed as completed by the approver.
       if (approver) {
