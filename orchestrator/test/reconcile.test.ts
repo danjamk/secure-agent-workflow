@@ -87,7 +87,8 @@ async function runFinished(calls: string[]): Promise<void> {
 }
 
 beforeEach(async () => {
-  await log().recordRepo(1234, REPO, 99, "main");
+  // First heard from an hour ago. Only the first call sets it.
+  await log().recordRepo(1234, REPO, 99, "main", Date.now() - 3_600_000);
 });
 
 describe("missed releases", () => {
@@ -109,6 +110,12 @@ describe("missed releases", () => {
     ["nobody ever added the label", ready(83), []],
   ])("ignores an issue when %s", async (_name, issue, events) => {
     stubWorld({ ready: [issue], events: { [issue.number]: events } });
+    expect((await reconcile(env)).released).toEqual([]);
+  });
+
+  it("ignores a label added before the coordinator first heard from the repo", async () => {
+    // As on testbed #34: an old agent:ready, and no release the coordinator recorded.
+    stubWorld({ ready: [ready(93)], events: { 93: [labeled("the-approver", "User", new Date(Date.now() - 2 * 3_600_000).toISOString())] } });
     expect((await reconcile(env)).released).toEqual([]);
   });
 

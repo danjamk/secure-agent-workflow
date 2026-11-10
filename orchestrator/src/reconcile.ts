@@ -40,14 +40,17 @@ export async function reconcile(env: Env, now = Date.now()): Promise<Reconciled>
       continue;
     }
     try {
-      // Releases it missed: agent:ready added by the approver after the last release.
+      // Releases it missed: agent:ready added by the approver after the last release,
+      // and after the coordinator first heard from the repo.
       if (approver) {
         for (const issue of await listReadyIssues(token, repo.name)) {
           const key = `${repo.repoId}#${issue.number}`;
           if (issue.labels.includes("agent:stop") || (await log.refusal(key)) || (await log.isBlocked(key))) continue;
           const label = await lastReadyLabel(token, repo.name, issue.number);
           if (!label || label.login.toLowerCase() !== approver || label.type !== "User") continue;
-          if (label.at <= ((await log.releasedAt(key)) ?? 0)) continue;
+          // A label from before the coordinator heard from the repo, or before the
+          // issue's last handled release, has been acted on or predates tracking.
+          if (label.at <= Math.max((await log.releasedAt(key)) ?? 0, repo.firstSeen)) continue;
           const released = await queueRelease(
             { ...issue, repo: repo.name, repoId: repo.repoId, defaultBranch: repo.defaultBranch, installationId: repo.installationId },
             crypto.randomUUID(),

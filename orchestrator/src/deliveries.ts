@@ -80,8 +80,16 @@ export class DeliveryLog extends DurableObject<Env> {
     // For reconciling against GitHub (#110): each repo a webhook came from, and when
     // each issue was last released, so a label already acted on isn't acted on again.
     ctx.storage.sql.exec(
-      "CREATE TABLE IF NOT EXISTS repos (repo_id INTEGER PRIMARY KEY, name TEXT NOT NULL, installation_id INTEGER NOT NULL, default_branch TEXT NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS repos (repo_id INTEGER PRIMARY KEY, name TEXT NOT NULL, installation_id INTEGER NOT NULL, default_branch TEXT NOT NULL, first_seen INTEGER)",
     );
+    // When the coordinator first heard from the repo. The reconciler ignores labels
+    // from before then. Repos recorded before this column get the time it was added.
+    try {
+      ctx.storage.sql.exec("ALTER TABLE repos ADD COLUMN first_seen INTEGER");
+    } catch {
+      // The column exists.
+    }
+    ctx.storage.sql.exec("UPDATE repos SET first_seen = ? WHERE first_seen IS NULL", Date.now());
     ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS released (issue TEXT PRIMARY KEY, at INTEGER NOT NULL)");
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS run_usage (run TEXT PRIMARY KEY, calls INTEGER NOT NULL, input INTEGER NOT NULL, output INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, cost INTEGER NOT NULL)",
@@ -362,23 +370,32 @@ export class DeliveryLog extends DurableObject<Env> {
   }
 
   /** A repo a webhook came from, kept up to date, so the reconciler can reach it (#110). */
-  recordRepo(repoId: number, name: string, installationId: number, defaultBranch: string): void {
+  recordRepo(repoId: number, name: string, installationId: number, defaultBranch: string, now = Date.now()): void {
+    // first_seen is set once, on the first webhook from the repo.
     this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO repos (repo_id, name, installation_id, default_branch) VALUES (?, ?, ?, ?)",
+      `INSERT INTO repos (repo_id, name, installation_id, default_branch, first_seen) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(repo_id) DO UPDATE SET name = excluded.name, installation_id = excluded.installation_id, default_branch = excluded.default_branch`,
       repoId,
       name,
       installationId,
       defaultBranch,
+      now,
     );
   }
 
-  repos(): { repoId: number; name: string; installationId: number; defaultBranch: string }[] {
+  repos(): { repoId: number; name: string; installationId: number; defaultBranch: string; firstSeen: number }[] {
     return this.ctx.storage.sql
-      .exec<{ repo_id: number; name: string; installation_id: number; default_branch: string }>(
-        "SELECT repo_id, name, installation_id, default_branch FROM repos ORDER BY repo_id",
+      .exec<{ repo_id: number; name: string; installation_id: number; default_branch: string; first_seen: number | null }>(
+        "SELECT repo_id, name, installation_id, default_branch, first_seen FROM repos ORDER BY repo_id",
       )
       .toArray()
-      .map((row) => ({ repoId: row.repo_id, name: row.name, installationId: row.installation_id, defaultBranch: row.default_branch }));
+      .map((row) => ({
+        repoId: row.repo_id,
+        name: row.name,
+        installationId: row.installation_id,
+        defaultBranch: row.default_branch,
+        firstSeen: row.first_seen ?? Date.now(),
+      }));
   }
 
   /**
