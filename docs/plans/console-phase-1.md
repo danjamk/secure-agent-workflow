@@ -274,7 +274,7 @@ Milestone: `Wave 1: Console phase 1`
 
 - Change only `console/`. Never edit `console/design/`. If the design lacks something, block and ask; design changes go through Claude Design.
 - Add no dependency. The lockfile is tier 3 here; H-1 installed what the wave needs. If you need another, block and ask.
-- Keep the frontend feed-agnostic (ADR-012): relative `/api/*` URLs only, nothing that depends on Cloudflare.
+- Keep the frontend feed-agnostic (ADR-012): URLs relative to the page (`api/waiting`, not `/api/waiting`), nothing that depends on Cloudflare.
 - Never put approve or merge in the console. Approve, reply and every other action except Stop are links out to GitHub.
 
 ### W1-1: Serve the console shell and a typed data client
@@ -292,7 +292,7 @@ Milestone: `Wave 1: Console phase 1`
 - [ ] `src/worker.ts`: `GET /health` returns `<version>+<shortsha>` from `VERSION`; anything else 404.
 - [ ] `index.html` loading `tokens.css`, `components.css` and `app.js`, with an empty root element.
 - [ ] `src/api.ts`: types and fetch functions for the three read routes and the stop route, exactly as in the plan's route contract. A malformed response throws a typed error; it never returns partial data.
-- [ ] Every request uses a relative path (`/api/waiting`), so the same build works on both feeds (ADR-012).
+- [ ] Every request and asset URL is relative to the page: `api/waiting`, `api/runs/<repo>/<issue>/stop`, `app.js`, `tokens.css`. Never a leading `/`. The same build then works at `/` and under a source's path such as `/<source>/` (ADR-012). A test fails on any `fetch`, `src` or `href` starting with `/`.
 - [ ] Fixtures in `test/fixtures/` for: working, healthy, paused for spend, paused by the operator (snapshot feed: `stopAvailable: false`, `pause.reason: "operator"` with a note, a queue with reasons), stopping, stopped. Working is spec 0002's example data: waiting #48 blocked, #47 approval, #46 failed; seven runs (#40 and #41 merged, #42 and #50 running with #50 escalated, #46 failed, #47 in review, #48 blocked); $41.20 of $75 at 14:20 UTC, $6.40 in the 13:00 UTC hour; slots 2 of 3.
 - [ ] Tests: `/health`, each fixture parses, and a response missing a required field throws.
 
@@ -494,7 +494,7 @@ make -C console check
 
 **Tasks**
 
-- [ ] `console/mcp/index.ts`: takes `--base <url>`; fetches with W1-1's client, so a malformed response is an error, never partial data.
+- [ ] `console/mcp/index.ts`: takes `--base <url>`, repeatable, one per source, path included (`https://host/<source>/`). Adds a trailing `/` when missing, so `api/waiting` resolves under the path. Tools take an optional `source` (the base's last path segment, or `default` at `/`) and report every source when it's omitted. Fetches with W1-1's client, so a malformed response is an error, never partial data.
 - [ ] Tools, each returning short text plus the route data as structured content:
   - `waiting`: W1-2's ordered waiting items, each with its link.
   - `runs`: runs from the last 24 hours, newest first.
@@ -502,7 +502,7 @@ make -C console check
   - `why_idle`: one answer, checked in this order: feed stale (`generatedAt` over 3 minutes old), `pause` with its reason and note, every slot used, else each queued issue with its reasons.
 - [ ] No tool writes. No stop tool in Phase 1.
 - [ ] Tests against W1-1's fixtures: `why_idle` on the operator-paused fixture names the note; on a fixture with `generatedAt` an hour old it says the feed is stale.
-- [ ] `console/README.md`: `claude mcp add <name> -- node console/dist-mcp/mcp.js --base <url>`.
+- [ ] `console/README.md`: `claude mcp add <name> -- node console/dist-mcp/mcp.js --base <url> [--base <url>]`.
 
 **Acceptance**
 

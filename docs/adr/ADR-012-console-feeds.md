@@ -1,6 +1,6 @@
 # ADR-012: The console reads from one of two feeds: the orchestrator, or files on a local host
 
-Status: Proposed · Date: 2026-11-24 · Amends: [ADR-010](ADR-010-console-stop-route.md) (topology), spec 0002 (hard constraints 6 and 9)
+Status: Proposed · Date: 2026-11-24 · Revised: 2026-11-24 (page-relative URLs, one path per source) · Amends: [ADR-010](ADR-010-console-stop-route.md) (topology), spec 0002 (hard constraints 6 and 9)
 
 ## Context
 
@@ -21,21 +21,21 @@ The operator also wants the same data in Claude on a laptop, through an MCP serv
 | --- | --- | --- |
 | Where | Factory account (ADR-010) | A local host, on the operator's tailnet |
 | Front door | Cloudflare Access | `tailscale serve`, with Funnel off; the tailnet policy allows only the operator |
-| `/api/*` | The orchestrator, which verifies the Access JWT on every request | Static JSON files the host's dispatcher writes on every pass, one per read route |
+| `/api/*` | The orchestrator, which verifies the Access JWT on every request | Static JSON files the host's dispatcher writes on every pass, one per read route. A host with several sources (one dispatcher per account, or a dispatcher and ADR-011's `local` host) serves each under its own path, such as `/<source>/api/waiting` |
 | Operator identity | The Access identity | The tailnet login; `operator` in each file is the configured operator |
 | Stop | ADR-010's route | Not in Phase 1. `stopAvailable: false`, and the frontend hides Stop |
 | Frontend | Deployed by `console-deploy.yml` | A published static build, installed at a pinned version and SHA-256 |
 
 **Rules for the frontend,** so both feeds work:
 
-- Every request is same-origin and relative (`/api/waiting`, never a hostname).
+- Every request and asset URL is relative to the page: `api/waiting` and `app.js`, never `/api/waiting` or a hostname. The same build then works at `/` behind Access and at `/<source>/` on a local host. A page opened without its trailing slash (`/<source>`) would resolve `api/waiting` to `/api/waiting`, so the host redirects to `/<source>/`.
 - Nothing in the frontend depends on Cloudflare: no Access cookie handling, no Worker-only behavior. The Worker stays a pass-through.
 - A response can be stale without a failed request: a stopped dispatcher leaves its last files in place. The feed counts as lost when `generatedAt` is older than 3 minutes, as well as after 30 seconds without a successful fetch.
 - Stop renders only when `factory.stopAvailable` is true.
 
 **The route contract gains three fields** that both feeds fill: `factory.pause` (why nothing new starts: spend, operator or usage limit), `factory.queue` (each waiting issue with its wait reasons, which spec 0002 defines but the contract left out) and `factory.stopAvailable`.
 
-**The MCP server is a third reader of the same routes.** `console/mcp/` is a stdio server the operator runs on a laptop. It imports the frontend's typed client (`src/api.ts`), takes a base URL, and has read-only tools: `waiting`, `runs`, `spend` and `why_idle`. On a snapshot feed it needs no credential: the laptop's tailnet login is the access control. On the orchestrator feed it needs an Access token, which is left for a later issue.
+**The MCP server is a third reader of the same routes.** `console/mcp/` is a stdio server the operator runs on a laptop. It imports the frontend's typed client (`src/api.ts`), takes one or more base URLs (one per source, path included), and has read-only tools: `waiting`, `runs`, `spend` and `why_idle`. On a snapshot feed it needs no credential: the laptop's tailnet login is the access control. On the orchestrator feed it needs an Access token, which is left for a later issue.
 
 ## Alternatives considered
 
