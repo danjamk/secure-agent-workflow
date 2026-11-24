@@ -32,6 +32,7 @@ The operator also wants the same data in Claude on a laptop, through an MCP serv
 - Nothing in the frontend depends on Cloudflare: no Access cookie handling, no Worker-only behavior. The Worker stays a pass-through.
 - A response can be stale without a failed request: a stopped dispatcher leaves its last files in place. The feed counts as lost when `generatedAt` is older than 3 minutes, as well as after 30 seconds without a successful fetch.
 - Stop renders only when `factory.stopAvailable` is true.
+- The client parses the body and validates its shape; it never relies on `Content-Type`. `tailscale serve` sends the snapshot files as `text/plain`, because it guesses the type from the content.
 
 **The route contract gains three fields** that both feeds fill: `factory.pause` (why nothing new starts: spend, operator or usage limit), `factory.queue` (each waiting issue with its wait reasons, which spec 0002 defines but the contract left out) and `factory.stopAvailable`.
 

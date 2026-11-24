@@ -291,7 +291,7 @@ Milestone: `Wave 1: Console phase 1`
 
 - [ ] `src/worker.ts`: `GET /health` returns `<version>+<shortsha>` from `VERSION`; anything else 404.
 - [ ] `index.html` loading `tokens.css`, `components.css` and `app.js`, with an empty root element.
-- [ ] `src/api.ts`: types and fetch functions for the three read routes and the stop route, exactly as in the plan's route contract. A malformed response throws a typed error; it never returns partial data.
+- [ ] `src/api.ts`: types and fetch functions for the three read routes and the stop route, exactly as in the plan's route contract. A malformed response throws a typed error; it never returns partial data. Parse the body as JSON whatever the `Content-Type` says: the snapshot feed is served as `text/plain` (ADR-012). Validate the shape, not the header.
 - [ ] Every request and asset URL is relative to the page: `api/waiting`, `api/runs/<repo>/<issue>/stop`, `app.js`, `tokens.css`. Never a leading `/`. The same build then works at `/` and under a source's path such as `/<source>/` (ADR-012). A test fails on any `fetch`, `src` or `href` starting with `/`.
 - [ ] Fixtures in `test/fixtures/` for: working, healthy, paused for spend, paused by the operator (snapshot feed: `stopAvailable: false`, `pause.reason: "operator"` with a note, a queue with reasons), stopping, stopped. Working is spec 0002's example data: waiting #48 blocked, #47 approval, #46 failed; seven runs (#40 and #41 merged, #42 and #50 running with #50 escalated, #46 failed, #47 in review, #48 blocked); $41.20 of $75 at 14:20 UTC, $6.40 in the 13:00 UTC hour; slots 2 of 3.
 - [ ] Tests: `/health`, each fixture parses, and a response missing a required field throws.
