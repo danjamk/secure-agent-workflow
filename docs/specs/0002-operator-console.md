@@ -83,10 +83,10 @@ The route is in `orchestrator/`, which is tier 3 in this repo, so it is human-au
 3. **Read-only first.** Phase 1 is read-only plus Stop. When dispatch arrives, it first shows the exact `/dispatch` command or label to apply.
 4. **Stop is the andon cord:** press-and-hold with a filling ring, never in a menu, with a clear stopping → stopped sequence (token revoked, sandbox torn down).
 5. **No secrets on screen.** Credentials appear by name and status only. Logs arrive redacted (#10); show the `[redacted]` token style.
-6. **The operator is the Cloudflare Access identity.** Show it quietly; stops are recorded under it.
+6. **The operator is the identity at the console's front door:** Cloudflare Access on the orchestrator feed, the tailnet login on a local host's snapshot feed (ADR-012). Show it quietly; stops are recorded under it.
 7. **The critical path survives a lost feed.** Master caution, the andon strip and Stop keep working when the rich views or the data feed fail, and show a distinct degraded state ("feed lost · 00:14") so the operator knows what is stale.
 8. **Dark theme only** for now.
-9. **No new credentials** (spec 0001). The console reads through the orchestrator and acts through it.
+9. **No new credentials** (spec 0001). The console reads through the orchestrator and acts through it. On a local host's snapshot feed it reads static files and holds nothing (ADR-012).
 
 ## Shared patterns
 
@@ -119,6 +119,6 @@ Approve or merge buttons; any secret value; charts with no decision attached; St
 ## References
 
 - Spec 0001: Observability and intervention; Later: operator console
-- ADR-005 (coordinator, daily spend), ADR-008 (run profiles)
+- ADR-005 (coordinator, daily spend), ADR-008 (run profiles), ADR-012 (two feeds and the MCP server)
 - `console/design/` (design system and Phase 1 screens)
 - #35 (the console placeholder issue), #11 (stop), #10 (logs), #13 (coordinator)
