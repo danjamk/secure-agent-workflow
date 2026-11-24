@@ -1,10 +1,10 @@
 # Plan: Operator console, Phase 1
 
-Status: Draft · Date: 2026-11-06 · Spec: [0002](../specs/0002-operator-console.md) (Phasing, Stop) · ADR: [010](../adr/ADR-010-console-stop-route.md) · Epic: #35
+Status: Draft · Date: 2026-11-06 · Revised: 2026-11-24 (two feeds and the MCP server, ADR-012) · Spec: [0002](../specs/0002-operator-console.md) (Phasing, Stop) · ADRs: [010](../adr/ADR-010-console-stop-route.md), [012](../adr/ADR-012-console-feeds.md) · Epic: #35
 
 ## Summary
 
-Phase 1 of the operator console: one read-only screen per device showing what's waiting on the operator, runs from the last 24 hours and spend today, plus Stop on running rows. It is four human-authored issues, which add the console's workspace, gate and deploy and the orchestrator routes it reads from, and one wave of seven console issues that build against a fixed route contract. Design: `console/design/`, screens in `console/design/screens/phase-1.md`.
+Phase 1 of the operator console: one read-only screen per device showing what's waiting on the operator, runs from the last 24 hours and spend today, plus Stop on running rows. It is six human-authored issues, which add the console's workspace, gate and deploy, the orchestrator routes it reads from, the MCP dependency and a published static build, and one wave of eight console issues that build against a fixed route contract. Since ADR-012 the same frontend also reads a snapshot feed: static files a local host's dispatcher writes, served over the operator's tailnet. The eighth issue is an MCP server that reads the same routes. Design: `console/design/`, screens in `console/design/screens/phase-1.md`.
 
 **Sequencing.** Phase 1 is not a build order step. It follows step 1's orchestrator work (#9 to #13, workflow-loop W1-4) and nothing waits on it.
 
@@ -14,8 +14,8 @@ Phase 1 of the operator console: one read-only screen per device showing what's 
 
 | Wave | Goal | Issues | Tier 2 or 3 PRs | Runs | Recommended cap | Profiles |
 | --- | --- | --- | --- | --- | --- | --- |
-| Before the wave | Workspace, gate, deploy and orchestrator routes (human-authored) | 4 | 4 tier 3, authored by the operator | Not dispatched | — | — |
-| 1 | Phase 1 console | 7 | 0 with operator task 1; 7 without it | One at a time | 1 | 2 standard-medium, 5 standard-high |
+| Before the wave | Workspace, gate, deploy, orchestrator routes, MCP dependency and static build (human-authored) | 6 | 6 tier 3, authored by the operator | Not dispatched | — | — |
+| 1 | Phase 1 console and MCP server | 8 | 0 with operator task 1; 8 without it | One at a time | 1 | 3 standard-medium, 5 standard-high |
 
 ## Human-authored issues
 
@@ -140,9 +140,56 @@ make -C orchestrator check
 
 **References:** ADR-010, #11, spec 0002 (Stop)
 
+### H-5: Add the MCP SDK to the console workspace
+
+- **Area:** `area:console`
+- **Expected tier:** 3, because it changes `pnpm-lock.yaml`
+- **Author:** the operator
+- **Data change:** none
+- **Blocked by:** H-1
+
+**Background.** ADR-012: `console/mcp/` is a stdio MCP server built from the console's typed client. Wave issues can't add dependencies, so this installs the one W1-8 needs and gives it a build target.
+
+**Tasks**
+
+- [ ] Add `@modelcontextprotocol/sdk` to `console/package.json` as a dependency, pinned exactly, and update the root lockfile.
+- [ ] A `build:mcp` script that compiles `console/mcp/` to `console/dist-mcp/mcp.js`, runnable with `node`. Add `dist-mcp` to `.gitignore`.
+- [ ] Stub `console/mcp/index.ts` that starts a server with no tools, so the build passes.
+
+**Acceptance**
+
+```bash
+make -C console check && pnpm -C console build:mcp
+```
+
+**References:** ADR-012
+
+### H-6: Publish the console's static build for local hosts
+
+- **Area:** `area:console`
+- **Expected tier:** 3, because it changes `.github/workflows/`
+- **Author:** the operator
+- **Data change:** none
+- **Blocked by:** H-1
+
+**Background.** ADR-012: a local host serves the console as static files next to its snapshot feed, installed at a pinned version and checked against its SHA-256. The host can't build it: that would run package installs as an admin on a machine where agents run.
+
+**Tasks**
+
+- [ ] In `console-deploy.yml`, after the deploy, pack the static output (no Worker) as `console-static-<version>.tar.gz` and its `.sha256`, and attach both to one long-lived prerelease, `console-builds`. Older assets stay, so a pinned version keeps working.
+- [ ] `console/README.md`: how a local host installs a build and what it serves (ADR-012, snapshot feed).
+
+**Acceptance**
+
+- After a console merge, the prerelease has the new tarball, and `sha256sum -c` passes on a download.
+
+**References:** ADR-012. Open: this repo has no tags in build mode. `console-builds` would be its one tag; the alternative, Actions artifacts, expire after 90 days.
+
 ## Route contract
 
 H-2 to H-4 serve this, and the wave builds against it. All times are ISO 8601 UTC, money is USD as a number, and a field the orchestrator can't fill yet is `null`. A change goes through a PR to this plan first.
+
+Two feeds serve the read routes (ADR-012): the orchestrator, and a snapshot feed of static files on a local host. Both fill every field. On the snapshot feed, `operator` is the configured operator, `/api/runs` ignores `since` and returns the last 24 hours, and the stop route doesn't exist.
 
 ```ts
 type Operator = { email: string; login: string };
@@ -190,6 +237,15 @@ type Factory = {
   queued: number; queuedBehindSpend: number;
   milestones: Array<{ repo: string; title: string }>;
   mergedToday: number;
+  // Added by ADR-012. Why nothing new starts, or null while dispatching.
+  pause: { reason: "spend" | "operator" | "usage_limit"; since: string;
+           until: string | null;      // null: until someone resumes it
+           note: string | null } | null;   // operator: the reason they gave
+  // Each issue waiting to start, with every reason (spec 0002, Waiting reasons).
+  queue: Array<{ repo: string; issue: { number: number; title: string; url: string };
+                 reasons: Array<{ kind: "blocker" | "area_lock" | "slot" | "spend" | "paused" | "other";
+                                  detail: string }> }>;   // e.g. "#43 not merged"
+  stopAvailable: boolean;             // false on the snapshot feed
 };
 
 // POST /api/runs/<repo>/<issue>/stop, body {}, Content-Type: application/json
@@ -202,13 +258,13 @@ Milestone: `Wave 1: Console phase 1`
 
 **Operator tasks before dispatch:**
 
-1. **Make console code tier 1** in `.github/self-tier-map.yml` (tier 3). Recommended: tier 1 `console/src/**`, `console/test/**`, `console/index.html`; tier 2 `console/package.json`, `console/tsconfig.json`, `console/wrangler.*`, `console/public/**`. Today every console path is unmatched, so tier 2, and the wave would be seven approvals against a guideline of three. The console holds no credential and no authority (ADR-010), so its UI code is low risk.
+1. **Make console code tier 1** in `.github/self-tier-map.yml` (tier 3). Recommended: tier 1 `console/src/**`, `console/test/**`, `console/index.html`; tier 2 `console/package.json`, `console/tsconfig.json`, `console/wrangler.*`, `console/public/**`. Today every console path is unmatched, so tier 2, and the wave would be eight approvals against a guideline of three. The console holds no credential and no authority (ADR-010), so its UI code is low risk.
 2. **Create the Cloudflare Access application** for the console's hostname in the factory account, allowing only the operator's email. Set `ACCESS_TEAM`, `ACCESS_AUD` and `OPERATOR_EMAIL` on the orchestrator.
 3. Merge H-1 before dispatching W1-1.
 
-**Runs:** one at a time, because all seven are `area:console`. Recommended cap: 1.
+**Runs:** one at a time, because all eight are `area:console`. Recommended cap: 1.
 
-**Done when:** behind Access, the deployed console shows the three Phase 1 sections from live data on desktop and at 390px, and holding Stop on a testbed run ends it, with the orchestrator's comment on the PR. With only the wave merged, the same screens render from fixtures in tests.
+**Done when:** behind Access, the deployed console shows the three Phase 1 sections from live data on desktop and at 390px, and holding Stop on a testbed run ends it, with the orchestrator's comment on the PR. With only the wave merged, the same screens render from fixtures in tests, including the snapshot-feed fixture with Stop hidden, and the MCP server answers `why_idle` from a fixture.
 
 **Data changes:** none. The console stores nothing; the Dial or Runway choice is kept in the browser's local storage.
 
@@ -218,6 +274,7 @@ Milestone: `Wave 1: Console phase 1`
 
 - Change only `console/`. Never edit `console/design/`. If the design lacks something, block and ask; design changes go through Claude Design.
 - Add no dependency. The lockfile is tier 3 here; H-1 installed what the wave needs. If you need another, block and ask.
+- Keep the frontend feed-agnostic (ADR-012): relative `/api/*` URLs only, nothing that depends on Cloudflare.
 - Never put approve or merge in the console. Approve, reply and every other action except Stop are links out to GitHub.
 
 ### W1-1: Serve the console shell and a typed data client
@@ -235,7 +292,8 @@ Milestone: `Wave 1: Console phase 1`
 - [ ] `src/worker.ts`: `GET /health` returns `<version>+<shortsha>` from `VERSION`; anything else 404.
 - [ ] `index.html` loading `tokens.css`, `components.css` and `app.js`, with an empty root element.
 - [ ] `src/api.ts`: types and fetch functions for the three read routes and the stop route, exactly as in the plan's route contract. A malformed response throws a typed error; it never returns partial data.
-- [ ] Fixtures in `test/fixtures/` for: working, healthy, paused for spend, stopping, stopped. Working is spec 0002's example data: waiting #48 blocked, #47 approval, #46 failed; seven runs (#40 and #41 merged, #42 and #50 running with #50 escalated, #46 failed, #47 in review, #48 blocked); $41.20 of $75 at 14:20 UTC, $6.40 in the 13:00 UTC hour; slots 2 of 3.
+- [ ] Every request uses a relative path (`/api/waiting`), so the same build works on both feeds (ADR-012).
+- [ ] Fixtures in `test/fixtures/` for: working, healthy, paused for spend, paused by the operator (snapshot feed: `stopAvailable: false`, `pause.reason: "operator"` with a note, a queue with reasons), stopping, stopped. Working is spec 0002's example data: waiting #48 blocked, #47 approval, #46 failed; seven runs (#40 and #41 merged, #42 and #50 running with #50 escalated, #46 failed, #47 in review, #48 blocked); $41.20 of $75 at 14:20 UTC, $6.40 in the 13:00 UTC hour; slots 2 of 3.
 - [ ] Tests: `/health`, each fixture parses, and a response missing a required field throws.
 
 **Acceptance**
@@ -264,7 +322,8 @@ make -C console check
 - [ ] Runs: newest first by start time.
 - [ ] Spend: burn rate from the last full hour of `hourly`; forecast at `resetsAt`; pause time and time left when the forecast passes the limit, else "within limit today"; caution at 80% of the limit; when `paused`, "paused · resets <time>".
 - [ ] Cost check: per-run costs today must sum to `todayUsd` within one cent; when they don't, return both and a flag.
-- [ ] Feed state: live until 30 seconds pass without a successful fetch, then lost with the time since the last one.
+- [ ] Feed state: live until 30 seconds pass without a successful fetch, or until `generatedAt` is more than 3 minutes old; then lost with the time since the last fresh data. A stopped dispatcher on the snapshot feed leaves its last files in place, so a stale `generatedAt` is the only sign.
+- [ ] Pause: when `pause` is set, a waiting item naming the reason, since when and the note; replaces the queue-paused item for `spend`.
 - [ ] Tests for each rule, using W1-1's fixtures.
 
 **Acceptance**
@@ -404,6 +463,7 @@ make -C console check
 
 **Tasks**
 
+- [ ] Render Stop only when `factory.stopAvailable` is true. On the snapshot feed no Stop control appears.
 - [ ] Press-and-hold with pointer and keyboard (Space or Enter held); releasing early sends nothing.
 - [ ] One `POST` with `Content-Type: application/json` and body `{}`; poll `/api/runs` every 2 seconds while stopping.
 - [ ] Show the stop steps as they arrive, then who stopped it and when.
@@ -421,6 +481,36 @@ make -C console check
 - Holding Stop on a testbed run from the deployed console ends it, and the PR shows "Stopped by" the operator.
 
 **References:** ADR-010, `console/design/components/Stop.md`, spec 0002 (Stop, hard constraint 4), #11
+
+### W1-8: Serve the routes to Claude as an MCP server
+
+- **Area:** `area:console`
+- **Expected tier:** 1, because it changes `console/mcp/**` and `console/test/**` (2 without operator task 1; add `console/mcp/**` to that task's tier 1 list)
+- **Run profile:** `standard-medium`, because it wraps W1-1's client and W1-2's view model in four tools
+- **Data change:** none
+- **Blocked by:** W1-2, H-5
+
+**Background.** ADR-012: a stdio MCP server the operator runs on a laptop, so Claude can answer "what needs me" and "why is nothing running" from the same routes the screens read. It is read-only. On the snapshot feed the laptop's tailnet login is the only access control; the orchestrator feed's Access token is a later issue. Wave rules above apply.
+
+**Tasks**
+
+- [ ] `console/mcp/index.ts`: takes `--base <url>`; fetches with W1-1's client, so a malformed response is an error, never partial data.
+- [ ] Tools, each returning short text plus the route data as structured content:
+  - `waiting`: W1-2's ordered waiting items, each with its link.
+  - `runs`: runs from the last 24 hours, newest first.
+  - `spend`: today against the limit, the forecast and the reset time.
+  - `why_idle`: one answer, checked in this order: feed stale (`generatedAt` over 3 minutes old), `pause` with its reason and note, every slot used, else each queued issue with its reasons.
+- [ ] No tool writes. No stop tool in Phase 1.
+- [ ] Tests against W1-1's fixtures: `why_idle` on the operator-paused fixture names the note; on a fixture with `generatedAt` an hour old it says the feed is stale.
+- [ ] `console/README.md`: `claude mcp add <name> -- node console/dist-mcp/mcp.js --base <url>`.
+
+**Acceptance**
+
+```bash
+make -C console check
+```
+
+**References:** ADR-012, W1-1, W1-2
 
 ## Gaps
 
@@ -441,3 +531,9 @@ Things the console needs that the dependencies or the design don't provide. None
 2. **"By 24:00" and "resets 00:00" assume local midnight.** The coordinator's day is the UTC day (ADR-005). Recommended: the chip and reset line show UTC ("by 24:00 UTC"), as W1-2 and W1-4 do; or ADR-005 moves to the operator's time zone.
 3. **No state for a missing PR audit.** Approval cards show an audit result, but the PR audit (#21) isn't built. Recommended: a "no audit" state on the approval card.
 4. **The reply link for a blocked run with no PR.** `phase-1.md` links to an issue comment when there's no PR. The agent instructions always put the handoff note on the PR, so that case shouldn't occur. No change needed unless #11 allows a block before the first push.
+
+**From ADR-012 (two feeds):**
+
+1. **The contract has a second producer.** Recommended: after the wave, `console/src/api.ts` becomes the contract's single typed source and this section points at it, so both feeds build against the same file.
+2. **The spend day differs by feed.** The coordinator uses the UTC day (ADR-005); a local dispatcher may use the local day. W1-2 already forecasts to `resetsAt`, so labels should come from `resetsAt`, not a fixed "24:00 UTC".
+3. **Stop on a local host.** Not in Phase 1. It needs a process that reads the tailnet identity and hands the request to the host's dispatcher, with its own ADR.
