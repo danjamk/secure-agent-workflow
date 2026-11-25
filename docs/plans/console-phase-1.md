@@ -1,10 +1,10 @@
 # Plan: Operator console, Phase 1
 
-Status: Draft · Date: 2026-11-06 · Revised: 2026-11-24 (two feeds and the MCP server, ADR-012) · Spec: [0002](../specs/0002-operator-console.md) (Phasing, Stop) · ADRs: [010](../adr/ADR-010-console-stop-route.md), [012](../adr/ADR-012-console-feeds.md) · Epic: #35
+Status: Draft · Date: 2026-11-06 · Revised: 2026-11-24 (two feeds and the MCP server, ADR-012), 2026-11-25 (pause, resume and combined feeds, ADR-013) · Spec: [0002](../specs/0002-operator-console.md) (Phasing, Stop) · ADRs: [010](../adr/ADR-010-console-stop-route.md), [012](../adr/ADR-012-console-feeds.md), [013](../adr/ADR-013-console-pause-resume.md) · Epic: #35
 
 ## Summary
 
-Phase 1 of the operator console: one read-only screen per device showing what's waiting on the operator, runs from the last 24 hours and spend today, plus Stop on running rows. It is six human-authored issues, which add the console's workspace, gate and deploy, the orchestrator routes it reads from, the MCP dependency and a published static build, and one wave of eight console issues that build against a fixed route contract. Since ADR-012 the same frontend also reads a snapshot feed: static files a local host's dispatcher writes, served over the operator's tailnet. The eighth issue is an MCP server that reads the same routes. Design: `console/design/`, screens in `console/design/screens/phase-1.md`.
+Phase 1 of the operator console: one read-only screen per device showing what's waiting on the operator, runs from the last 24 hours and spend today, plus Stop on running rows. It is six human-authored issues, which add the console's workspace, gate and deploy, the orchestrator routes it reads from, the MCP dependency and a published static build, and one wave of nine console issues that build against a fixed route contract. Since ADR-012 the same frontend also reads a snapshot feed: static files a local host's dispatcher writes, served over the operator's tailnet. The eighth issue is an MCP server that reads the same routes. Design: `console/design/`, screens in `console/design/screens/phase-1.md`.
 
 **Sequencing.** Phase 1 is not a build order step. It follows step 1's orchestrator work (#9 to #13, workflow-loop W1-4) and nothing waits on it.
 
@@ -15,7 +15,7 @@ Phase 1 of the operator console: one read-only screen per device showing what's 
 | Wave | Goal | Issues | Tier 2 or 3 PRs | Runs | Recommended cap | Profiles |
 | --- | --- | --- | --- | --- | --- | --- |
 | Before the wave | Workspace, gate, deploy, orchestrator routes, MCP dependency and static build (human-authored) | 6 | 6 tier 3, authored by the operator | Not dispatched | — | — |
-| 1 | Phase 1 console and MCP server | 8 | 0 with operator task 1; 8 without it | One at a time | 1 | 3 standard-medium, 5 standard-high |
+| 1 | Phase 1 console, MCP server, pause and resume | 9 | 0 with operator task 1; 9 without it | One at a time | 1 | 3 standard-medium, 6 standard-high |
 
 ## Human-authored issues
 
@@ -191,13 +191,18 @@ H-2 to H-4 serve this, and the wave builds against it. All times are ISO 8601 UT
 
 Two feeds serve the read routes (ADR-012): the orchestrator, and a snapshot feed of static files on a local host. Both fill every field. On the snapshot feed, `operator` is the configured operator, `/api/runs` ignores `since` and returns the last 24 hours, and the stop route doesn't exist.
 
+ADR-013 adds pause and resume per source and combined feeds that show several sources. A single-source feed sets `source` and `host` to its own names, or `null` on a single orchestrator feed, and `factory.sources` to `null`. A combined feed tags every waiting item and run row with `source` and fills `factory.sources`; it never sums limits or slots across sources.
+
 ```ts
 type Operator = { email: string; login: string };
+// Added by ADR-013, on every response: which source and host it describes.
+type Origin = { source: string | null; host: string | null };
 
 // GET /api/waiting
-type Waiting = {
+type Waiting = Origin & {
   generatedAt: string; operator: Operator;
   items: Array<{
+    source?: string;              // combined feed only (ADR-013)
     kind: "blocked" | "approval" | "failed";
     repo: string; since: string;
     issue: { number: number; title: string; url: string; area: string | null };
@@ -211,9 +216,10 @@ type Waiting = {
 };
 
 // GET /api/runs?since=<time>
-type Runs = {
+type Runs = Origin & {
   generatedAt: string; operator: Operator;
   runs: Array<{
+    source?: string;              // combined feed only (ADR-013)
     id: string; repo: string;
     issue: { number: number; title: string; url: string; area: string | null;
              milestone: string | null; expectedTier: 1 | 2 | 3 | null;
@@ -229,7 +235,7 @@ type Runs = {
 };
 
 // GET /api/factory
-type Factory = {
+type Factory = Origin & {
   generatedAt: string; operator: Operator;
   spend: { todayUsd: number; limitUsd: number; paused: boolean; resetsAt: string;
            hourly: Array<{ hour: string; usd: number }> | null };
@@ -240,16 +246,31 @@ type Factory = {
   // Added by ADR-012. Why nothing new starts, or null while dispatching.
   pause: { reason: "spend" | "operator" | "usage_limit"; since: string;
            until: string | null;      // null: until someone resumes it
-           note: string | null } | null;   // operator: the reason they gave
+           note: string | null;            // operator: the reason they gave
+           by: string | null } | null;     // operator: who paused (ADR-013)
   // Each issue waiting to start, with every reason (spec 0002, Waiting reasons).
   queue: Array<{ repo: string; issue: { number: number; title: string; url: string };
                  reasons: Array<{ kind: "blocker" | "area_lock" | "slot" | "spend" | "paused" | "other";
                                   detail: string }> }>;   // e.g. "#43 not merged"
   stopAvailable: boolean;             // false on the snapshot feed
+  // Added by ADR-013. Whether api/pause and api/resume exist on this feed.
+  controls: { pause: boolean; resume: boolean };
+  // Combined feed only, else null: one summary per source, never summed.
+  sources: Array<{ source: string; host: string | null; generatedAt: string;
+                   stale: boolean;      // generatedAt more than 3 minutes old
+                   pause: Factory["pause"];
+                   spend: { todayUsd: number; limitUsd: number; paused: boolean; resetsAt: string };
+                   slots: { used: number; cap: number }; queued: number;
+                   controls: { pause: boolean; resume: boolean } }> | null;
 };
 
 // POST /api/runs/<repo>/<issue>/stop, body {}, Content-Type: application/json
 // 202 { runId: string; state: "stopping" | "stopped" }
+
+// POST /api/pause and /api/resume (ADR-013), only when factory.controls says so.
+// Body { source?: string; reason: string }, Content-Type: application/json.
+// source is required on a combined feed and ignored on a single-source feed.
+// 202 { requestId: string; state: "pausing" | "resuming" }; repeating one in effect is 202, no change.
 ```
 
 ## Wave 1: Phase 1 console
@@ -258,11 +279,11 @@ Milestone: `Wave 1: Console phase 1`
 
 **Operator tasks before dispatch:**
 
-1. **Make console code tier 1** in `.github/self-tier-map.yml` (tier 3). Recommended: tier 1 `console/src/**`, `console/test/**`, `console/index.html`; tier 2 `console/package.json`, `console/tsconfig.json`, `console/wrangler.*`, `console/public/**`. Today every console path is unmatched, so tier 2, and the wave would be eight approvals against a guideline of three. The console holds no credential and no authority (ADR-010), so its UI code is low risk.
+1. **Make console code tier 1** in `.github/self-tier-map.yml` (tier 3). Recommended: tier 1 `console/src/**`, `console/test/**`, `console/index.html`; tier 2 `console/package.json`, `console/tsconfig.json`, `console/wrangler.*`, `console/public/**`. Today every console path is unmatched, so tier 2, and the wave would be nine approvals against a guideline of three. The console holds no credential and no authority (ADR-010), so its UI code is low risk.
 2. **Create the Cloudflare Access application** for the console's hostname in the factory account, allowing only the operator's email. Set `ACCESS_TEAM`, `ACCESS_AUD` and `OPERATOR_EMAIL` on the orchestrator.
 3. Merge H-1 before dispatching W1-1.
 
-**Runs:** one at a time, because all eight are `area:console`. Recommended cap: 1.
+**Runs:** one at a time, because all nine are `area:console`. Recommended cap: 1.
 
 **Done when:** behind Access, the deployed console shows the three Phase 1 sections from live data on desktop and at 390px, and holding Stop on a testbed run ends it, with the orchestrator's comment on the PR. With only the wave merged, the same screens render from fixtures in tests, including the snapshot-feed fixture with Stop hidden, and the MCP server answers `why_idle` from a fixture.
 
@@ -512,6 +533,32 @@ make -C console check
 
 **References:** ADR-012, W1-1, W1-2
 
+### W1-9: Pause and resume a source, and show combined feeds
+
+- **Area:** `area:console`
+- **Expected tier:** 1, because it changes `console/src/**` and `console/test/**` (2 without operator task 1)
+- **Run profile:** `standard-high`, because it adds two writes and a second layout, and both must fail safe
+- **Data change:** none
+- **Blocked by:** W1-7; the Claude Design screens for the Pause and Resume control and per-source panels (Gaps, ADR-013)
+
+**Background.** ADR-013: Pause and Resume are queue actions per source, press-and-hold like Stop, shown only when `factory.controls` says so. On a combined feed each source gets its own panel with its own spend, slots, pause and feed-lost state. Wave rules above apply.
+
+**Tasks**
+
+- [ ] Pause and Resume as press-and-hold controls, reusing W1-7's hold. One `POST api/pause` or `api/resume` with `{ source, reason }`. Resume first shows the current pause: reason, `by` and since when.
+- [ ] Show pausing or resuming until `factory.pause` changes, then "paused by <by>" or "resumed". A rejected request shows the error and changes nothing.
+- [ ] Combined feed: one panel per entry in `factory.sources`, each with its own feed-lost state from `stale`. Waiting items and runs show their `source`. Cross-source figures name any stale source they leave out.
+- [ ] Fixtures: a combined feed with two sources (one paused by an operator, one stale), and a single-source feed with `controls` true.
+- [ ] Tests with fake timers: a short hold sends nothing; a full hold sends exactly one request; a 403 leaves the state unchanged; a stale source doesn't mark the other stale.
+
+**Acceptance**
+
+```bash
+make -C console check
+```
+
+**References:** ADR-013, W1-7, spec 0002 (constraints 1 to 4 and 7)
+
 ## Gaps
 
 Things the console needs that the dependencies or the design don't provide. None of them widens #9 to #13 here; the operator decides each one.
@@ -537,3 +584,9 @@ Things the console needs that the dependencies or the design don't provide. None
 1. **The contract has a second producer.** Recommended: after the wave, `console/src/api.ts` becomes the contract's single typed source and this section points at it, so both feeds build against the same file.
 2. **The spend day differs by feed.** The coordinator uses the UTC day (ADR-005); a local dispatcher may use the local day. W1-2 already forecasts to `resetsAt`, so labels should come from `resetsAt`, not a fixed "24:00 UTC".
 3. **Stop on a local host.** Not in Phase 1. It needs a process that reads the tailnet identity and hands the request to the host's dispatcher, with its own ADR.
+
+**From ADR-013 (pause, resume and combined feeds):**
+
+1. **The design has no Pause or Resume control and no per-source panel.** Wave issues can't edit `console/design/`. Recommended: Claude Design adds both, on the pager and the control room, before W1-9 is dispatched.
+2. **The orchestrator has no operator pause.** Its feed sets `controls` to false until a human-authored issue adds one; the coordinator's spend pause is a different mechanism.
+3. **W1-8's MCP server stays read-only.** Pause and resume through MCP would need a confirmation step; not in Phase 1.

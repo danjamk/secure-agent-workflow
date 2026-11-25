@@ -78,9 +78,9 @@ The route is in `orchestrator/`, which is tier 3 in this repo, so it is human-au
 
 ## Hard constraints
 
-1. **Few actions.** Dispatch a wave, re-dispatch an issue, stop a run, acknowledge an alarm. The console never approves or merges; "Approve" always links out to GitHub, styled as leaving the console.
-2. **Mobile actions are Stop and acknowledge only.** Dispatch and re-dispatch exist only on desktop. Replying to a blocked agent links out to GitHub: the issue comment holding the handoff note if no PR exists yet, otherwise the PR.
-3. **Read-only first.** Phase 1 is read-only plus Stop. When dispatch arrives, it first shows the exact `/dispatch` command or label to apply.
+1. **Few actions.** Dispatch a wave, re-dispatch an issue, stop a run, pause or resume a source (ADR-013), acknowledge an alarm. The console never approves or merges; "Approve" always links out to GitHub, styled as leaving the console.
+2. **Mobile actions are Stop, Pause, Resume and acknowledge only.** Dispatch and re-dispatch exist only on desktop. Replying to a blocked agent links out to GitHub: the issue comment holding the handoff note if no PR exists yet, otherwise the PR.
+3. **Read-only first.** Phase 1 is read-only plus Stop, and Pause and Resume where the feed offers them (ADR-013). When dispatch arrives, it first shows the exact `/dispatch` command or label to apply.
 4. **Stop is the andon cord:** press-and-hold with a filling ring, never in a menu, with a clear stopping → stopped sequence (token revoked, sandbox torn down).
 5. **No secrets on screen.** Credentials appear by name and status only. Logs arrive redacted (#10); show the `[redacted]` token style.
 6. **The operator is the identity at the console's front door:** Cloudflare Access on the orchestrator feed, the tailnet login on a local host's snapshot feed (ADR-012). Show it quietly; stops are recorded under it.
@@ -119,6 +119,6 @@ Approve or merge buttons; any secret value; charts with no decision attached; St
 ## References
 
 - Spec 0001: Observability and intervention; Later: operator console
-- ADR-005 (coordinator, daily spend), ADR-008 (run profiles), ADR-012 (two feeds and the MCP server)
+- ADR-005 (coordinator, daily spend), ADR-008 (run profiles), ADR-012 (two feeds and the MCP server), ADR-013 (pause, resume and combined feeds)
 - `console/design/` (design system and Phase 1 screens)
 - #35 (the console placeholder issue), #11 (stop), #10 (logs), #13 (coordinator)
